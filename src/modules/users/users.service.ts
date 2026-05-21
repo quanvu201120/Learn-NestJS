@@ -1,15 +1,55 @@
-import { Injectable } from '@nestjs/common';
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { User } from './schemas/user.schema';
+import { Model } from 'mongoose';
+import { InjectModel } from '@nestjs/mongoose';
+import { hashPassword } from '@/utils/utils';
+import aqp from 'api-query-params';
 
 @Injectable()
 export class UsersService {
-    create(createUserDto: CreateUserDto) {
-        return 'This action adds a new user';
+    constructor(@InjectModel(User.name) private userModel: Model<User>) {}
+
+    async create(createUserDto: CreateUserDto) {
+        const isEmailExisted = await this.userModel.exists({
+            email: createUserDto.email,
+        });
+
+        if (isEmailExisted) {
+            throw new BadRequestException('Email already existed');
+        }
+
+        const password = await hashPassword(createUserDto.password);
+
+        const newUser = await this.userModel.create({
+            ...createUserDto,
+            password,
+        });
+        return newUser;
     }
 
-    findAll() {
-        return `This action returns all users`;
+    async findAll(query: string, current: number, pageSize: number) {
+        const { filter, sort } = aqp(query);
+        if (filter.current) delete filter.current;
+        if (filter.pageSize) delete filter.pageSize;
+
+        if (!current) current = 1;
+        if (!pageSize) pageSize = 10;
+
+        const totalItems = (await this.userModel.find(filter)).length;
+        const totalPages = Math.ceil(totalItems / pageSize);
+        const skip = (current - 1) * pageSize;
+
+        const result = await this.userModel
+            .find(filter)
+            .skip(skip)
+            .limit(pageSize)
+            .select('-password')
+            .sort(sort as any);
+
+        return { result, totalPages };
     }
 
     findOne(id: number) {
