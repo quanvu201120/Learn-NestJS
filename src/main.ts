@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { UnprocessableEntityException, ValidationPipe } from '@nestjs/common';
+import { TransformInterceptor } from './common/transform.interceptor';
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
@@ -31,6 +32,7 @@ async function bootstrap() {
             },
         }),
     );
+    app.useGlobalInterceptors(new TransformInterceptor());
     await app.listen(port!);
 }
 bootstrap();

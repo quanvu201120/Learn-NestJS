@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from './schemas/user.schema';
 import { Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { hashPassword } from '@/utils/utils';
 import aqp from 'api-query-params';
+import { UpdateUserDto } from './dto/update-user.dto copy';
 
 @Injectable()
 export class UsersService {
@@ -42,25 +42,42 @@ export class UsersService {
         const totalPages = Math.ceil(totalItems / pageSize);
         const skip = (current - 1) * pageSize;
 
-        const result = await this.userModel
+        const userList = await this.userModel
             .find(filter)
             .skip(skip)
             .limit(pageSize)
             .select('-password')
             .sort(sort as any);
 
-        return { result, totalPages };
+        return { totalPages, userList };
     }
 
     findOne(id: number) {
         return `This action returns a #${id} user`;
     }
 
-    update(id: number, updateUserDto: UpdateUserDto) {
-        return `This action updates a #${id} user`;
+    async update(updateUserDto: UpdateUserDto) {
+        if (updateUserDto.email) {
+            const isEmailExisted = await this.userModel.exists({
+                email: updateUserDto.email,
+                _id: { $ne: updateUserDto._id },
+            });
+
+            if (isEmailExisted) {
+                throw new BadRequestException('Email already existed');
+            }
+        }
+
+        return await this.userModel
+            .findOneAndUpdate(
+                { _id: updateUserDto._id },
+                { ...updateUserDto },
+                { new: true },
+            )
+            .select('-password');
     }
 
-    remove(id: number) {
-        return `This action removes a #${id} user`;
+    async remove(id: string) {
+        return await this.userModel.deleteOne({ _id: id });
     }
 }
