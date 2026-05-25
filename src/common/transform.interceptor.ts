@@ -37,11 +37,6 @@ export class TransformInterceptor<T> implements NestInterceptor<
                     data?.accessToken !== undefined
                         ? data.accessToken
                         : undefined,
-                refreshToken:
-                    data?.refreshToken !== undefined
-                        ? data.refreshToken
-                        : undefined,
-                meta: data?.meta !== undefined ? data.meta : undefined,
             })),
         );
     }

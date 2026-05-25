@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { UnprocessableEntityException, ValidationPipe } from '@nestjs/common';
 import { TransformInterceptor } from './common/transform.interceptor';
+import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
@@ -32,7 +33,8 @@ async function bootstrap() {
             },
         }),
     );
-    // app.useGlobalInterceptors(new TransformInterceptor());
+    app.useGlobalInterceptors(new TransformInterceptor());
+    app.use(cookieParser());
     await app.listen(port!);
 }
 bootstrap();
