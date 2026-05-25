@@ -32,7 +32,7 @@ async function bootstrap() {
             },
         }),
     );
-    app.useGlobalInterceptors(new TransformInterceptor());
+    // app.useGlobalInterceptors(new TransformInterceptor());
     await app.listen(port!);
 }
 bootstrap();

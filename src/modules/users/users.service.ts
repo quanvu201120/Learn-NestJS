@@ -56,6 +56,10 @@ export class UsersService {
         return `This action returns a #${id} user`;
     }
 
+    async findByEmail(email: string) {
+        return await this.userModel.findOne({ email });
+    }
+
     async update(updateUserDto: UpdateUserDto) {
         if (updateUserDto.email) {
             const isEmailExisted = await this.userModel.exists({
