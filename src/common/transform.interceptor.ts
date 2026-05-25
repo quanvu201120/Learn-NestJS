@@ -31,8 +31,16 @@ export class TransformInterceptor<T> implements NestInterceptor<
         return next.handle().pipe(
             map((data) => ({
                 statusCode: statusCode,
-                message: data?.message || 'Thực hiện tác vụ thành công!',
+                message: data?.message,
                 data: data?.result !== undefined ? data.result : data,
+                accessToken:
+                    data?.accessToken !== undefined
+                        ? data.accessToken
+                        : undefined,
+                refreshToken:
+                    data?.refreshToken !== undefined
+                        ? data.refreshToken
+                        : undefined,
                 meta: data?.meta !== undefined ? data.meta : undefined,
             })),
         );
