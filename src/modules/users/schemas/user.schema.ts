@@ -3,6 +3,14 @@ import { HydratedDocument } from 'mongoose';
 
 export type UserDocument = HydratedDocument<User>;
 
+@Schema({ _id: false }) // 👈 Tắt _id tự động cho Object con để tránh thừa thãi dữ liệu
+export class RefreshTokenClass {
+    @Prop({ required: true })
+    token: string;
+    @Prop({ required: true })
+    expiresAt: Date;
+}
+
 @Schema({ timestamps: true })
 export class User {
     @Prop()
@@ -32,6 +40,9 @@ export class User {
     @Prop({ default: false })
     isActive: boolean;
 
+    @Prop({ type: [RefreshTokenClass], default: [] })
+    refreshTokens: RefreshTokenClass[];
+
     @Prop()
     codeId: string;
 
@@ -40,3 +51,8 @@ export class User {
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
+
+export type PayloadJWT = {
+    _id: string;
+    role: string;
+};

@@ -5,6 +5,7 @@ import {
     ValidationOptions,
     ValidationArguments,
 } from 'class-validator';
+import { SetMetadata } from '@nestjs/common';
 
 export function Match(property: string, validationOptions?: ValidationOptions) {
     return function (object: object, propertyName: string) {
@@ -33,3 +34,16 @@ export function Match(property: string, validationOptions?: ValidationOptions) {
         });
     };
 }
+
+export const IS_PUBLIC_KEY = 'isPublic';
+export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
+
+import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+
+export const Cookies = createParamDecorator(
+    (data: string, ctx: ExecutionContext) => {
+        const request = ctx.switchToHttp().getRequest();
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return
+        return data ? request.cookies?.[data] : request.cookies;
+    },
+);

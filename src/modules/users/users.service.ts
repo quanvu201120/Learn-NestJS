@@ -7,10 +7,15 @@ import { InjectModel } from '@nestjs/mongoose';
 import { hashPassword } from '@/utils/utils';
 import aqp from 'api-query-params';
 import { UpdateUserDto } from './dto/update-user.dto copy';
+import { ConfigService } from '@nestjs/config';
+import ms, { StringValue } from 'ms';
 
 @Injectable()
 export class UsersService {
-    constructor(@InjectModel(User.name) private userModel: Model<User>) {}
+    constructor(
+        @InjectModel(User.name) private userModel: Model<User>,
+        private configService: ConfigService,
+    ) {}
 
     async create(createUserDto: CreateUserDto) {
         const isEmailExisted = await this.userModel.exists({
@@ -52,8 +57,8 @@ export class UsersService {
         return { totalPages, userList };
     }
 
-    findOne(id: number) {
-        return `This action returns a #${id} user`;
+    async findOne(id: string) {
+        return await this.userModel.findById(id);
     }
 
     async findByEmail(email: string) {
@@ -79,6 +84,37 @@ export class UsersService {
                 { new: true },
             )
             .select('-password');
+    }
+
+    async updateRefreshToken(token: string, _id: string) {
+        const expiresIn = this.configService.get<string>(
+            'JWT_REFRESH_EXPIRES_IN_DB',
+        )!;
+        const expiresAt = new Date(Date.now() + ms(expiresIn as StringValue));
+        return await this.userModel.updateOne(
+            { _id },
+            {
+                $push: {
+                    refreshTokens: {
+                        token,
+                        expiresAt,
+                    },
+                },
+            },
+        );
+    }
+
+    async removeRefreshToken(token: string, _id: string) {
+        return await this.userModel.updateOne(
+            { _id },
+            {
+                $pull: {
+                    refreshTokens: {
+                        token,
+                    },
+                },
+            },
+        );
     }
 
     async remove(id: string) {
