@@ -9,12 +9,15 @@ import aqp from 'api-query-params';
 import { UpdateUserDto } from './dto/update-user.dto copy';
 import { ConfigService } from '@nestjs/config';
 import ms, { StringValue } from 'ms';
+import { v4 as uuidv4 } from 'uuid';
+import { MailerService } from '@nestjs-modules/mailer';
 
 @Injectable()
 export class UsersService {
     constructor(
         @InjectModel(User.name) private userModel: Model<User>,
         private configService: ConfigService,
+        private readonly mailerService: MailerService,
     ) {}
     async create(createUserDto: CreateUserDto) {
         const isEmailExisted = await this.userModel.exists({
@@ -26,11 +29,52 @@ export class UsersService {
         }
 
         const password = await hashPassword(createUserDto.password);
+        const codeId = uuidv4();
 
+        const expireTime =
+            this.configService.get<string>('MAIL_CODE_EXPIRE') || '30m';
         const newUser = await this.userModel.create({
             ...createUserDto,
             password,
+            isActive: false,
+            codeId,
+            codeExpired: new Date(Date.now() + ms(expireTime as StringValue)),
         });
+
+        this.sendEmail(newUser.email, codeId).catch((error) => {
+            console.error(error);
+        });
+
+        return newUser;
+    }
+
+    async register(email: string, password: string) {
+        const isEmailExisted = await this.userModel.exists({
+            email,
+        });
+
+        if (isEmailExisted) {
+            throw new BadRequestException('Email already existed');
+        }
+
+        const passHash = await hashPassword(password);
+        const codeId = uuidv4();
+
+        const expireTime =
+            this.configService.get<string>('MAIL_CODE_EXPIRE') || '30m';
+        const newUser = await this.userModel.create({
+            email,
+            password: passHash,
+            role: 'USER',
+            isActive: false,
+            codeId,
+            codeExpired: new Date(Date.now() + ms(expireTime as StringValue)),
+        });
+
+        this.sendEmail(newUser.email, codeId).catch((error) => {
+            console.error(error);
+        });
+
         return newUser;
     }
 
@@ -116,7 +160,62 @@ export class UsersService {
         );
     }
 
-    async remove(id: string) {
+    async deleteUser(id: string) {
         return await this.userModel.deleteOne({ _id: id });
+    }
+
+    async sendEmail(email: string, code: string) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+        return await this.mailerService.sendMail({
+            to: email,
+            subject: 'Welcome!',
+            template: 'register',
+            context: {
+                email: email,
+                activationCode: code,
+            },
+        });
+    }
+
+    async activateUser(id: string, code: string) {
+        const user = await this.userModel.findById(id).select('-password');
+        if (!user) {
+            throw new BadRequestException('User not found');
+        }
+        if (user.isActive) {
+            throw new BadRequestException('User is already active');
+        }
+        if (user.codeId !== code) {
+            throw new BadRequestException('Invalid code');
+        }
+        if (user.codeExpired < new Date()) {
+            throw new BadRequestException('Code has expired');
+        }
+        user.isActive = true;
+        user.codeId = '';
+        user.codeExpired = new Date();
+        return await user.save();
+    }
+
+    async reSendCodeActive(email: string) {
+        const user = await this.userModel
+            .findOne({ email })
+            .select('-password');
+        if (!user) {
+            throw new BadRequestException('User not found');
+        }
+        if (user.isActive === true) {
+            throw new BadRequestException('User is already active');
+        }
+        const codeId = uuidv4();
+        const expireTime =
+            this.configService.get<string>('MAIL_CODE_EXPIRE') || '30m';
+        user.codeId = codeId;
+        user.codeExpired = new Date(Date.now() + ms(expireTime as StringValue));
+        await user.save();
+        this.sendEmail(user.email, codeId).catch((error) => {
+            console.error(error);
+        });
+        return codeId;
     }
 }

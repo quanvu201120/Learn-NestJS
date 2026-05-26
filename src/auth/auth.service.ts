@@ -12,6 +12,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
+import { RegisterAuthDto } from './dto/register-auth.dto';
 
 @Injectable()
 export class AuthService {
@@ -53,7 +54,11 @@ export class AuthService {
             message: 'Đăng nhập thành công',
         };
     }
-    // eslint-disable-next-line prettier/prettier
+
+    async register(registerAuthDto: RegisterAuthDto) {
+        const { email, password } = registerAuthDto;
+        return await this.usersService.register(email, password);
+    }
 
     async refreshToken(refreshTokenOld: string) {
         if (!refreshTokenOld) {
@@ -115,5 +120,13 @@ export class AuthService {
 
     async logout(refreshToken: string, id: string) {
         return await this.usersService.removeRefreshToken(refreshToken, id);
+    }
+
+    async activateUser(id: string, code: string) {
+        return await this.usersService.activateUser(id, code);
+    }
+
+    async reSendCodeActive(email: string) {
+        return await this.usersService.reSendCodeActive(email);
     }
 }
