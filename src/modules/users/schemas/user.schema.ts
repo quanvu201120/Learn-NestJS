@@ -31,7 +31,7 @@ export class User {
     @Prop()
     image: string;
 
-    @Prop({ default: 'USER' })
+    @Prop({ default: 'USER', enum: ['USER', 'ADMIN'] })
     role: string;
 
     @Prop({ default: 'LOCAL' })

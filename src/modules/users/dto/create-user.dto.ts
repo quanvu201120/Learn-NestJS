@@ -1,6 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 import { Match } from '@/utils/decorator-customize';
-import { IsEmail, IsNotEmpty } from 'class-validator';
+import {
+    IsEmail,
+    IsIn,
+    IsNotEmpty,
+    IsOptional,
+    IsPhoneNumber,
+} from 'class-validator';
 
 export class CreateUserDto {
     @IsNotEmpty({ message: 'Tên không được để trống' })
@@ -17,6 +23,14 @@ export class CreateUserDto {
     @Match('password', { message: 'Xác nhận mật khẩu không trùng khớp' })
     confirmPassword: string;
 
-    @IsNotEmpty({ message: 'Số điện thoại không được để trống' })
-    phone: string;
+    @IsOptional()
+    @IsPhoneNumber('VN')
+    phone?: string;
+
+    @IsOptional()
+    address?: string;
+
+    @IsOptional()
+    @IsIn(['USER', 'ADMIN'], { message: 'Role phải là USER hoặc ADMIN' })
+    role?: string = 'USER';
 }

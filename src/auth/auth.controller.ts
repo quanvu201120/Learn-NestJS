@@ -12,6 +12,7 @@ import {
     Request,
     Get,
     Res,
+    Param,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './passport/local-auth-guard';
@@ -76,5 +77,29 @@ export class AuthController {
         });
 
         return data.accessToken;
+    }
+
+    @Post('logout')
+    @Public()
+    @HttpCode(HttpStatus.OK)
+    async handleLogout(
+        @Res({ passthrough: true }) response: express.Response,
+        @Cookies('refreshToken') refreshToken: string,
+        @Request() req,
+    ) {
+        try {
+            await this.authService.logout(refreshToken, req.user._id);
+        } catch (error) {
+            /* empty */
+        }
+
+        response.clearCookie('refreshToken', {
+            httpOnly: true,
+            secure: false,
+            sameSite: 'lax',
+            maxAge: 0,
+        });
+
+        return null;
     }
 }
