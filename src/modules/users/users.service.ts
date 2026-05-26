@@ -16,7 +16,6 @@ export class UsersService {
         @InjectModel(User.name) private userModel: Model<User>,
         private configService: ConfigService,
     ) {}
-
     async create(createUserDto: CreateUserDto) {
         const isEmailExisted = await this.userModel.exists({
             email: createUserDto.email,

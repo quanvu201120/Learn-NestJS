@@ -38,6 +38,9 @@ export function Match(property: string, validationOptions?: ValidationOptions) {
 export const IS_PUBLIC_KEY = 'isPublic';
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
 
+export const ROLES_KEY = 'roles';
+export const Roles = (...roles: ('USER' | 'ADMIN')[]) => SetMetadata(ROLES_KEY, roles);
+
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 
 export const Cookies = createParamDecorator(

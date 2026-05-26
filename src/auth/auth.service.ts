@@ -112,4 +112,8 @@ export class AuthService {
             );
         }
     }
+
+    async logout(refreshToken: string, id: string) {
+        return await this.usersService.removeRefreshToken(refreshToken, id);
+    }
 }
