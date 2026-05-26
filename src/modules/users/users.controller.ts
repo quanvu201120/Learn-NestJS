@@ -54,6 +54,6 @@ export class UsersController {
 
     @Delete(':id')
     remove(@Param() deleteDto: DeleteUserDto) {
-        return this.usersService.remove(deleteDto.id);
+        return this.usersService.deleteUser(deleteDto.id);
     }
 }

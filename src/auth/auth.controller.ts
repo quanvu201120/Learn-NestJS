@@ -13,6 +13,7 @@ import {
     Get,
     Res,
     Param,
+    InternalServerErrorException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './passport/local-auth-guard';
@@ -20,6 +21,11 @@ import { Cookies, Public } from '@/utils/decorator-customize';
 import * as express from 'express';
 import { ConfigService } from '@nestjs/config';
 import ms, { StringValue } from 'ms';
+import {
+    RegisterAuthDto,
+    ActiveAuthDto,
+    ResendCodeAuthDto,
+} from './dto/register-auth.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -101,5 +107,29 @@ export class AuthController {
         });
 
         return null;
+    }
+
+    @Post('register')
+    @Public()
+    async handleRegister(@Body() registerAuthDto: RegisterAuthDto) {
+        const data = await this.authService.register(registerAuthDto);
+        return data;
+    }
+
+    @Post('active')
+    @HttpCode(HttpStatus.OK)
+    @Public()
+    async handleActive(@Body() activeAuthDto: ActiveAuthDto) {
+        return await this.authService.activateUser(
+            activeAuthDto.id,
+            activeAuthDto.code,
+        );
+    }
+
+    @Post('resend-code-active')
+    @HttpCode(HttpStatus.OK)
+    @Public()
+    async handleResendCodeActive(@Body() resendCodeAuthDto: ResendCodeAuthDto) {
+        return await this.authService.reSendCodeActive(resendCodeAuthDto.email);
     }
 }

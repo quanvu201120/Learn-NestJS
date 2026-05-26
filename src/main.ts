@@ -1,7 +1,11 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
-import { UnprocessableEntityException, ValidationPipe } from '@nestjs/common';
+import {
+    UnprocessableEntityException,
+    ValidationError,
+    ValidationPipe,
+} from '@nestjs/common';
 import { TransformInterceptor } from './common/transform.interceptor';
 import cookieParser from 'cookie-parser';
 
@@ -17,18 +21,25 @@ async function bootstrap() {
             forbidNonWhitelisted: true,
             transform: true,
             exceptionFactory: (validationErrors = []) => {
-                const errors = {};
-                validationErrors.forEach((err) => {
-                    const constraints = err.constraints;
-                    if (constraints) {
-                        errors[err.property] = Object.values(constraints)[0];
-                    }
-                });
+                const formatErrors = (errorsList: ValidationError[]) => {
+                    const errors: Record<string, any> = {};
+                    errorsList.forEach((err) => {
+                        const constraints = err.constraints;
+                        if (constraints) {
+                            errors[err.property] =
+                                Object.values(constraints)[0];
+                        } else if (err.children && err.children.length > 0) {
+                            errors[err.property] = formatErrors(err.children);
+                        }
+                    });
+                    return errors;
+                };
+
                 return new UnprocessableEntityException({
                     statusCode: 422,
                     error: 'Unprocessable Entity',
                     message: 'Validation failed',
-                    errors: errors,
+                    errors: formatErrors(validationErrors),
                 });
             },
         }),
