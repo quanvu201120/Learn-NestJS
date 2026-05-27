@@ -13,6 +13,10 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
 import { RegisterAuthDto } from './dto/register-auth.dto';
+import {
+    ChangePasswordAuthDto,
+    ResetPasswordAuthDto,
+} from './dto/password-auth.dto';
 
 @Injectable()
 export class AuthService {
@@ -122,11 +126,30 @@ export class AuthService {
         return await this.usersService.removeRefreshToken(refreshToken, id);
     }
 
-    async activateUser(id: string, code: string) {
-        return await this.usersService.activateUser(id, code);
+    async activateUser(email: string, code: string) {
+        return await this.usersService.activateUser(email, code);
     }
 
     async reSendCodeActive(email: string) {
         return await this.usersService.reSendCodeActive(email);
+    }
+
+    async changePassword(
+        id: string,
+        changePasswordAuthDto: ChangePasswordAuthDto,
+    ) {
+        return await this.usersService.updatePassword(
+            id,
+            changePasswordAuthDto,
+        );
+    }
+
+    async forgotPassword(email: string) {
+        return await this.usersService.sendMailForgotPassword(email);
+    }
+    async resetPassword(resetPasswordAuthDto: ResetPasswordAuthDto) {
+        const { email, code, password } = resetPasswordAuthDto;
+
+        return await this.usersService.resetPassword(email, code, password);
     }
 }

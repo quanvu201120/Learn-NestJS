@@ -17,10 +17,11 @@ export class RegisterAuthDto {
 }
 
 export class ActiveAuthDto {
-    @IsNotEmpty({ message: 'Id không được để trống' })
-    id: string;
+    @IsEmail({}, { message: 'Email is invalid' })
+    @IsNotEmpty({ message: 'Email is required' })
+    email: string;
 
-    @IsNotEmpty({ message: 'Mã code không được để trống' })
+    @IsNotEmpty({ message: 'Code is invalid' })
     code: string;
 }
 

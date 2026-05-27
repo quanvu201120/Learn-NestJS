@@ -44,10 +44,16 @@ export class User {
     refreshTokens: RefreshTokenClass[];
 
     @Prop()
-    codeId: string;
+    codeActiveId: string;
 
     @Prop()
-    codeExpired: Date;
+    codeActiveExpired: Date;
+
+    @Prop()
+    codeForgotId: string;
+
+    @Prop()
+    codeForgotExpired: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
