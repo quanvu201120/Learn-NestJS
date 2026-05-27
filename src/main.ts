@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import {
     UnprocessableEntityException,
     ValidationError,
@@ -46,6 +47,27 @@ async function bootstrap() {
     );
     app.useGlobalInterceptors(new TransformInterceptor());
     app.use(cookieParser());
+
+    // CONFIG SWAGGER
+    const config = new DocumentBuilder()
+        .setTitle('NestJS Learn API')
+        .setDescription('API documentation for NestJS Learn application')
+        .setVersion('1.0')
+        .addBearerAuth(
+            {
+                type: 'http',
+                scheme: 'bearer',
+                bearerFormat: 'JWT',
+                name: 'JWT',
+                description: 'Enter JWT token',
+                in: 'header',
+            },
+            'JWT-auth', // This name must match the one used in security decorators
+        )
+        .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('swagger', app, document);
+
     await app.listen(port!);
 }
 bootstrap();
