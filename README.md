@@ -1,98 +1,112 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# 🚀 Learn-NestJS - Hệ Thống Xác Thực Người Dùng Toàn Diện
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Một hệ thống xác thực người dùng bảo mật cao, mạnh mẽ và chuyên nghiệp được xây dựng bằng **NestJS**, **MongoDB (Mongoose)**, **Passport (JWT & Local)** và **Nodemailer**, hỗ trợ tài liệu hóa API đầy đủ bằng **Swagger UI**.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## 🌟 Tính Năng Nổi Bật
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+*   **Đăng Ký & Kích Hoạt Tài Khoản:**
+    *   Đăng ký tài khoản mới với chức năng khớp mật khẩu (xác thực dữ liệu ở tầng DTO).
+    *   Tự động tạo mã kích hoạt tài khoản và gửi qua Email bằng template HTML cực kỳ đẹp mắt.
+    *   API kích hoạt tài khoản công khai (xác thực bằng Email + Mã kích hoạt).
+    *   Chức năng gửi lại mã kích hoạt an toàn, được bảo vệ chống spam bằng **thời gian chờ (Cooldown) 60 giây**.
+*   **Bảo Mật & Xác Thực:**
+    *   Đăng nhập bằng chiến lược Passport Local.
+    *   Tự động kiểm tra thông tin tài khoản và xác thực trạng thái kích hoạt (`isActive`).
+    *   Cơ chế xác thực hai token (Double-token JWT): `AccessToken` (hạn dùng ngắn) và `RefreshToken` (được lưu trong Cookie **30 ngày** để hỗ trợ dọn dẹp token hết hạn trong DB tự động).
+    *   Đăng xuất an toàn, thu hồi các token đang hoạt động trong DB.
+*   **Quản Lý Mật Khẩu:**
+    *   Đổi mật khẩu cho người dùng đã đăng nhập, tự động lấy ID an toàn từ JWT Token của request.
+    *   Yêu cầu Quên mật khẩu gửi mã xác minh (OTP) về Email người dùng qua template gradient hồng-đỏ sang trọng, chống spam click bằng **thời gian chờ 60 giây**.
+    *   Đặt lại mật khẩu mới (Reset Password) bằng cách xác thực mã OTP, kiểm tra thời gian hết hạn và mã hóa mật khẩu mới bằng `bcrypt`.
+*   **Tài Liệu API:**
+    *   Giao diện tài liệu trực quan bằng **Swagger UI**, tích hợp sẵn nút xác thực Bearer Token (JWT Auth) để test trực tiếp trên trình duyệt.
 
-## Project setup
+---
 
+## 🛠️ Công Nghệ Sử Dụng
+
+*   **Framework chính:** NestJS (v11+)
+*   **Cơ sở dữ liệu:** MongoDB kết nối qua `@nestjs/mongoose`
+*   **Bảo mật & Xác thực:** Passport, `passport-jwt`, `passport-local`, `bcrypt`
+*   **Kiểm tra dữ liệu đầu vào:** `class-validator`, `class-transformer`
+*   **Gửi Email:** `@nestjs-modules/mailer` kết hợp adapter template Handlebars (`HandlebarsAdapter`)
+*   **Tài liệu API:** `@nestjs/swagger` kết hợp giao diện Swagger UI
+
+---
+
+## 🚀 Hướng Dẫn Cài Đặt & Chạy Thử
+
+### 1. Tải mã nguồn & Cài đặt thư viện
 ```bash
-$ npm install
+# Clone dự án từ Github
+git clone https://github.com/quanvu201120/Learn-NestJS.git
+cd Learn-NestJS
+
+# Cài đặt các thư viện cần thiết
+npm install
 ```
 
-## Compile and run the project
-
+### 2. Cấu hình Biến Môi Trường (Environment Variables)
+Sao chép file `.env.example` thành file `.env` và điền đầy đủ thông số kết nối Database (MongoDB) cũng như cấu hình SMTP gửi email của bạn:
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+cp .env.example .env
 ```
 
-## Run tests
+Nội dung file `.env` tham khảo:
+```env
+#CONFIG MONGODB
+PORT=8080
+MONGODB_URI=mongodb://username:password@localhost:27017/database_name?authSource=admin
 
-```bash
-# unit tests
-$ npm run test
+#CONFIG JWT
+JWT_SECRET=your_jwt_secret_here
+JWT_EXPRIRES_IN=1d
+JWT_REFRESH_SECRET=your_jwt_refresh_secret_here
+JWT_REFRESH_EXPIRES_IN_DB=7d
+COOKIE_EXPIRES_IN=30d
 
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+#CONFIG MAIL
+MAIL_USER=your_email@gmail.com
+MAIL_PASS=your_email_app_password
+MAIL_CODE_ACTIVE_EXPIRE=1h
+MAIL_CODE_FORGOT_EXPIRE=5m
+MAIL_FROM='"No Reply" <noreply@example.com>'
+MAIL_REGISTER_TEMPLATE=register
+MAIL_FORGOT_TEMPLATE=forgot-password
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### 3. Chạy Ứng Dụng
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+# Chạy ở chế độ Phát triển (Development - tự động reload khi sửa file)
+npm run dev
+
+# Chạy ở chế độ Debug
+npm run start:debug
+
+# Biên dịch và chạy ở chế độ Production
+npm run build
+npm run start:prod
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+---
 
-## Resources
+## 📖 Tài Liệu API (Swagger UI)
 
-Check out a few resources that may come in handy when working with NestJS:
+Khi server đã khởi động thành công, bạn có thể truy cập vào giao diện tài liệu API trực quan để khám phá và kiểm tra (test) trực tiếp các endpoint ngay trên trình duyệt:
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+👉 **Đường dẫn:** [http://localhost:8080/swagger](http://localhost:8080/swagger)
 
-## Support
+### Hướng dẫn test API có bảo mật trên Swagger:
+1. Gọi API `POST /auth/login` để lấy mã `accessToken`.
+2. Click vào nút **"Authorize"** màu xanh lá ở góc trên bên phải giao diện Swagger UI.
+3. Dán mã `accessToken` vừa nhận được vào và xác nhận.
+4. Giờ đây bạn đã có thể test trực tiếp các API cần đăng nhập (như đổi mật khẩu, đăng xuất...) một cách cực kỳ dễ dàng!
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+---
 
-## Stay in touch
+## 🛡️ Bản Quyền (License)
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Dự án này được cấp phép theo tiêu chuẩn [MIT licensed](LICENSE).

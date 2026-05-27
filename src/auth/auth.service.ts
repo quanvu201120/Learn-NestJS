@@ -82,7 +82,6 @@ export class AuthService {
             if (!user) {
                 throw new UnauthorizedException('Token không hợp lệ');
             }
-            console.log(user.refreshTokens);
 
             const isRefreshTokenExist = user.refreshTokens.some(
                 (item) => item.token === String(refreshTokenOld),
@@ -108,10 +107,23 @@ export class AuthService {
                 refreshToken,
                 payload._id,
             );
-
             return { accessToken, refreshToken };
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        } catch (error) {
+        } catch (error: any) {
+            if (error.name === 'TokenExpiredError') {
+                try {
+                    const decoded: PayloadJWT =
+                        this.jwtService.decode(refreshTokenOld);
+                    if (decoded && decoded._id) {
+                        await this.usersService.removeRefreshToken(
+                            refreshTokenOld,
+                            decoded._id,
+                        );
+                    }
+                } catch (cleanupError) {
+                    console.error('Lỗi dọn dẹp token hết hạn:', cleanupError);
+                }
+            }
+
             if (error instanceof HttpException) {
                 throw error;
             }
