@@ -30,3 +30,12 @@ export class ResendCodeAuthDto {
     @IsNotEmpty({ message: 'Email không được để trống' })
     email: string;
 }
+
+export class LoginDto {
+    @IsEmail({}, { message: 'Email is invalid' })
+    @IsNotEmpty({ message: 'Email is required' })
+    email: string;
+
+    @IsNotEmpty({ message: 'Password is required' })
+    password: string;
+}
