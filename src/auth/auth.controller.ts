@@ -26,13 +26,16 @@ import {
     ActiveAuthDto,
     RegisterAuthDto,
     ResendCodeAuthDto,
+    LoginDto,
 } from './dto/register-auth.dto';
 import {
     ChangePasswordAuthDto,
     ForgotPasswordAuthDto,
     ResetPasswordAuthDto,
 } from './dto/password-auth.dto';
+import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 
+@ApiTags('Auth - Xác thực')
 @Controller('auth')
 export class AuthController {
     constructor(
@@ -44,6 +47,8 @@ export class AuthController {
     @Public()
     @UseGuards(LocalAuthGuard)
     @Post('login')
+    @ApiOperation({ summary: 'Đăng nhập tài khoản' })
+    @ApiBody({ type: LoginDto })
     async handleLogin(
         @Request() req,
         @Res({ passthrough: true }) response: express.Response,
@@ -71,6 +76,7 @@ export class AuthController {
 
     @Post('refreshToken')
     @Public()
+    @ApiOperation({ summary: 'Làm mới token (Refresh Token)' })
     async refreshToken(
         @Cookies('refreshToken') refreshTokenOld: string,
         @Res({ passthrough: true }) response: express.Response,
@@ -93,6 +99,8 @@ export class AuthController {
 
     @Post('logout')
     @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Đăng xuất tài khoản' })
+    @ApiBearerAuth('JWT-auth')
     async handleLogout(
         @Res({ passthrough: true }) response: express.Response,
         @Cookies('refreshToken') refreshToken: string,
@@ -116,6 +124,7 @@ export class AuthController {
 
     @Post('register')
     @Public()
+    @ApiOperation({ summary: 'Đăng ký tài khoản mới' })
     async handleRegister(@Body() registerAuthDto: RegisterAuthDto) {
         const data = await this.authService.register(registerAuthDto);
         return data;
@@ -124,6 +133,7 @@ export class AuthController {
     @Post('active')
     @HttpCode(HttpStatus.OK)
     @Public()
+    @ApiOperation({ summary: 'Kích hoạt tài khoản bằng mã code gửi qua email' })
     async handleActive(@Body() activeAuthDto: ActiveAuthDto) {
         return await this.authService.activateUser(
             activeAuthDto.email,
@@ -134,12 +144,15 @@ export class AuthController {
     @Post('resend-code-active')
     @HttpCode(HttpStatus.OK)
     @Public()
+    @ApiOperation({ summary: 'Gửi lại mã kích hoạt tài khoản' })
     async handleResendCodeActive(@Body() resendCodeAuthDto: ResendCodeAuthDto) {
         return await this.authService.reSendCodeActive(resendCodeAuthDto.email);
     }
 
     @Post('change-password')
     @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Thay đổi mật khẩu' })
+    @ApiBearerAuth('JWT-auth')
     async handleChangePassword(
         @Body() changePasswordAuthDto: ChangePasswordAuthDto,
         @Request() req,
@@ -153,6 +166,7 @@ export class AuthController {
     @Post('forgot-password')
     @Public()
     @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Yêu cầu gửi mã đặt lại mật khẩu (Quên mật khẩu)' })
     async handleForgotPassword(
         @Body() forgotPasswordAuthDto: ForgotPasswordAuthDto,
     ) {
@@ -164,6 +178,7 @@ export class AuthController {
     @Post('reset-password')
     @Public()
     @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Đặt lại mật khẩu mới' })
     async handleResetPassword(
         @Body() resetPasswordAuthDto: ResetPasswordAuthDto,
     ) {
