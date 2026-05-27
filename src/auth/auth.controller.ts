@@ -21,11 +21,17 @@ import { Cookies, Public } from '@/utils/decorator-customize';
 import * as express from 'express';
 import { ConfigService } from '@nestjs/config';
 import ms, { StringValue } from 'ms';
+
 import {
-    RegisterAuthDto,
     ActiveAuthDto,
+    RegisterAuthDto,
     ResendCodeAuthDto,
 } from './dto/register-auth.dto';
+import {
+    ChangePasswordAuthDto,
+    ForgotPasswordAuthDto,
+    ResetPasswordAuthDto,
+} from './dto/password-auth.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -86,7 +92,6 @@ export class AuthController {
     }
 
     @Post('logout')
-    @Public()
     @HttpCode(HttpStatus.OK)
     async handleLogout(
         @Res({ passthrough: true }) response: express.Response,
@@ -121,7 +126,7 @@ export class AuthController {
     @Public()
     async handleActive(@Body() activeAuthDto: ActiveAuthDto) {
         return await this.authService.activateUser(
-            activeAuthDto.id,
+            activeAuthDto.email,
             activeAuthDto.code,
         );
     }
@@ -131,5 +136,37 @@ export class AuthController {
     @Public()
     async handleResendCodeActive(@Body() resendCodeAuthDto: ResendCodeAuthDto) {
         return await this.authService.reSendCodeActive(resendCodeAuthDto.email);
+    }
+
+    @Post('change-password')
+    @HttpCode(HttpStatus.OK)
+    async handleChangePassword(
+        @Body() changePasswordAuthDto: ChangePasswordAuthDto,
+        @Request() req,
+    ) {
+        return await this.authService.changePassword(
+            req.user._id,
+            changePasswordAuthDto,
+        );
+    }
+
+    @Post('forgot-password')
+    @Public()
+    @HttpCode(HttpStatus.OK)
+    async handleForgotPassword(
+        @Body() forgotPasswordAuthDto: ForgotPasswordAuthDto,
+    ) {
+        return await this.authService.forgotPassword(
+            forgotPasswordAuthDto.email,
+        );
+    }
+
+    @Post('reset-password')
+    @Public()
+    @HttpCode(HttpStatus.OK)
+    async handleResetPassword(
+        @Body() resetPasswordAuthDto: ResetPasswordAuthDto,
+    ) {
+        return await this.authService.resetPassword(resetPasswordAuthDto);
     }
 }

@@ -18,7 +18,9 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
     async validate(email: string, password: string) {
         const user = await this.authService.validateUser(email, password);
         if (!user) {
-            throw new UnauthorizedException('User not found');
+            throw new UnauthorizedException(
+                'Tài khoản hoặc mật khẩu không hợp lệ',
+            );
         }
         if (user.isActive === false) {
             throw new BadRequestException('User is not active');

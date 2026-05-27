@@ -10,7 +10,7 @@ export class LocalAuthGuard extends AuthGuard('local') {
     async canActivate(context: ExecutionContext): Promise<boolean> {
         const request = context.switchToHttp().getRequest();
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        const { email, password } = request.body;
+        const { email, password } = request.body || {};
         // 1. Kiểm tra rỗng
         if (!email) {
             throw new BadRequestException('Email không được để trống');
