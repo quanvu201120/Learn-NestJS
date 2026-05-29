@@ -4,12 +4,19 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { BadRequestException } from '@nestjs/common';
 import ms, { StringValue } from 'ms';
+import { createHash } from 'crypto';
 
 const saltBcypt = 10;
 
 export const hashPassword = async (password: string): Promise<string> => {
     return await bcrypt.hash(password, saltBcypt);
 };
+
+const hashValue = (value: string, pepper: string) =>
+    createHash('sha256').update(`${value}${pepper}`).digest('hex');
+
+export const hashRefreshToken = (token: string, pepper: string) =>
+    hashValue(token, pepper);
 
 export const generateJWT = async (
     payload: { _id: string; role: string },

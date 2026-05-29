@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-return */
+
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
@@ -53,7 +53,6 @@ export class AuthController {
         @Request() req,
         @Res({ passthrough: true }) response: express.Response,
     ) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         const data = await this.authService.login(req.user);
 
         response.cookie('refreshToken', data.refreshToken, {
@@ -166,7 +165,9 @@ export class AuthController {
     @Post('forgot-password')
     @Public()
     @HttpCode(HttpStatus.OK)
-    @ApiOperation({ summary: 'Yêu cầu gửi mã đặt lại mật khẩu (Quên mật khẩu)' })
+    @ApiOperation({
+        summary: 'Yêu cầu gửi mã đặt lại mật khẩu (Quên mật khẩu)',
+    })
     async handleForgotPassword(
         @Body() forgotPasswordAuthDto: ForgotPasswordAuthDto,
     ) {

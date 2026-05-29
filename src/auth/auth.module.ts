@@ -13,7 +13,7 @@ import { JwtStrategy } from './passport/jwt.strategy';
     imports: [
         UsersModule,
         PassportModule,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+
         JwtModule.registerAsync({
             global: true,
             useFactory: (configService: ConfigService) => ({
