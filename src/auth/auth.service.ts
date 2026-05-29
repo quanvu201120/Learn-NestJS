@@ -1,9 +1,8 @@
-/* eslint-disable prettier/prettier */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { PayloadJWT } from '@/modules/users/schemas/user.schema';
 import { UsersService } from '@/modules/users/users.service';
-import { generateJWT } from '@/utils/utils';
+import { generateJWT, hashRefreshToken } from '@/utils/utils';
 import {
     HttpException,
     Injectable,
@@ -48,8 +47,11 @@ export class AuthService {
             this.configService,
             this.jwtService,
         );
-
-        await this.usersService.updateRefreshToken(refreshToken, user._id);
+        const hashRefreshJWT = hashRefreshToken(
+            refreshToken,
+            this.configService.get<string>('REFRESH_TOKEN_PEPPER')!,
+        );
+        await this.usersService.updateRefreshToken(hashRefreshJWT, user._id);
 
         return {
             accessToken,
@@ -68,6 +70,10 @@ export class AuthService {
         if (!refreshTokenOld) {
             throw new UnauthorizedException('Không tìm thấy Refresh Token');
         }
+        const hashJwtOld = hashRefreshToken(
+            refreshTokenOld,
+            this.configService.get<string>('REFRESH_TOKEN_PEPPER')!,
+        );
         try {
             const payload: PayloadJWT = await this.jwtService.verifyAsync(
                 refreshTokenOld,
@@ -84,7 +90,7 @@ export class AuthService {
             }
 
             const isRefreshTokenExist = user.refreshTokens.some(
-                (item) => item.token === String(refreshTokenOld),
+                (item) => item.token === hashJwtOld,
             );
 
             if (isRefreshTokenExist === false) {
@@ -99,14 +105,13 @@ export class AuthService {
                 this.jwtService,
             );
 
-            await this.usersService.removeRefreshToken(
-                refreshTokenOld,
-                payload._id,
-            );
-            await this.usersService.updateRefreshToken(
+            const hashJwtNew = hashRefreshToken(
                 refreshToken,
-                payload._id,
+                this.configService.get<string>('REFRESH_TOKEN_PEPPER')!,
             );
+
+            await this.usersService.removeRefreshToken(hashJwtOld, payload._id);
+            await this.usersService.updateRefreshToken(hashJwtNew, payload._id);
             return { accessToken, refreshToken };
         } catch (error: any) {
             if (error.name === 'TokenExpiredError') {
@@ -115,7 +120,7 @@ export class AuthService {
                         this.jwtService.decode(refreshTokenOld);
                     if (decoded && decoded._id) {
                         await this.usersService.removeRefreshToken(
-                            refreshTokenOld,
+                            hashJwtOld,
                             decoded._id,
                         );
                     }
@@ -135,7 +140,11 @@ export class AuthService {
     }
 
     async logout(refreshToken: string, id: string) {
-        return await this.usersService.removeRefreshToken(refreshToken, id);
+        const hashJwt = hashRefreshToken(
+            refreshToken,
+            this.configService.get<string>('REFRESH_TOKEN_PEPPER')!,
+        );
+        return await this.usersService.removeRefreshToken(hashJwt, id);
     }
 
     async activateUser(email: string, code: string) {
