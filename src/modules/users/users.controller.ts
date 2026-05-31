@@ -12,7 +12,7 @@ import {
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { DeleteUserDto } from './dto/delete-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto copy';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { Roles } from '@/utils/decorator-customize';
 import { RolesGuard } from '@/auth/passport/roles.guard';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';

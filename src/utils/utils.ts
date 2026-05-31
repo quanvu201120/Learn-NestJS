@@ -2,9 +2,8 @@ import { PayloadJWT } from '@/modules/users/schemas/user.schema';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { BadRequestException } from '@nestjs/common';
-import ms, { StringValue } from 'ms';
 import { createHash } from 'crypto';
+import { StringValue } from 'ms';
 
 const saltBcypt = 10;
 
@@ -65,24 +64,4 @@ export const formatExpireTime = (expireTime: string): string => {
     }
 };
 
-export const checkMailCooldown = (
-    expiredAt: Date | undefined | null,
-    expireDurationStr: string,
-    cooldownSeconds = 60,
-): void => {
-    if (!expiredAt || !expireDurationStr) return;
 
-    // Tính thời điểm gửi mail gần nhất = Thời điểm hết hạn - Thời gian sống của code
-    const expireMs = ms(expireDurationStr as StringValue);
-    const lastSentTime = expiredAt.getTime() - expireMs;
-
-    // Khoảng cách thời gian so với hiện tại (tính bằng giây)
-    const timeDifference = (Date.now() - lastSentTime) / 1000;
-
-    if (timeDifference < cooldownSeconds) {
-        const waitTime = Math.ceil(cooldownSeconds - timeDifference);
-        throw new BadRequestException(
-            `Vui lòng đợi ${waitTime} giây trước khi yêu cầu gửi lại mã mới.`,
-        );
-    }
-};

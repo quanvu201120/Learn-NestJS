@@ -35,7 +35,7 @@ Dự án API xác thực người dùng xây dựng bằng **NestJS**, sử dụ
 - Redis + ioredis
 - Passport (`local`, `jwt`)
 - JWT (`@nestjs/jwt`)
-- Mailer (`@nestjs-modules/mailer` + Handlebars)
+- Mailer (Resend HTTP API + Handlebars)
 - Swagger (`@nestjs/swagger`)
 
 ---
@@ -66,7 +66,7 @@ Các biến quan trọng:
 - **JWT**: `JWT_SECRET`, `JWT_EXPRIRES_IN`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN_DB`
 - **Cookie/JWT hardening**: `COOKIE_EXPIRES_IN`, `REFRESH_TOKEN_PEPPER`
 - **OTP hardening**: `CODE_VERIFY_PEPPER`
-- **Mailer**: `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM`, `MAIL_REGISTER_TEMPLATE`, `MAIL_FORGOT_TEMPLATE`
+- **Mailer**: `RESEND_API_KEY`, `MAIL_FROM`, `MAIL_REGISTER_TEMPLATE`, `MAIL_FORGOT_TEMPLATE`
 - **TTL OTP**: `MAIL_CODE_ACTIVE_EXPIRE`, `MAIL_CODE_FORGOT_EXPIRE`
 
 > Lưu ý: key `JWT_EXPRIRES_IN` đang được giữ nguyên theo code hiện tại.
@@ -126,7 +126,8 @@ Trong Swagger:
 
 - **MongoDB**: MongoDB Atlas (M0 free)
 - **Redis**: Redis Cloud free
-- **Backend**: Koyeb/Render free tier
+- **Backend**: Hugging Face Spaces (chạy Docker port 7860) hoặc Render free tier
+- **Mail Service**: Resend HTTP API (vượt qua mọi rào cản chặn cổng gửi SMTP 465/587 của các host free)
 
 ---
 
