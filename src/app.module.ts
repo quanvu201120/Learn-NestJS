@@ -34,6 +34,7 @@ import { RedisModule } from './redis/redis.module';
                     host: 'smtp.gmail.com',
                     port: 465,
                     secure: true,
+                    family: 4,
                     auth: {
                         user: configService.get<string>('MAIL_USER'),
                         pass: configService.get<string>('MAIL_PASS'),
