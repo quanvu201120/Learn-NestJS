@@ -46,10 +46,8 @@ export class UsersService {
             isActive: false,
         });
 
-        // Lưu Redis ĐỒNG BỘ trước để tránh race condition với email gửi nền
         await this.saveCodeRedis(newUser._id.toString(), codeActiveId, 'NEW');
 
-        // Gửi mail bất đồng bộ (fire-and-forget)
         this.sendEmailActive(newUser.email, codeActiveId).catch((error) => {
             console.error(error);
         });
@@ -60,35 +58,14 @@ export class UsersService {
     }
 
     async register(email: string, pass: string) {
-        const isEmailExisted = await this.userModel.exists({
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+        return this.create({
             email,
-        });
-
-        if (isEmailExisted) {
-            throw new BadRequestException('Email already existed');
-        }
-
-        const passHash = await hashPassword(pass);
-        const codeActiveId = uuidv4();
-
-        const newUser = await this.userModel.create({
-            email,
-            password: passHash,
+            password: pass,
+            confirmPassword: pass,
             role: 'USER',
-            isActive: false,
-        });
-
-        // Lưu Redis ĐỒNG BỘ trước để tránh race condition với email gửi nền
-        await this.saveCodeRedis(newUser._id.toString(), codeActiveId, 'NEW');
-
-        // Gửi mail bất đồng bộ (fire-and-forget)
-        this.sendEmailActive(newUser.email, codeActiveId).catch((error) => {
-            console.error(error);
-        });
-
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { password, __v, ...user } = newUser.toObject();
-        return user;
+            name: email.split('@')[0],
+        } as CreateUserDto);
     }
 
     async findAll(query: string, current: number, pageSize: number) {

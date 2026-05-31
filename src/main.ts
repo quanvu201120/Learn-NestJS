@@ -50,15 +50,12 @@ async function bootstrap() {
 
     // CONFIG SWAGGER
     const config = new DocumentBuilder()
-        .setTitle('Learn NestJS API')
+        .setTitle('NestJS API')
         .setDescription(
             'REST API cho hệ thống xác thực người dùng, OTP Redis và quản lý tài khoản.',
         )
         .setVersion('1.1.0')
-        .setContact('Quan Vu', 'https://github.com/quanvu201120', '')
-        .setLicense('MIT', 'https://opensource.org/licenses/MIT')
-        .addServer(`http://localhost:${port}`, 'Local development')
-        .addServer('https://your-app-domain.com', 'Production (example)')
+        .setContact('Quanvu201120', 'https://github.com/quanvu201120', '')
         .addBearerAuth(
             {
                 type: 'http',
