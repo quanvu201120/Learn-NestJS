@@ -42,18 +42,6 @@ export class User {
 
     @Prop({ type: [RefreshTokenClass], default: [] })
     refreshTokens: RefreshTokenClass[];
-
-    @Prop()
-    codeActiveId: string;
-
-    @Prop()
-    codeActiveExpired: Date;
-
-    @Prop()
-    codeForgotId: string;
-
-    @Prop()
-    codeForgotExpired: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

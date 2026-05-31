@@ -10,12 +10,14 @@ import { JwtAuthGuard } from './auth/passport/jwt-auth.guard';
 import { HandlebarsAdapter } from '@nestjs-modules/mailer/adapters/handlebars.adapter';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { join } from 'path';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
     imports: [
         UsersModule,
         ConfigModule.forRoot({ isGlobal: true }),
         AuthModule,
+        RedisModule,
         MongooseModule.forRootAsync({
             imports: [ConfigModule],
             // eslint-disable-next-line @typescript-eslint/require-await

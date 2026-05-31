@@ -18,6 +18,9 @@ const hashValue = (value: string, pepper: string) =>
 export const hashRefreshToken = (token: string, pepper: string) =>
     hashValue(token, pepper);
 
+export const hashCodeVerifyEmail = (code: string, pepper: string) =>
+    hashValue(code, pepper);
+
 export const generateJWT = async (
     payload: { _id: string; role: string },
     configService: ConfigService,

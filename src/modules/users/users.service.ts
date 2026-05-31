@@ -8,6 +8,7 @@ import {
     hashPassword,
     formatExpireTime,
     checkMailCooldown,
+    hashCodeVerifyEmail,
 } from '@/utils/utils';
 import aqp from 'api-query-params';
 import { UpdateUserDto } from './dto/update-user.dto copy';
@@ -17,6 +18,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { MailerService } from '@nestjs-modules/mailer';
 import bcrypt from 'bcrypt';
 import { ChangePasswordAuthDto } from '@/auth/dto/password-auth.dto';
+import { RedisService } from '@/redis/redis.service';
+import { ActionRedis, COOLDOWN_SECONDS } from '@/utils/contans';
 
 @Injectable()
 export class UsersService {
@@ -24,6 +27,7 @@ export class UsersService {
         @InjectModel(User.name) private userModel: Model<User>,
         private configService: ConfigService,
         private readonly mailerService: MailerService,
+        private readonly redisService: RedisService,
     ) {}
     async create(createUserDto: CreateUserDto) {
         const isEmailExisted = await this.userModel.exists({
@@ -34,30 +38,29 @@ export class UsersService {
             throw new BadRequestException('Email already existed');
         }
 
-        const password = await hashPassword(createUserDto.password);
+        const passwordHash = await hashPassword(createUserDto.password);
         const codeActiveId = uuidv4();
 
-        const expireTime = this.configService.get<string>(
-            'MAIL_CODE_ACTIVE_EXPIRE',
-        )!;
         const newUser = await this.userModel.create({
             ...createUserDto,
-            password,
+            password: passwordHash,
             isActive: false,
-            codeActiveId,
-            codeActiveExpired: new Date(
-                Date.now() + ms(expireTime as StringValue),
-            ),
         });
 
+        // Lưu Redis ĐỒNG BỘ trước để tránh race condition với email gửi nền
+        await this.saveCodeRedis(newUser._id.toString(), codeActiveId, 'NEW');
+
+        // Gửi mail bất đồng bộ (fire-and-forget)
         this.sendEmailActive(newUser.email, codeActiveId).catch((error) => {
             console.error(error);
         });
 
-        return newUser;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { password, __v, ...user } = newUser.toObject();
+        return user;
     }
 
-    async register(email: string, password: string) {
+    async register(email: string, pass: string) {
         const isEmailExisted = await this.userModel.exists({
             email,
         });
@@ -66,28 +69,27 @@ export class UsersService {
             throw new BadRequestException('Email already existed');
         }
 
-        const passHash = await hashPassword(password);
+        const passHash = await hashPassword(pass);
         const codeActiveId = uuidv4();
 
-        const expireTime = this.configService.get<string>(
-            'MAIL_CODE_ACTIVE_EXPIRE',
-        )!;
         const newUser = await this.userModel.create({
             email,
             password: passHash,
             role: 'USER',
             isActive: false,
-            codeActiveId,
-            codeActiveExpired: new Date(
-                Date.now() + ms(expireTime as StringValue),
-            ),
         });
 
+        // Lưu Redis ĐỒNG BỘ trước để tránh race condition với email gửi nền
+        await this.saveCodeRedis(newUser._id.toString(), codeActiveId, 'NEW');
+
+        // Gửi mail bất đồng bộ (fire-and-forget)
         this.sendEmailActive(newUser.email, codeActiveId).catch((error) => {
             console.error(error);
         });
 
-        return newUser;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { password, __v, ...user } = newUser.toObject();
+        return user;
     }
 
     async findAll(query: string, current: number, pageSize: number) {
@@ -177,9 +179,11 @@ export class UsersService {
     }
 
     async sendEmailActive(email: string, code: string) {
-        const rawExpire =
-            this.configService.get<string>('MAIL_CODE_ACTIVE_EXPIRE') || '1h';
+        const rawExpire = this.configService.get<string>(
+            'MAIL_CODE_ACTIVE_EXPIRE',
+        )!;
         const expireTime = formatExpireTime(rawExpire);
+
         // eslint-disable-next-line @typescript-eslint/no-unsafe-return
         return await this.mailerService.sendMail({
             to: email,
@@ -198,29 +202,47 @@ export class UsersService {
     async activateUser(email: string, code: string) {
         const user = await this.userModel
             .findOne({ email })
-            .select('-password');
+            .select('_id isActive email');
         if (!user) {
             throw new BadRequestException('User not found');
         }
         if (user.isActive) {
             throw new BadRequestException('User is already active');
         }
-        if (user.codeActiveId !== code) {
-            throw new BadRequestException('Invalid code');
-        }
-        if (user.codeActiveExpired < new Date()) {
+
+        await this.verifyCodeWithRedis(
+            this.redisActiveKey(user._id.toString()),
+            code,
+        );
+
+        user.isActive = true;
+        return await user.save();
+    }
+
+    private async verifyCodeWithRedis(keyRedis: string, code: string) {
+        const redisCodeActive = await this.redisService.get(keyRedis);
+
+        if (!redisCodeActive) {
             throw new BadRequestException('Code has expired');
         }
-        user.isActive = true;
-        user.codeActiveId = '';
-        user.codeActiveExpired = new Date();
-        return await user.save();
+
+        const hashCode = hashCodeVerifyEmail(
+            code,
+            this.configService.get<string>('CODE_VERIFY_PEPPER')!,
+        );
+
+        if (hashCode !== redisCodeActive) {
+            throw new BadRequestException('Invalid code');
+        }
+
+        await this.redisService.del(keyRedis);
     }
 
     async reSendCodeActive(email: string) {
         const user = await this.userModel
             .findOne({ email })
-            .select('-password');
+            .select('_id isActive email')
+            .lean();
         if (!user) {
             throw new BadRequestException('User not found');
         }
@@ -228,22 +250,13 @@ export class UsersService {
             throw new BadRequestException('User is already active');
         }
 
-        checkMailCooldown(
-            user.codeActiveExpired,
-            this.configService.get<string>('MAIL_CODE_ACTIVE_EXPIRE')!,
-            60,
-        );
+        const codeActive = uuidv4();
 
-        const codeActiveId = uuidv4();
-        const expireTime = this.configService.get<string>(
-            'MAIL_CODE_ACTIVE_EXPIRE',
-        )!;
-        user.codeActiveId = codeActiveId;
-        user.codeActiveExpired = new Date(
-            Date.now() + ms(expireTime as StringValue),
-        );
-        await user.save();
-        this.sendEmailActive(user.email, codeActiveId).catch((error) => {
+        // Lưu Redis ĐỒNG BỘ trước (bao gồm check cooldown)
+        await this.saveCodeRedis(user._id.toString(), codeActive, 'RESEND');
+
+        // Gửi mail bất đồng bộ (fire-and-forget)
+        this.sendEmailActive(user.email, codeActive).catch((error) => {
             console.error(error);
         });
         return 'OK';
@@ -278,29 +291,26 @@ export class UsersService {
     }
 
     async sendMailForgotPassword(email: string) {
-        const user = await this.userModel.findOne({ email });
+        const user = await this.userModel
+            .findOne({ email })
+            .select('_id')
+            .lean();
         if (!user) {
             throw new BadRequestException('Email not found');
         }
 
-        checkMailCooldown(
-            user.codeForgotExpired,
+        await this.checkMailCooldownRedis(
+            this.redisForgotKey(user._id.toString()),
             this.configService.get<string>('MAIL_CODE_FORGOT_EXPIRE')!,
-            60,
+            COOLDOWN_SECONDS,
         );
 
         const codeForgotId = uuidv4();
+        await this.saveCodeRedis(user._id.toString(), codeForgotId, 'FORGOT');
         const expireTime = this.configService.get<string>(
             'MAIL_CODE_FORGOT_EXPIRE',
         )!;
-        user.codeForgotId = codeForgotId;
-        user.codeForgotExpired = new Date(
-            Date.now() + ms(expireTime as StringValue),
-        );
-        await user.save();
-        const rawExpire =
-            this.configService.get<string>('MAIL_CODE_FORGOT_EXPIRE') || '5m';
-        const expireTimeFormatted = formatExpireTime(rawExpire);
+        const expireTimeFormatted = formatExpireTime(expireTime);
         this.mailerService
             .sendMail({
                 to: email,
@@ -321,24 +331,82 @@ export class UsersService {
     }
 
     async resetPassword(email: string, code: string, password: string) {
-        const user = await this.userModel.findOne({ email });
+        const user = await this.userModel
+            .findOne({ email })
+            .select('_id password');
         if (!user) {
             throw new BadRequestException('Email not found');
         }
 
-        if (user.codeForgotId !== code) {
-            throw new BadRequestException('Invalid code');
-        }
-
-        if (user.codeForgotExpired < new Date()) {
-            throw new BadRequestException('Code has expired');
-        }
+        await this.verifyCodeWithRedis(
+            this.redisForgotKey(user._id.toString()),
+            code,
+        );
 
         const passwordHash = await hashPassword(password);
         user.password = passwordHash;
-        user.codeForgotId = '';
-        user.codeForgotExpired = new Date();
+
         await user.save();
         return 'Reset password successfully';
+    }
+
+    private redisActiveKey(userId: string) {
+        return `auth:active:${userId}`;
+    }
+
+    private redisForgotKey(userId: string) {
+        return `auth:forgot:${userId}`;
+    }
+
+    private async checkMailCooldownRedis(
+        key: string,
+        expireDurationStr: string,
+        cooldownSeconds: number,
+    ) {
+        const remainingTTL = await this.redisService.ttl(key);
+        if (remainingTTL < 0) return;
+
+        const expireSeconds = ms(expireDurationStr as StringValue) / 1000;
+        const timeElapsed = expireSeconds - remainingTTL;
+
+        if (timeElapsed < cooldownSeconds) {
+            const waitTime = Math.ceil(cooldownSeconds - timeElapsed);
+            throw new BadRequestException(
+                `Vui lòng đợi ${waitTime} giây trước khi yêu cầu gửi lại mã mới.`,
+            );
+        }
+    }
+
+    private async saveCodeRedis(
+        id: string,
+        codeActive: string,
+        type: ActionRedis,
+    ) {
+        const keyRedis =
+            type === 'FORGOT'
+                ? this.redisForgotKey(id)
+                : this.redisActiveKey(id);
+        const expireTime = this.configService.get<string>(
+            type === 'FORGOT'
+                ? 'MAIL_CODE_FORGOT_EXPIRE'
+                : 'MAIL_CODE_ACTIVE_EXPIRE',
+        )!;
+        if (type === 'RESEND') {
+            await this.checkMailCooldownRedis(
+                keyRedis,
+                expireTime,
+                COOLDOWN_SECONDS,
+            );
+        }
+        const expireTimeSeconds = ms(expireTime as StringValue) / 1000;
+        const hashCode = hashCodeVerifyEmail(
+            codeActive,
+            this.configService.get<string>('CODE_VERIFY_PEPPER')!,
+        );
+        await this.redisService.setWithTTL(
+            keyRedis,
+            hashCode,
+            expireTimeSeconds,
+        );
     }
 }
