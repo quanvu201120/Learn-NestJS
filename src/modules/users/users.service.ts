@@ -10,22 +10,23 @@ import {
     hashCodeVerifyEmail,
 } from '@/utils/utils';
 import aqp from 'api-query-params';
-import { UpdateUserDto } from './dto/update-user.dto copy';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { ConfigService } from '@nestjs/config';
 import ms, { StringValue } from 'ms';
 import { v4 as uuidv4 } from 'uuid';
-import { MailerService } from '@nestjs-modules/mailer';
 import bcrypt from 'bcrypt';
 import { ChangePasswordAuthDto } from '@/auth/dto/password-auth.dto';
 import { RedisService } from '@/redis/redis.service';
 import { ActionRedis, COOLDOWN_SECONDS } from '@/utils/contans';
+import * as fs from 'fs';
+import * as path from 'path';
+import handlebars from 'handlebars';
 
 @Injectable()
 export class UsersService {
     constructor(
         @InjectModel(User.name) private userModel: Model<User>,
         private configService: ConfigService,
-        private readonly mailerService: MailerService,
         private readonly redisService: RedisService,
     ) {}
     async create(createUserDto: CreateUserDto) {
@@ -160,19 +161,16 @@ export class UsersService {
         )!;
         const expireTime = formatExpireTime(rawExpire);
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-        return await this.mailerService.sendMail({
-            to: email,
-            subject: 'Welcome!',
-            template:
-                this.configService.get<string>('MAIL_REGISTER_TEMPLATE') ||
-                'register',
-            context: {
+        return await this.sendEmailViaResend(
+            email,
+            'Welcome!',
+            this.configService.get<string>('MAIL_REGISTER_TEMPLATE') || 'register',
+            {
                 email: email,
                 activationCode: code,
                 expireTime: expireTime,
             },
-        });
+        );
     }
 
     async activateUser(email: string, code: string) {
@@ -287,22 +285,18 @@ export class UsersService {
             'MAIL_CODE_FORGOT_EXPIRE',
         )!;
         const expireTimeFormatted = formatExpireTime(expireTime);
-        this.mailerService
-            .sendMail({
-                to: email,
-                subject: 'Forgot Password!',
-                template:
-                    this.configService.get<string>('MAIL_FORGOT_TEMPLATE') ||
-                    'forgot-password',
-                context: {
-                    email: email,
-                    activationCode: codeForgotId,
-                    expireTime: expireTimeFormatted,
-                },
-            })
-            .catch((error) => {
-                console.error(error);
-            });
+        this.sendEmailViaResend(
+            email,
+            'Forgot Password!',
+            this.configService.get<string>('MAIL_FORGOT_TEMPLATE') || 'forgot-password',
+            {
+                email: email,
+                activationCode: codeForgotId,
+                expireTime: expireTimeFormatted,
+            },
+        ).catch((error) => {
+            console.error(error);
+        });
         return 'OK';
     }
 
@@ -384,5 +378,56 @@ export class UsersService {
             hashCode,
             expireTimeSeconds,
         );
+    }
+
+    private async sendEmailViaResend(
+        to: string,
+        subject: string,
+        templateName: string,
+        context: any,
+    ) {
+        try {
+            const templatePath = path.join(
+                __dirname,
+                '..',
+                '..',
+                'mail',
+                'template',
+                `${templateName}.hbs`,
+            );
+            const templateSource = fs.readFileSync(templatePath, 'utf-8');
+            const compiledTemplate = handlebars.compile(templateSource);
+            const htmlContent = compiledTemplate(context);
+
+            const resendApiKey = this.configService.get<string>('RESEND_API_KEY');
+            const mailFrom =
+                this.configService.get<string>('MAIL_FROM') ||
+                'onboarding@resend.dev';
+
+            const response = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${resendApiKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    from: mailFrom,
+                    to,
+                    subject,
+                    html: htmlContent,
+                }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error('❌ Resend API Error Details:', errorData);
+                throw new Error(`Resend API failed with status ${response.status}`);
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error('❌ Failed to send email via Resend:', error);
+            throw error;
+        }
     }
 }
