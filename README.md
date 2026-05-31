@@ -1,3 +1,12 @@
+---
+title: NestJs-API
+emoji: 🚀
+colorFrom: pink
+colorTo: red
+sdk: docker
+pinned: false
+---
+
 # Learn NestJS - Authentication API (MongoDB + Redis OTP)
 
 Dự án API xác thực người dùng xây dựng bằng **NestJS**, sử dụng **MongoDB** để lưu dữ liệu nghiệp vụ và **Redis** để lưu OTP/mã xác thực theo TTL.
