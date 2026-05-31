@@ -50,23 +50,37 @@ async function bootstrap() {
 
     // CONFIG SWAGGER
     const config = new DocumentBuilder()
-        .setTitle('NestJS Learn API')
-        .setDescription('API documentation for NestJS Learn application')
-        .setVersion('1.0')
+        .setTitle('Learn NestJS API')
+        .setDescription(
+            'REST API cho hệ thống xác thực người dùng, OTP Redis và quản lý tài khoản.',
+        )
+        .setVersion('1.1.0')
+        .setContact('Quan Vu', 'https://github.com/quanvu201120', '')
+        .setLicense('MIT', 'https://opensource.org/licenses/MIT')
+        .addServer(`http://localhost:${port}`, 'Local development')
+        .addServer('https://your-app-domain.com', 'Production (example)')
         .addBearerAuth(
             {
                 type: 'http',
                 scheme: 'bearer',
                 bearerFormat: 'JWT',
-                name: 'JWT',
-                description: 'Enter JWT token',
+                name: 'Authorization',
+                description: 'Nhập Access Token dạng: Bearer <token>',
                 in: 'header',
             },
-            'JWT-auth', // This name must match the one used in security decorators
+            'JWT-auth',
         )
         .build();
     const document = SwaggerModule.createDocument(app, config);
-    SwaggerModule.setup('swagger', app, document);
+    SwaggerModule.setup('swagger', app, document, {
+        swaggerOptions: {
+            persistAuthorization: true,
+            docExpansion: 'none',
+            tagsSorter: 'alpha',
+            operationsSorter: 'alpha',
+        },
+        customSiteTitle: 'Learn NestJS API Docs',
+    });
 
     await app.listen(port!);
 }

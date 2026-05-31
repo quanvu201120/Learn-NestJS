@@ -7,7 +7,6 @@ import { InjectModel } from '@nestjs/mongoose';
 import {
     hashPassword,
     formatExpireTime,
-    checkMailCooldown,
     hashCodeVerifyEmail,
 } from '@/utils/utils';
 import aqp from 'api-query-params';
