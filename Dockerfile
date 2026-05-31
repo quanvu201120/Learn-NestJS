@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Sao chép package.json và package-lock.json để tận dụng cache
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 
 # Sao chép toàn bộ mã nguồn
 COPY . .
@@ -20,7 +20,7 @@ WORKDIR /app
 
 # Chỉ cài đặt dependencies cho production để giảm dung lượng ảnh
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 # Sao chép file build từ Stage 1
 COPY --from=builder /app/dist ./dist
