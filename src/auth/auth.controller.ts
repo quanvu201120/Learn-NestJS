@@ -1,7 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 
 /* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+
 import {
     Controller,
     Post,
@@ -34,6 +35,7 @@ import {
     ResetPasswordAuthDto,
 } from './dto/password-auth.dto';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { buildDeviceNameFromUA } from '@/utils/utils';
 
 @ApiTags('Auth - Xác thực')
 @Controller('auth')
@@ -53,7 +55,13 @@ export class AuthController {
         @Request() req,
         @Res({ passthrough: true }) response: express.Response,
     ) {
-        const data = await this.authService.login(req.user);
+        const userAgent = req.headers['user-agent'] as string | undefined;
+        const deviceName = buildDeviceNameFromUA(userAgent);
+        const data = await this.authService.login(
+            req.user,
+            userAgent,
+            deviceName,
+        );
 
         response.cookie('refreshToken', data.refreshToken, {
             httpOnly: true,
@@ -119,6 +127,29 @@ export class AuthController {
         });
 
         return null;
+    }
+    @Post('logoutAll')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Đăng xuất tất cả các thiết bị' })
+    @ApiBearerAuth('JWT-auth')
+    async handleLogoutAll(
+        @Res({ passthrough: true }) response: express.Response,
+        @Request() req,
+    ) {
+        try {
+            await this.authService.logoutAllDevices(req.user._id);
+            response.clearCookie('refreshToken', {
+                httpOnly: true,
+                secure: false,
+                sameSite: 'lax',
+                maxAge: 0,
+            });
+            return 'Đăng xuất tất cả các thiết bị thành công';
+        } catch (error) {
+            throw new InternalServerErrorException(
+                'Đăng xuất tất cả các thiết bị thất bại!',
+            );
+        }
     }
 
     @Post('register')

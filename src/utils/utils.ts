@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { createHash } from 'crypto';
-import { StringValue } from 'ms';
+import ms, { StringValue } from 'ms';
 
 const saltBcypt = 10;
 
@@ -21,17 +21,32 @@ export const hashCodeVerifyEmail = (code: string, pepper: string) =>
     hashValue(code, pepper);
 
 export const generateJWT = async (
-    payload: { _id: string; role: string },
+    payload: {
+        _id: string;
+        role: string;
+        sessionId: string;
+        tokenVersion: number;
+    },
     configService: ConfigService,
     jwtService: JwtService,
 ) => {
-    const newPayload: PayloadJWT = { _id: payload._id, role: payload.role };
+    const newPayload: PayloadJWT = {
+        _id: payload._id,
+        role: payload.role,
+        sessionId: payload.sessionId,
+        tokenVersion: payload.tokenVersion,
+    };
+    const expiresIn = configService.get<StringValue>(
+        'JWT_REFRESH_EXPIRES_IN_DB',
+    )!;
+
     const accessToken = await jwtService.signAsync(newPayload);
     const refreshToken = await jwtService.signAsync(newPayload, {
         secret: configService.get<string>('JWT_REFRESH_SECRET'),
-        expiresIn: configService.get<StringValue>('JWT_REFRESH_EXPIRES_IN_DB'),
+        expiresIn,
     });
-    return { accessToken, refreshToken };
+    const expireDate = new Date(Date.now() + ms(expiresIn));
+    return { accessToken, refreshToken, expireDate };
 };
 
 export const formatExpireTime = (expireTime: string): string => {
@@ -64,4 +79,30 @@ export const formatExpireTime = (expireTime: string): string => {
     }
 };
 
+export function buildDeviceNameFromUA(userAgent?: string): string {
+    if (!userAgent || userAgent.trim().length === 0) {
+        return 'Thiết bị không xác định';
+    }
 
+    const ua = userAgent.toLowerCase();
+
+    let browser = '';
+    if (ua.includes('edg/')) browser = 'Edge';
+    else if (ua.includes('chrome/') && !ua.includes('edg/')) browser = 'Chrome';
+    else if (ua.includes('firefox/')) browser = 'Firefox';
+    else if (ua.includes('safari/') && !ua.includes('chrome/'))
+        browser = 'Safari';
+    else if (ua.includes('opr/') || ua.includes('opera/')) browser = 'Opera';
+
+    let os = '';
+    if (ua.includes('windows')) os = 'Windows';
+    else if (ua.includes('android')) os = 'Android';
+    else if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ios'))
+        os = 'iOS';
+    else if (ua.includes('mac os x') || ua.includes('macintosh')) os = 'macOS';
+    else if (ua.includes('linux')) os = 'Linux';
+
+    if (!browser && !os) return 'Thiết bị không xác định';
+    if (browser && os) return `${browser} trên ${os}`;
+    return browser || os || 'Thiết bị không xác định';
+}

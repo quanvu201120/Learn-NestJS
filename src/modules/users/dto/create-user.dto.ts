@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-call */
 import { Match } from '@/utils/decorator-customize';
 import {
     IsEmail,

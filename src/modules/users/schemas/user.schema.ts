@@ -3,33 +3,25 @@ import { HydratedDocument } from 'mongoose';
 
 export type UserDocument = HydratedDocument<User>;
 
-@Schema({ _id: false }) // 👈 Tắt _id tự động cho Object con để tránh thừa thãi dữ liệu
-export class RefreshTokenClass {
-    @Prop({ required: true })
-    token: string;
-    @Prop({ required: true })
-    expiresAt: Date;
-}
-
 @Schema({ timestamps: true })
 export class User {
     @Prop()
-    name: string;
+    name?: string;
 
-    @Prop({ unique: true, lowercase: true, trim: true })
+    @Prop({ unique: true, lowercase: true, trim: true, required: true })
     email: string;
 
-    @Prop()
+    @Prop({ required: true })
     password: string;
 
     @Prop()
-    phone: string;
+    phone?: string;
 
     @Prop()
-    address: string;
+    address?: string;
 
     @Prop()
-    image: string;
+    image?: string;
 
     @Prop({ default: 'USER', enum: ['USER', 'ADMIN'] })
     role: string;
@@ -40,8 +32,8 @@ export class User {
     @Prop({ default: false })
     isActive: boolean;
 
-    @Prop({ type: [RefreshTokenClass], default: [] })
-    refreshTokens: RefreshTokenClass[];
+    @Prop({ default: 0 })
+    tokenVersion: number;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
@@ -49,4 +41,6 @@ export const UserSchema = SchemaFactory.createForClass(User);
 export type PayloadJWT = {
     _id: string;
     role: string;
+    tokenVersion: number;
+    sessionId: string;
 };

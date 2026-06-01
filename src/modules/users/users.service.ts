@@ -120,37 +120,6 @@ export class UsersService {
             .select('-password');
     }
 
-    async updateRefreshToken(token: string, _id: string) {
-        const expiresIn = this.configService.get<string>(
-            'JWT_REFRESH_EXPIRES_IN_DB',
-        )!;
-        const expiresAt = new Date(Date.now() + ms(expiresIn as StringValue));
-        return await this.userModel.updateOne(
-            { _id },
-            {
-                $push: {
-                    refreshTokens: {
-                        token,
-                        expiresAt,
-                    },
-                },
-            },
-        );
-    }
-
-    async removeRefreshToken(token: string, _id: string) {
-        return await this.userModel.updateOne(
-            { _id },
-            {
-                $pull: {
-                    refreshTokens: {
-                        token,
-                    },
-                },
-            },
-        );
-    }
-
     async deleteUser(id: string) {
         return await this.userModel.deleteOne({ _id: id });
     }
@@ -161,10 +130,12 @@ export class UsersService {
         )!;
         const expireTime = formatExpireTime(rawExpire);
 
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
         return await this.sendEmailViaResend(
             email,
             'Welcome!',
-            this.configService.get<string>('MAIL_REGISTER_TEMPLATE') || 'register',
+            this.configService.get<string>('MAIL_REGISTER_TEMPLATE') ||
+                'register',
             {
                 email: email,
                 activationCode: code,
@@ -288,7 +259,8 @@ export class UsersService {
         this.sendEmailViaResend(
             email,
             'Forgot Password!',
-            this.configService.get<string>('MAIL_FORGOT_TEMPLATE') || 'forgot-password',
+            this.configService.get<string>('MAIL_FORGOT_TEMPLATE') ||
+                'forgot-password',
             {
                 email: email,
                 activationCode: codeForgotId,
@@ -399,7 +371,8 @@ export class UsersService {
             const compiledTemplate = handlebars.compile(templateSource);
             const htmlContent = compiledTemplate(context);
 
-            const resendApiKey = this.configService.get<string>('RESEND_API_KEY');
+            const resendApiKey =
+                this.configService.get<string>('RESEND_API_KEY');
             const mailFrom =
                 this.configService.get<string>('MAIL_FROM') ||
                 'onboarding@resend.dev';
@@ -421,7 +394,9 @@ export class UsersService {
             if (!response.ok) {
                 const errorData = await response.json();
                 console.error('❌ Resend API Error Details:', errorData);
-                throw new Error(`Resend API failed with status ${response.status}`);
+                throw new Error(
+                    `Resend API failed with status ${response.status}`,
+                );
             }
 
             return await response.json();

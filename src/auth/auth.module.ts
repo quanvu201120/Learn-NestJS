@@ -8,12 +8,13 @@ import { StringValue } from 'ms';
 import { PassportModule } from '@nestjs/passport';
 import { LocalStrategy } from './passport/local.strategy';
 import { JwtStrategy } from './passport/jwt.strategy';
+import { SessionModule } from '@/modules/session/session.module';
 
 @Module({
     imports: [
         UsersModule,
+        SessionModule,
         PassportModule,
-
         JwtModule.registerAsync({
             global: true,
             useFactory: (configService: ConfigService) => ({

@@ -39,14 +39,15 @@ export const IS_PUBLIC_KEY = 'isPublic';
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
 
 export const ROLES_KEY = 'roles';
-export const Roles = (...roles: ('USER' | 'ADMIN')[]) => SetMetadata(ROLES_KEY, roles);
+export const Roles = (...roles: ('USER' | 'ADMIN')[]) =>
+    SetMetadata(ROLES_KEY, roles);
 
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 
 export const Cookies = createParamDecorator(
     (data: string, ctx: ExecutionContext) => {
         const request = ctx.switchToHttp().getRequest();
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
         return data ? request.cookies?.[data] : request.cookies;
     },
 );

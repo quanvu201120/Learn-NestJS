@@ -1,11 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import { PayloadJWT } from '@/modules/users/schemas/user.schema';
+
+import { PayloadJWT, User } from '@/modules/users/schemas/user.schema';
 import { UsersService } from '@/modules/users/users.service';
 import { generateJWT, hashRefreshToken } from '@/utils/utils';
 import {
     HttpException,
     Injectable,
+    InternalServerErrorException,
     UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -16,6 +17,8 @@ import {
     ChangePasswordAuthDto,
     ResetPasswordAuthDto,
 } from './dto/password-auth.dto';
+import { SessionService } from '@/modules/session/session.service';
+import { CreateSessionDto } from '@/modules/session/dto/create-session.dto';
 
 @Injectable()
 export class AuthService {
@@ -23,6 +26,7 @@ export class AuthService {
         private readonly usersService: UsersService,
         private jwtService: JwtService,
         private configService: ConfigService,
+        private readonly sessionService: SessionService,
     ) {}
 
     async validateUser(email: string, pass: string) {
@@ -40,25 +44,56 @@ export class AuthService {
 
         return result;
     }
-    async login(user: any) {
-        const payload: PayloadJWT = { _id: user._id, role: user.role };
-        const { accessToken, refreshToken } = await generateJWT(
-            payload,
-            this.configService,
-            this.jwtService,
-        );
-        const hashRefreshJWT = hashRefreshToken(
-            refreshToken,
-            this.configService.get<string>('REFRESH_TOKEN_PEPPER')!,
-        );
-        await this.usersService.updateRefreshToken(hashRefreshJWT, user._id);
+    async login(
+        user: User & { _id: string },
+        userAgent?: string,
+        deviceName?: string,
+    ) {
+        let sessionId = '';
+        try {
+            const createSessionDto: CreateSessionDto = {
+                userId: user._id,
+                userAgent,
+                deviceName,
+            };
+            const session = await this.sessionService.create(createSessionDto);
+            sessionId = session._id.toString();
+            const payload: PayloadJWT = {
+                _id: user._id,
+                role: user.role,
+                sessionId,
+                tokenVersion: user.tokenVersion,
+            };
+            const { accessToken, refreshToken, expireDate } = await generateJWT(
+                payload,
+                this.configService,
+                this.jwtService,
+            );
+            const hashRefreshJWT = hashRefreshToken(
+                refreshToken,
+                this.configService.get<string>('REFRESH_TOKEN_PEPPER')!,
+            );
 
-        return {
-            accessToken,
-            refreshToken,
-            user,
-            message: 'Đăng nhập thành công',
-        };
+            await this.sessionService.rotateSession(
+                session._id.toString(),
+                hashRefreshJWT,
+                expireDate,
+            );
+
+            return {
+                accessToken,
+                refreshToken,
+                user,
+                message: 'Đăng nhập thành công',
+            };
+        } catch (error) {
+            if (sessionId) {
+                await this.sessionService.revoke(sessionId, user._id);
+            }
+            console.log(error);
+
+            throw new InternalServerErrorException('Đăng nhập thất bại!');
+        }
     }
 
     async register(registerAuthDto: RegisterAuthDto) {
@@ -70,10 +105,7 @@ export class AuthService {
         if (!refreshTokenOld) {
             throw new UnauthorizedException('Không tìm thấy Refresh Token');
         }
-        const hashJwtOld = hashRefreshToken(
-            refreshTokenOld,
-            this.configService.get<string>('REFRESH_TOKEN_PEPPER')!,
-        );
+
         try {
             const payload: PayloadJWT = await this.jwtService.verifyAsync(
                 refreshTokenOld,
@@ -83,23 +115,51 @@ export class AuthService {
                     ),
                 },
             );
-
             const user = await this.usersService.findOne(payload._id);
             if (!user) {
+                throw new UnauthorizedException('Không tìm thấy người dùng');
+            }
+
+            if (payload.tokenVersion !== user.tokenVersion) {
+                await this.sessionService.revokeAllByUserId(payload._id);
                 throw new UnauthorizedException('Token không hợp lệ');
             }
 
-            const isRefreshTokenExist = user.refreshTokens.some(
-                (item) => item.token === hashJwtOld,
+            const session = await this.sessionService.findSessionById(
+                payload.sessionId,
             );
 
-            if (isRefreshTokenExist === false) {
+            if (!session) {
+                throw new UnauthorizedException('Session không tồn tại');
+            }
+
+            if (session.isRevoked === true) {
+                throw new UnauthorizedException('Session đã bị thu hồi');
+            }
+
+            if (session.expiresAt && session.expiresAt < new Date()) {
+                await this.sessionService.revoke(
+                    session._id.toString(),
+                    payload._id,
+                );
+                throw new UnauthorizedException('Session đã hết hạn');
+            }
+
+            if (session.userId.toString() !== payload._id) {
+                throw new UnauthorizedException('Token không hợp lệ');
+            }
+            const hashJwt = hashRefreshToken(
+                refreshTokenOld,
+                this.configService.get<string>('REFRESH_TOKEN_PEPPER')!,
+            );
+
+            if (hashJwt !== session.refreshTokenHash) {
                 throw new UnauthorizedException(
                     'Refresh Token không hợp lệ hoặc đã được sử dụng',
                 );
             }
 
-            const { accessToken, refreshToken } = await generateJWT(
+            const { accessToken, refreshToken, expireDate } = await generateJWT(
                 payload,
                 this.configService,
                 this.jwtService,
@@ -110,8 +170,11 @@ export class AuthService {
                 this.configService.get<string>('REFRESH_TOKEN_PEPPER')!,
             );
 
-            await this.usersService.removeRefreshToken(hashJwtOld, payload._id);
-            await this.usersService.updateRefreshToken(hashJwtNew, payload._id);
+            await this.sessionService.rotateSession(
+                session._id.toString(),
+                hashJwtNew,
+                expireDate,
+            );
             return { accessToken, refreshToken };
         } catch (error: any) {
             if (error.name === 'TokenExpiredError') {
@@ -119,8 +182,8 @@ export class AuthService {
                     const decoded: PayloadJWT =
                         this.jwtService.decode(refreshTokenOld);
                     if (decoded && decoded._id) {
-                        await this.usersService.removeRefreshToken(
-                            hashJwtOld,
+                        await this.sessionService.revoke(
+                            decoded.sessionId,
                             decoded._id,
                         );
                     }
@@ -140,11 +203,50 @@ export class AuthService {
     }
 
     async logout(refreshToken: string, id: string) {
-        const hashJwt = hashRefreshToken(
-            refreshToken,
-            this.configService.get<string>('REFRESH_TOKEN_PEPPER')!,
-        );
-        return await this.usersService.removeRefreshToken(hashJwt, id);
+        if (!refreshToken) {
+            return null;
+        }
+
+        try {
+            const payload: PayloadJWT = await this.jwtService.verifyAsync(
+                refreshToken,
+                {
+                    secret: this.configService.get<string>(
+                        'JWT_REFRESH_SECRET',
+                    ),
+                },
+            );
+
+            if (payload._id !== id) {
+                throw new UnauthorizedException('Token không hợp lệ');
+            }
+
+            await this.sessionService.revoke(payload.sessionId, id);
+            return null;
+        } catch (error) {
+            console.log(error);
+            return null;
+        }
+    }
+
+    async logoutAllDevices(userId: string) {
+        try {
+            const user = await this.usersService.findOne(userId);
+            if (!user) {
+                throw new UnauthorizedException('Không tìm thấy người dùng');
+            }
+            user.tokenVersion += 1;
+            await user.save();
+            await this.sessionService.revokeAllByUserId(userId);
+            return {
+                message: 'Đăng xuất tất cả các thiết bị thành công',
+            };
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        } catch (error) {
+            throw new InternalServerErrorException(
+                'Đăng xuất tất cả các thiết bị thất bại',
+            );
+        }
     }
 
     async activateUser(email: string, code: string) {
