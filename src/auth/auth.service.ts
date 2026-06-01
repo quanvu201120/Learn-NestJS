@@ -202,7 +202,7 @@ export class AuthService {
         }
     }
 
-    async logout(refreshToken: string, id: string) {
+    async logout(refreshToken: string, userId: string) {
         if (!refreshToken) {
             return null;
         }
@@ -217,11 +217,11 @@ export class AuthService {
                 },
             );
 
-            if (payload._id !== id) {
+            if (payload._id !== userId) {
                 throw new UnauthorizedException('Token không hợp lệ');
             }
 
-            await this.sessionService.revoke(payload.sessionId, id);
+            await this.sessionService.revoke(payload.sessionId, userId);
             return null;
         } catch (error) {
             console.log(error);

@@ -1,6 +1,5 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
+﻿/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 import {
@@ -11,9 +10,7 @@ import {
     HttpStatus,
     UseGuards,
     Request,
-    Get,
     Res,
-    Param,
     InternalServerErrorException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
@@ -73,7 +70,7 @@ export class AuthController {
                 ) as StringValue,
             ),
         });
-        const { refreshToken, accessToken, message, user } = data;
+        const { accessToken, message, user } = data;
         return {
             accessToken,
             result: user,
@@ -128,6 +125,7 @@ export class AuthController {
 
         return null;
     }
+
     @Post('logoutAll')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Đăng xuất tất cả các thiết bị' })

@@ -1,4 +1,4 @@
----
+﻿---
 title: NestJs-API
 emoji: 🚀
 colorFrom: pink
@@ -7,40 +7,34 @@ sdk: docker
 pinned: false
 ---
 
-# Learn NestJS - Authentication API (MongoDB + Redis OTP)
+# Learn NestJS - Authentication API (MongoDB + Redis)
 
-Dự án API xác thực người dùng xây dựng bằng **NestJS**, sử dụng **MongoDB** để lưu dữ liệu nghiệp vụ và **Redis** để lưu OTP/mã xác thực theo TTL.
+API xác thực người dùng xây dựng bằng **NestJS**, dùng **MongoDB** để lưu dữ liệu nghiệp vụ và **Redis** cho OTP/cooldown.
 
----
+## Tính năng chính
 
-## 1) Tính năng chính
-
-- Đăng ký tài khoản, kích hoạt qua email.
+- Đăng ký tài khoản, kích hoạt email.
 - Đăng nhập bằng `passport-local` + JWT.
-- Cấp `accessToken` + `refreshToken`.
-- Lưu danh sách refresh token (đã hash) trong MongoDB.
+- Cấp `accessToken` và `refreshToken`.
+- Quản lý phiên đăng nhập theo **session**:
+  - Mỗi lần login tạo một session mới.
+  - `refreshToken` được hash và lưu trong collection `sessions`.
+  - Hỗ trợ `logout` 1 thiết bị và `logout all devices`.
+- `tokenVersion` hỗ trợ thu hồi toàn bộ token cũ sau logout-all.
 - Quên mật khẩu / đặt lại mật khẩu bằng OTP.
-- OTP được lưu trên Redis theo TTL:
-  - `auth:active:${userId}`
-  - `auth:forgot:${userId}`
-- Giới hạn resend code bằng cơ chế cooldown dựa trên TTL Redis.
-- Swagger UI để test API trực tiếp.
+- Swagger UI để test API.
 
----
-
-## 2) Công nghệ sử dụng
+## Công nghệ sử dụng
 
 - NestJS 11
 - MongoDB + Mongoose
 - Redis + ioredis
 - Passport (`local`, `jwt`)
 - JWT (`@nestjs/jwt`)
-- Mailer (Resend HTTP API + Handlebars)
+- Resend HTTP API + Handlebars
 - Swagger (`@nestjs/swagger`)
 
----
-
-## 3) Cài đặt dự án
+## Cài đặt
 
 ```bash
 git clone https://github.com/quanvu201120/Learn-NestJS.git
@@ -48,9 +42,7 @@ cd Learn-NestJS
 npm install
 ```
 
----
-
-## 4) Cấu hình môi trường
+## Cấu hình môi trường
 
 Tạo `.env` từ file mẫu:
 
@@ -58,78 +50,65 @@ Tạo `.env` từ file mẫu:
 cp .env.example .env
 ```
 
-Các biến quan trọng:
+Biến quan trọng:
 
-- **App**: `PORT`
-- **MongoDB**: `MONGODB_URI`
-- **Redis**: `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`
-- **JWT**: `JWT_SECRET`, `JWT_EXPRIRES_IN`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN_DB`
-- **Cookie/JWT hardening**: `COOKIE_EXPIRES_IN`, `REFRESH_TOKEN_PEPPER`
-- **OTP hardening**: `CODE_VERIFY_PEPPER`
-- **Mailer**: `RESEND_API_KEY`, `MAIL_FROM`, `MAIL_REGISTER_TEMPLATE`, `MAIL_FORGOT_TEMPLATE`
-- **TTL OTP**: `MAIL_CODE_ACTIVE_EXPIRE`, `MAIL_CODE_FORGOT_EXPIRE`
+- App: `PORT`
+- MongoDB: `MONGODB_URI`
+- Redis: `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`
+- JWT: `JWT_SECRET`, `JWT_EXPRIRES_IN`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN_DB`
+- Cookie/Bảo mật token: `COOKIE_EXPIRES_IN`, `REFRESH_TOKEN_PEPPER`
+- OTP: `CODE_VERIFY_PEPPER`, `MAIL_CODE_ACTIVE_EXPIRE`, `MAIL_CODE_FORGOT_EXPIRE`
+- Mail: `RESEND_API_KEY`, `MAIL_FROM`, `MAIL_REGISTER_TEMPLATE`, `MAIL_FORGOT_TEMPLATE`
 
-> Lưu ý: key `JWT_EXPRIRES_IN` đang được giữ nguyên theo code hiện tại.
+## Chạy ứng dụng
 
----
-
-## 5) Chạy ứng dụng
-
-### Development
+Development:
 
 ```bash
 npm run dev
 ```
 
-### Build production
+Production:
 
 ```bash
 npm run build
 npm run start:prod
 ```
 
----
-
-## 6) Swagger API Docs
+## Swagger API Docs
 
 Sau khi chạy app:
 
 - Swagger UI: `http://localhost:8080/swagger`
-- API base prefix: `http://localhost:8080/api/v1`
+- Base API: `http://localhost:8080/api/v1`
 
-Trong Swagger:
+Flow test auth cơ bản:
 
-1. Gọi `POST /auth/login` để lấy `accessToken`.
-2. Bấm **Authorize**.
-3. Nhập token theo format: `Bearer <accessToken>`.
-4. Test các endpoint cần xác thực.
+1. `POST /auth/login` để lấy `accessToken` và set cookie `refreshToken`.
+2. Bấm **Authorize** và nhập `Bearer <accessToken>`.
+3. Test `POST /auth/refreshToken`, `POST /auth/logout`, `POST /auth/logoutAll`.
 
----
+## Session-based auth flow
 
-## 7) Redis OTP flow (tóm tắt)
+- **Login**
+  - Tạo session mới.
+  - Ký access/refresh token với `sessionId` và `tokenVersion`.
+  - Hash refresh token và lưu vào session.
+- **Refresh token**
+  - Verify refresh token.
+  - Check `tokenVersion`, `sessionId`, ownership, `isRevoked`, `expiresAt`.
+  - Rotate refresh token và cập nhật session.
+- **Logout**
+  - Revoke session hiện tại.
+- **Logout all devices**
+  - Tăng `tokenVersion`.
+  - Revoke toàn bộ session còn active của user.
 
-1. Khi register/create user:
-   - sinh OTP
-   - hash OTP + `CODE_VERIFY_PEPPER`
-   - lưu Redis với TTL
-   - gửi mail bất đồng bộ
-2. Khi verify/reset:
-   - đọc hash từ Redis
-   - so khớp hash
-   - đúng thì xóa key ngay (one-time use)
-3. Khi resend:
-   - kiểm tra cooldown qua TTL còn lại
+## Gợi ý deploy free
 
----
-
-## 8) Gợi ý deploy free
-
-- **MongoDB**: MongoDB Atlas (M0 free)
-- **Redis**: Redis Cloud free
-- **Backend**: Hugging Face Spaces (chạy Docker port 7860) hoặc Render free tier
-- **Mail Service**: Resend HTTP API (vượt qua mọi rào cản chặn cổng gửi SMTP 465/587 của các host free)
-
----
+- MongoDB: MongoDB Atlas (M0)
+- Redis: Redis Cloud free
+- Backend: Hugging Face Spaces (Docker) hoặc Render free tier
 
 ## License
 

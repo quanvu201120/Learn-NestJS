@@ -1,7 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Session } from './schemas/session.schema';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { CreateSessionDto } from './dto/create-session.dto';
 
 @Injectable()
@@ -35,8 +35,8 @@ export class SessionService {
     }
 
     async revoke(_id: string, userId: string) {
-        return this.sessionModel.updateOne(
-            { _id, userId, isRevoked: false },
+        return await this.sessionModel.updateOne(
+            { _id, userId: new Types.ObjectId(userId), isRevoked: false },
             {
                 $set: {
                     isRevoked: true,
@@ -47,8 +47,8 @@ export class SessionService {
     }
 
     async revokeAllByUserId(userId: string) {
-        return this.sessionModel.updateMany(
-            { userId, isRevoked: false },
+        return await this.sessionModel.updateMany(
+            { userId: new Types.ObjectId(userId), isRevoked: false },
             {
                 $set: {
                     isRevoked: true,
