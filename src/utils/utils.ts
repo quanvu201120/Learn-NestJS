@@ -1,8 +1,10 @@
 import { PayloadJWT } from '@/modules/users/schemas/user.schema';
+import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { createHash } from 'crypto';
+import { Types } from 'mongoose';
 import ms, { StringValue } from 'ms';
 
 const saltBcypt = 10;
@@ -19,6 +21,17 @@ export const hashRefreshToken = (token: string, pepper: string) =>
 
 export const hashCodeVerifyEmail = (code: string, pepper: string) =>
     hashValue(code, pepper);
+
+export const validateObjectId = (id: string, fieldName: string): void => {
+    if (!Types.ObjectId.isValid(id)) {
+        throw new BadRequestException(`Invalid ${fieldName}`);
+    }
+};
+
+export const toObjectId = (id: string, fieldName: string): Types.ObjectId => {
+    validateObjectId(id, fieldName);
+    return new Types.ObjectId(id);
+};
 
 export const generateJWT = async (
     payload: {

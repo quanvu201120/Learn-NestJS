@@ -2,12 +2,13 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { User } from './schemas/user.schema';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import {
     hashPassword,
     formatExpireTime,
     hashCodeVerifyEmail,
+    validateObjectId,
 } from '@/utils/utils';
 import aqp from 'api-query-params';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -29,6 +30,7 @@ export class UsersService {
         private configService: ConfigService,
         private readonly redisService: RedisService,
     ) {}
+
     async create(createUserDto: CreateUserDto) {
         const isEmailExisted = await this.userModel.exists({
             email: createUserDto.email,
@@ -92,6 +94,7 @@ export class UsersService {
     }
 
     async findOne(id: string) {
+        validateObjectId(id, 'user id');
         return await this.userModel.findById(id);
     }
 
@@ -121,6 +124,7 @@ export class UsersService {
     }
 
     async deleteUser(id: string) {
+        validateObjectId(id, 'user id');
         return await this.userModel.deleteOne({ _id: id });
     }
 
@@ -211,6 +215,7 @@ export class UsersService {
         id: string,
         changePasswordAuthDto: ChangePasswordAuthDto,
     ) {
+        validateObjectId(id, 'user id');
         const { passwordOld, passwordNew } = changePasswordAuthDto;
         const user = await this.userModel.findById(id);
         if (!user) {
@@ -404,5 +409,11 @@ export class UsersService {
             console.error('❌ Failed to send email via Resend:', error);
             throw error;
         }
+    }
+
+    async countUserIdsExist(objectUserIds: Types.ObjectId[]) {
+        return await this.userModel.countDocuments({
+            _id: { $in: objectUserIds },
+        });
     }
 }

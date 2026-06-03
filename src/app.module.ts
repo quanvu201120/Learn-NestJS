@@ -8,6 +8,8 @@ import { AuthModule } from '@/auth/auth.module';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from './auth/passport/jwt-auth.guard';
 import { RedisModule } from './redis/redis.module';
+import { ConversationsModule } from './modules/conversations/conversations.module';
+import { MessagesModule } from './modules/messages/messages.module';
 
 @Module({
     imports: [
@@ -15,6 +17,8 @@ import { RedisModule } from './redis/redis.module';
         ConfigModule.forRoot({ isGlobal: true }),
         AuthModule,
         RedisModule,
+        ConversationsModule,
+        MessagesModule,
         MongooseModule.forRootAsync({
             imports: [ConfigModule],
             // eslint-disable-next-line @typescript-eslint/require-await
