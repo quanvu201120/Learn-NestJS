@@ -94,6 +94,7 @@ Tối thiểu nên có 2 collection:
 ## 4) Lộ trình thực hành
 
 ### Tuần 1: Kết nối realtime cơ bản
+- Trạng thái hiện tại: chưa làm phần WebSocket/Gateway.
 - Tạo `chat.module.ts` và `chat.gateway.ts`.
 - Bắt event connect/disconnect.
 - Verify JWT ở lúc connect.
@@ -105,6 +106,7 @@ Tối thiểu nên có 2 collection:
 - Có thể join room cá nhân.
 
 ### Tuần 2: Dữ liệu và API nền
+- Trạng thái hiện tại: đang làm, đã xong phần schema/module/service/controller cơ bản cho `conversations`, nhưng `messages` vẫn chưa hoàn thiện nghiệp vụ.
 - Tạo schema `Conversation` và `Message`.
 - Viết REST API để:
   - tạo cuộc trò chuyện
@@ -117,6 +119,7 @@ Tối thiểu nên có 2 collection:
 - Có API đủ dùng để frontend hiển thị danh sách và lịch sử chat.
 
 ### Tuần 3: Realtime message flow
+- Trạng thái hiện tại: chưa bắt đầu.
 - Hoàn thiện event `join_room` và `send_message`.
 - Lưu message rồi broadcast cho đúng room.
 - Thêm typing indicator.
@@ -127,6 +130,7 @@ Tối thiểu nên có 2 collection:
 - Người trong cùng phòng nhận message ngay lập tức.
 
 ### Tuần 4: Tối ưu và mở rộng
+- Trạng thái hiện tại: chưa bắt đầu.
 - Tích hợp Redis Adapter cho Socket.IO.
 - Kiểm tra chạy nhiều instance.
 - Bổ sung test cơ bản cho gateway / luồng realtime nếu có thể.
@@ -135,19 +139,60 @@ Tối thiểu nên có 2 collection:
 - Realtime chạy ổn khi scale.
 - Kiến trúc đủ sạch để mở rộng thêm notification, read receipt, file upload.
 
-## 5) Checklist hoàn thành
-- [ ] Kết nối Socket.IO thành công
-- [ ] Verify JWT khi connect
-- [ ] Join room cá nhân
-- [ ] Join room conversation
-- [ ] Gửi và nhận message realtime
-- [ ] Lưu message vào MongoDB
-- [ ] Có API lấy lịch sử chat
-- [ ] Có online/offline status
-- [ ] Có typing indicator
-- [ ] Tích hợp Redis Adapter
+## 5) Tình trạng hiện tại theo code
 
-## 6) Gợi ý cách bắt đầu
-- Bắt đầu từ Gateway + auth socket trước.
-- Sau đó làm schema và API để có data thật.
-- Cuối cùng mới thêm typing, read status và Redis.
+### Đã xong
+- [x] Tạo `ConversationSchema` với `users`, `isGroup`, `adminGroupId`, `lastMessageId`, `deletedHistory`.
+- [x] Tạo `MessageSchema` với `conversationId`, `senderId`, `content`, `readBy`.
+- [x] Tách `ConversationsModule` và `MessagesModule`.
+- [x] Có API `POST /conversations`.
+- [x] Có API `GET /conversations`.
+- [x] Có API `GET /conversations/:id`.
+- [x] Đã kiểm tra quyền thành viên khi lấy conversation.
+- [x] Đã xử lý khá kỹ nghiệp vụ tạo conversation 1-1 và group trong `conversations.service.ts`.
+
+### Đã làm một phần
+- [ ] API lấy lịch sử chat theo conversation.
+  Hiện tại đã có `MessagesModule` và `MessageSchema`, nhưng `messages.service.ts` vẫn đang là scaffold.
+- [ ] Lưu message vào MongoDB và cập nhật `lastMessageId`.
+  Trong `ConversationsService` đã có hàm `updateLastMessageAndRestoreConversation`, nhưng chưa thấy luồng tạo message thật để gọi hàm này.
+- [ ] Test cho conversations/messages.
+  Đã có file spec được tạo, nhưng cần kiểm tra và hoàn thiện nội dung test.
+
+### Chưa làm
+- [ ] Kết nối Socket.IO thành công.
+- [ ] Verify JWT khi connect WebSocket.
+- [ ] Join room cá nhân.
+- [ ] Join room conversation.
+- [ ] Gửi và nhận message realtime.
+- [ ] Online/offline status.
+- [ ] Typing indicator.
+- [ ] Redis Adapter cho Socket.IO.
+
+## 6) Việc cần làm tiếp
+
+### Ưu tiên 1: Hoàn thiện API nền cho message
+- Tạo nghiệp vụ `createMessage` trong `messages.service.ts` để lưu MongoDB.
+- Sau khi tạo message, gọi cập nhật `conversation.lastMessageId`.
+- Thêm API lấy lịch sử theo kiểu `GET /conversations/:id/messages` hoặc service tương đương.
+- Kiểm tra quyền thành viên trước khi đọc/gửi message.
+
+### Ưu tiên 2: Dọn scaffold thừa ở `messages`
+- Xóa hoặc thay thế các endpoint scaffold kiểu `findAll`, `findOne(+id)`, `update(+id)`, `remove(+id)` nếu chưa dùng.
+- Đổi API sang đúng bài toán chat thay vì CRUD resource mặc định.
+
+### Ưu tiên 3: Bắt đầu phần realtime
+- Tạo `chat.gateway.ts` hoặc `conversations.gateway.ts`.
+- Xác thực JWT từ `client.handshake.auth.token`.
+- Cho user join personal room theo `userId`.
+- Thêm event `join_room` và `send_message`.
+- Nối luồng realtime với `MessagesService` và `ConversationsService`.
+
+### Ưu tiên 4: Bổ sung test
+- Hoàn thiện unit test cho `conversations.service.ts`.
+- Viết test cho `messages.service.ts` sau khi có nghiệp vụ thật.
+- Khi có gateway, thêm test cho auth socket và message flow cơ bản.
+
+## 7) Gợi ý cách đi tiếp
+- Không nên sang Redis hoặc typing sớm ở thời điểm này.
+- Thứ tự hợp lý nhất hiện tại là: hoàn thiện `messages` -> nối `conversation.lastMessageId` -> làm gateway realtime -> thêm online/typing -> cuối cùng mới Redis.

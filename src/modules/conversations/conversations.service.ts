@@ -37,6 +37,7 @@ export class ConversationsService {
         currentUserId: string,
     ) {
         const { users = [], isGroup = false, name } = createConversationDto;
+        const objectCurrentUserId = toObjectId(currentUserId, 'user id');
 
         const normalizedUsers = [...new Set([currentUserId, ...users])];
 
@@ -108,8 +109,15 @@ export class ConversationsService {
                 return existingConversation;
             }
         }
-        const adminGroupId = isGroup
-            ? toObjectId(currentUserId, 'user id')
+        const adminGroupId = isGroup ? objectCurrentUserId : undefined;
+        const deletedHistory = !isGroup
+            ? listMember
+                  .filter((member) => !member.equals(objectCurrentUserId))
+                  .map((member) => ({
+                      userId: member,
+                      isDeleted: true,
+                      deletedAt: new Date(),
+                  }))
             : undefined;
         // 2. Nếu là group chat hoặc phòng 1-1 chưa tồn tại -> Tiến hành tạo mới
         const newConversation = new this.conversationModel({
@@ -117,6 +125,7 @@ export class ConversationsService {
             isGroup,
             users: listMember,
             adminGroupId,
+            deletedHistory,
         });
 
         return await newConversation.save();
@@ -258,21 +267,18 @@ export class ConversationsService {
     }
 
     async deleteHistory(conversationId: string, userId: string) {
-        const objectConversationId = toObjectId(
-            conversationId,
-            'conversation id',
-        );
+        const { conversation, objectConversationId } =
+            await this.getConversationOrThrow(conversationId);
+
         const objectUserId = toObjectId(userId, 'user id');
-
-        const conversation = await this.conversationModel.findOne({
-            _id: objectConversationId,
-            users: objectUserId,
-        });
-
-        if (!conversation) {
-            throw new BadRequestException('Conversation not found');
+        const isExistUser = conversation.users.some(
+            (user) => user.toString() === userId,
+        );
+        if (!isExistUser) {
+            throw new BadRequestException(
+                'User is not a member of conversation',
+            );
         }
-
         const userDeletedHistory = conversation.deletedHistory?.find(
             (item) => item.userId.toString() === userId,
         );

@@ -1,9 +1,25 @@
-import { IsMongoId, IsOptional } from 'class-validator';
-import { PartialType } from '@nestjs/mapped-types';
-import { CreateConversationDto } from './create-conversation.dto';
+import {
+    IsMongoId,
+    IsArray,
+    IsString,
+    MaxLength,
+    MinLength,
+    ArrayMinSize,
+} from 'class-validator';
 
-export class UpdateConversationDto extends PartialType(CreateConversationDto) {
+export class UpdateNameConversationDto {
+    @IsString()
+    @MinLength(1)
+    @MaxLength(255)
+    name: string;
+}
+export class AddMembersConversationDto {
+    @IsArray()
+    @ArrayMinSize(1)
+    @IsMongoId({ each: true })
+    members: string[];
+}
+export class RemoveMemberConversationDto {
     @IsMongoId()
-    @IsOptional()
-    lastMessageId?: string;
+    memberId: string;
 }
