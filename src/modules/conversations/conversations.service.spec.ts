@@ -13,10 +13,10 @@ jest.mock('uuid', () => ({
     v4: jest.fn(() => 'mock-uuid'),
 }));
 
-type DeletedHistoryItem = {
+type HiddenHistoryItem = {
     userId: Types.ObjectId;
-    isDeleted?: boolean;
-    deletedAt?: Date;
+    isHidden?: boolean;
+    hiddenAt?: Date;
 };
 
 type MockConversationDocument = {
@@ -26,7 +26,7 @@ type MockConversationDocument = {
     users: Types.ObjectId[];
     adminGroupId?: Types.ObjectId;
     lastMessageId?: Types.ObjectId;
-    deletedHistory?: DeletedHistoryItem[];
+    hiddenHistory?: HiddenHistoryItem[];
     save: jest.Mock;
 };
 
@@ -126,11 +126,11 @@ describe('ConversationsService', () => {
                     expect.any(Types.ObjectId),
                 ]),
                 adminGroupId: undefined,
-                deletedHistory: [
+                hiddenHistory: [
                     {
                         userId: expect.any(Types.ObjectId),
-                        isDeleted: true,
-                        deletedAt: expect.any(Date),
+                        isHidden: true,
+                        hiddenAt: expect.any(Date),
                     },
                 ],
             });
@@ -208,10 +208,10 @@ describe('ConversationsService', () => {
                     new Types.ObjectId(currentUserId),
                     new Types.ObjectId(otherUserId),
                 ],
-                deletedHistory: [
+                hiddenHistory: [
                     {
                         userId: new Types.ObjectId(otherUserId),
-                        isDeleted: true,
+                        isHidden: true,
                     },
                 ],
             });
@@ -235,27 +235,27 @@ describe('ConversationsService', () => {
                     new Types.ObjectId(currentUserId),
                     new Types.ObjectId(otherUserId),
                 ],
-                deletedHistory: [
+                hiddenHistory: [
                     {
                         userId: new Types.ObjectId(currentUserId),
-                        isDeleted: true,
+                        isHidden: true,
                     },
                     {
                         userId: new Types.ObjectId(otherUserId),
-                        isDeleted: true,
+                        isHidden: true,
                     },
                 ],
             });
             const restoredConversation = createConversationDocument({
                 ...existingConversation,
-                deletedHistory: [
+                hiddenHistory: [
                     {
                         userId: new Types.ObjectId(currentUserId),
-                        isDeleted: false,
+                        isHidden: false,
                     },
                     {
                         userId: new Types.ObjectId(otherUserId),
-                        isDeleted: true,
+                        isHidden: true,
                     },
                 ],
             });
@@ -272,7 +272,7 @@ describe('ConversationsService', () => {
                 existingConversation._id,
                 {
                     $set: {
-                        'deletedHistory.$[item].isDeleted': false,
+                        'hiddenHistory.$[item].isHidden': false,
                     },
                 },
                 {
@@ -306,7 +306,7 @@ describe('ConversationsService', () => {
                     expect.any(Types.ObjectId),
                 ]),
                 adminGroupId: expect.any(Types.ObjectId),
-                deletedHistory: undefined,
+                hiddenHistory: undefined,
             });
             expect(result).toMatchObject({
                 isGroup: true,
@@ -325,11 +325,11 @@ describe('ConversationsService', () => {
 
             expect(conversationModel.find).toHaveBeenCalledWith({
                 users: expect.any(Types.ObjectId),
-                deletedHistory: {
+                hiddenHistory: {
                     $not: {
                         $elemMatch: {
                             userId: expect.any(Types.ObjectId),
-                            isDeleted: true,
+                            isHidden: true,
                         },
                     },
                 },
@@ -357,11 +357,11 @@ describe('ConversationsService', () => {
             expect(conversationModel.findOne).toHaveBeenCalledWith({
                 _id: conversation._id,
                 users: expect.any(Types.ObjectId),
-                deletedHistory: {
+                hiddenHistory: {
                     $not: {
                         $elemMatch: {
                             userId: expect.any(Types.ObjectId),
-                            isDeleted: true,
+                            isHidden: true,
                         },
                     },
                 },
@@ -385,6 +385,7 @@ describe('ConversationsService', () => {
             const result = await service.updateLastMessageAndRestoreConversation(
                 conversationId.toString(),
                 messageId.toString(),
+                currentUserId,
             );
 
             expect(conversationModel.findByIdAndUpdate).toHaveBeenCalledWith(
@@ -392,12 +393,13 @@ describe('ConversationsService', () => {
                 {
                     $set: {
                         lastMessageId: messageId,
-                        'deletedHistory.$[item].isDeleted': false,
+                        'hiddenHistory.$[item].isHidden': false,
+                        [`readReceipts.${currentUserId}`]: messageId,
                     },
                 },
                 {
                     new: true,
-                    arrayFilters: [{ 'item.isDeleted': true }],
+                    arrayFilters: [{ 'item.isHidden': true }],
                 },
             );
             expect(result).toBe(updatedConversation);
@@ -616,7 +618,15 @@ describe('ConversationsService', () => {
 
             expect(conversationModel.findByIdAndUpdate).toHaveBeenCalledWith(
                 conversation._id,
-                { $pull: { users: expect.any(Types.ObjectId) } },
+                {
+                    $pull: {
+                        users: expect.any(Types.ObjectId),
+                        hiddenHistory: { userId: expect.any(Types.ObjectId) },
+                    },
+                    $unset: {
+                        [`readReceipts.${otherUserId}`]: 1,
+                    },
+                },
                 { new: true },
             );
             expect(result).toBe(updatedConversation);
@@ -708,18 +718,18 @@ describe('ConversationsService', () => {
         });
     });
 
-    describe('deleteHistory', () => {
-        it('Case: xóa conversation lần đầu khi chưa có record thì tạo deletedHistory mới với isDeleted = true', async () => {
+    describe('hiddenHistory', () => {
+        it('Case: xóa conversation lần đầu khi chưa có record thì tạo hiddenHistory mới với isHidden = true', async () => {
             const conversation = createConversationDocument({
                 users: [new Types.ObjectId(currentUserId)],
-                deletedHistory: [],
+                hiddenHistory: [],
             });
             const updatedConversation = createConversationDocument({
                 ...conversation,
-                deletedHistory: [
+                hiddenHistory: [
                     {
                         userId: new Types.ObjectId(currentUserId),
-                        isDeleted: true,
+                        isHidden: true,
                     },
                 ],
             });
@@ -728,7 +738,7 @@ describe('ConversationsService', () => {
                 updatedConversation,
             );
 
-            const result = await service.deleteHistory(
+            const result = await service.hiddenHistory(
                 conversation._id.toString(),
                 currentUserId,
             );
@@ -736,14 +746,14 @@ describe('ConversationsService', () => {
             expect(conversationModel.findOneAndUpdate).toHaveBeenCalledWith(
                 {
                     _id: conversation._id,
-                    'deletedHistory.userId': { $ne: expect.any(Types.ObjectId) },
+                    'hiddenHistory.userId': { $ne: expect.any(Types.ObjectId) },
                 },
                 {
                     $push: {
-                        deletedHistory: {
+                        hiddenHistory: {
                             userId: expect.any(Types.ObjectId),
-                            isDeleted: true,
-                            deletedAt: expect.any(Date),
+                            isHidden: true,
+                            hiddenAt: expect.any(Date),
                         },
                     },
                 },
@@ -752,22 +762,22 @@ describe('ConversationsService', () => {
             expect(result).toBe(updatedConversation);
         });
 
-        it('Case: xóa conversation khi đã có record isDeleted = false thì cập nhật lại thành true', async () => {
+        it('Case: xóa conversation khi đã có record isHidden = false thì cập nhật lại thành true', async () => {
             const conversation = createConversationDocument({
                 users: [new Types.ObjectId(currentUserId)],
-                deletedHistory: [
+                hiddenHistory: [
                     {
                         userId: new Types.ObjectId(currentUserId),
-                        isDeleted: false,
+                        isHidden: false,
                     },
                 ],
             });
             const updatedConversation = createConversationDocument({
                 ...conversation,
-                deletedHistory: [
+                hiddenHistory: [
                     {
                         userId: new Types.ObjectId(currentUserId),
-                        isDeleted: true,
+                        isHidden: true,
                     },
                 ],
             });
@@ -776,7 +786,7 @@ describe('ConversationsService', () => {
                 updatedConversation,
             );
 
-            const result = await service.deleteHistory(
+            const result = await service.hiddenHistory(
                 conversation._id.toString(),
                 currentUserId,
             );
@@ -784,17 +794,17 @@ describe('ConversationsService', () => {
             expect(conversationModel.findOneAndUpdate).toHaveBeenCalledWith(
                 {
                     _id: conversation._id,
-                    deletedHistory: {
+                    hiddenHistory: {
                         $elemMatch: {
                             userId: expect.any(Types.ObjectId),
-                            isDeleted: false,
+                            isHidden: false,
                         },
                     },
                 },
                 {
                     $set: {
-                        'deletedHistory.$.isDeleted': true,
-                        'deletedHistory.$.deletedAt': expect.any(Date),
+                        'hiddenHistory.$.isHidden': true,
+                        'hiddenHistory.$.hiddenAt': expect.any(Date),
                     },
                 },
                 { new: true },
@@ -802,28 +812,29 @@ describe('ConversationsService', () => {
             expect(result).toBe(updatedConversation);
         });
 
-        it('Case: xóa conversation lần 2 thất bại khi user đã ở trạng thái isDeleted = true', async () => {
+        it('Case: xóa conversation lần 2 thất bại khi user đã ở trạng thái isHidden = true', async () => {
             const conversation = createConversationDocument({
                 users: [new Types.ObjectId(currentUserId)],
-                deletedHistory: [
+                hiddenHistory: [
                     {
                         userId: new Types.ObjectId(currentUserId),
-                        isDeleted: true,
+                        isHidden: true,
                     },
                 ],
             });
             conversationModel.findById.mockResolvedValue(conversation);
 
             await expect(
-                service.deleteHistory(
+                service.hiddenHistory(
                     conversation._id.toString(),
                     currentUserId,
                 ),
             ).rejects.toThrow(
                 new BadRequestException(
-                    'Conversation already deleted for this user',
+                    'Conversation already hidden for this user',
                 ),
             );
         });
     });
 });
+

@@ -11,7 +11,7 @@ import {
 import { toObjectId } from '@/utils/utils';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { ClientSession, Model, Types } from 'mongoose';
 import {
     Conversation,
     ConversationDocument,
@@ -81,17 +81,17 @@ export class ConversationsService {
             });
 
             if (existingConversation) {
-                const isRemove = existingConversation.deletedHistory?.find(
+                const isRemove = existingConversation.hiddenHistory?.find(
                     (item) =>
                         item.userId.equals(currentUserId) &&
-                        item.isDeleted === true,
+                        item.isHidden === true,
                 );
                 if (isRemove) {
                     return await this.conversationModel.findByIdAndUpdate(
                         existingConversation._id,
                         {
                             $set: {
-                                'deletedHistory.$[item].isDeleted': false,
+                                'hiddenHistory.$[item].isHidden': false,
                             },
                         },
                         {
@@ -110,13 +110,13 @@ export class ConversationsService {
             }
         }
         const adminGroupId = isGroup ? objectCurrentUserId : undefined;
-        const deletedHistory = !isGroup
+        const hiddenHistory = !isGroup
             ? listMember
                   .filter((member) => !member.equals(objectCurrentUserId))
                   .map((member) => ({
                       userId: member,
-                      isDeleted: true,
-                      deletedAt: new Date(),
+                      isHidden: true,
+                      hiddenAt: new Date(),
                   }))
             : undefined;
         // 2. Nếu là group chat hoặc phòng 1-1 chưa tồn tại -> Tiến hành tạo mới
@@ -125,7 +125,7 @@ export class ConversationsService {
             isGroup,
             users: listMember,
             adminGroupId,
-            deletedHistory,
+            hiddenHistory,
         });
 
         return await newConversation.save();
@@ -136,11 +136,11 @@ export class ConversationsService {
         return await this.conversationModel
             .find({
                 users: objectUserId,
-                deletedHistory: {
+                hiddenHistory: {
                     $not: {
                         $elemMatch: {
                             userId: objectUserId,
-                            isDeleted: true,
+                            isHidden: true,
                         },
                     },
                 },
@@ -160,11 +160,11 @@ export class ConversationsService {
             .findOne({
                 _id: objectConversationId,
                 users: objectUserId,
-                deletedHistory: {
+                hiddenHistory: {
                     $not: {
                         $elemMatch: {
                             userId: objectUserId,
-                            isDeleted: true,
+                            isHidden: true,
                         },
                     },
                 },
@@ -176,20 +176,25 @@ export class ConversationsService {
     async updateLastMessageAndRestoreConversation(
         id: string,
         messageId: string,
+        userId: string,
+        session?: ClientSession,
     ) {
         const objectConversationId = toObjectId(id, 'conversation id');
         const objectMessageId = toObjectId(messageId, 'message id');
-
-        return this.conversationModel.findByIdAndUpdate(
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const _ = toObjectId(userId, 'user id');
+        const result = await this.conversationModel.findByIdAndUpdate(
             objectConversationId,
             {
                 $set: {
                     lastMessageId: objectMessageId,
-                    'deletedHistory.$[item].isDeleted': false,
+                    'hiddenHistory.$[item].isHidden': false,
+                    [`readReceipts.${userId}`]: objectMessageId,
                 },
             },
-            { new: true, arrayFilters: [{ 'item.isDeleted': true }] },
+            { new: true, arrayFilters: [{ 'item.isHidden': true }], session },
         );
+        return result;
     }
 
     async updateNameConversation(
@@ -264,7 +269,7 @@ export class ConversationsService {
             {
                 $pull: {
                     users: objectMemberId,
-                    deletedHistory: { userId: objectMemberId },
+                    hiddenHistory: { userId: objectMemberId },
                 },
                 $unset: {
                     [`readReceipts.${memberId}`]: 1,
@@ -274,7 +279,7 @@ export class ConversationsService {
         );
     }
 
-    async deleteHistory(conversationId: string, userId: string) {
+    async hiddenHistory(conversationId: string, userId: string) {
         const { conversation, objectConversationId } =
             await this.getConversationOrThrow(conversationId);
 
@@ -287,31 +292,31 @@ export class ConversationsService {
                 'User is not a member of conversation',
             );
         }
-        const userDeletedHistory = conversation.deletedHistory?.find(
+        const userhiddenHistory = conversation.hiddenHistory?.find(
             (item) => item.userId.toString() === userId,
         );
 
-        if (userDeletedHistory?.isDeleted) {
+        if (userhiddenHistory?.isHidden) {
             throw new BadRequestException(
-                'Conversation already deleted for this user',
+                'Conversation already hidden for this user',
             );
         }
 
-        if (userDeletedHistory) {
+        if (userhiddenHistory) {
             return await this.conversationModel.findOneAndUpdate(
                 {
                     _id: objectConversationId,
-                    deletedHistory: {
+                    hiddenHistory: {
                         $elemMatch: {
                             userId: objectUserId,
-                            isDeleted: false,
+                            isHidden: false,
                         },
                     },
                 },
                 {
                     $set: {
-                        'deletedHistory.$.isDeleted': true,
-                        'deletedHistory.$.deletedAt': new Date(),
+                        'hiddenHistory.$.isHidden': true,
+                        'hiddenHistory.$.hiddenAt': new Date(),
                     },
                 },
                 { new: true },
@@ -321,14 +326,14 @@ export class ConversationsService {
         return await this.conversationModel.findOneAndUpdate(
             {
                 _id: objectConversationId,
-                'deletedHistory.userId': { $ne: objectUserId },
+                'hiddenHistory.userId': { $ne: objectUserId },
             },
             {
                 $push: {
-                    deletedHistory: {
+                    hiddenHistory: {
                         userId: objectUserId,
-                        isDeleted: true,
-                        deletedAt: new Date(),
+                        isHidden: true,
+                        hiddenAt: new Date(),
                     },
                 },
             },
@@ -382,7 +387,7 @@ export class ConversationsService {
         return { message, objectMessageId };
     }
 
-    private async getConversationOrThrow(conversationId: string) {
+    async getConversationOrThrow(conversationId: string) {
         const objectConversationId = toObjectId(
             conversationId,
             'conversation id',
@@ -397,7 +402,7 @@ export class ConversationsService {
         return { conversation, objectConversationId };
     }
 
-    private ensureGroupConversation(conversation: ConversationDocument) {
+    ensureGroupConversation(conversation: ConversationDocument) {
         if (!conversation.isGroup) {
             throw new BadRequestException(
                 'Cannot perform this action on direct conversation',
@@ -405,7 +410,7 @@ export class ConversationsService {
         }
     }
 
-    private ensureGroupAdmin(
+    ensureGroupAdmin(
         conversation: ConversationDocument,
         currentUserId: string,
     ) {
@@ -418,7 +423,7 @@ export class ConversationsService {
         return objectCurrentUserId;
     }
 
-    private ensureMemberInConversation(
+    ensureMemberInConversation(
         conversation: ConversationDocument,
         memberId: string,
     ) {
@@ -434,7 +439,7 @@ export class ConversationsService {
         return objectMemberId;
     }
 
-    private isObjectIdAfter(currentId: Types.ObjectId, nextId: Types.ObjectId) {
+    isObjectIdAfter(currentId: Types.ObjectId, nextId: Types.ObjectId) {
         if (currentId.equals(nextId)) {
             return false;
         }

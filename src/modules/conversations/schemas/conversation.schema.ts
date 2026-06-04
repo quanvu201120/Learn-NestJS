@@ -29,16 +29,16 @@ export class Conversation {
             {
                 _id: false,
                 userId: { type: Types.ObjectId, ref: 'User' },
-                isDeleted: { type: Boolean, default: true },
-                deletedAt: { type: Date, default: Date.now },
+                isHidden: { type: Boolean, default: true },
+                hiddenAt: { type: Date, default: Date.now },
             },
         ],
-        default: undefined,
+        default: [],
     })
-    deletedHistory?: {
+    hiddenHistory?: {
         userId: Types.ObjectId;
-        isDeleted?: boolean;
-        deletedAt?: Date;
+        isHidden?: boolean;
+        hiddenAt?: Date;
     }[];
 
     @Prop({

@@ -94,8 +94,8 @@ export class ConversationsController {
         );
     }
 
-    @Delete(':id/delete-history')
-    deleteHistory(@Param('id') id: string, @Request() req) {
-        return this.conversationsService.deleteHistory(id, req.user._id);
+    @Delete(':id')
+    hiddenHistory(@Param('id') id: string, @Request() req) {
+        return this.conversationsService.hiddenHistory(id, req.user._id);
     }
 }
