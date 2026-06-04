@@ -14,6 +14,7 @@ import { ConversationsService } from './conversations.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import {
     AddMembersConversationDto,
+    ReadMessageDto,
     RemoveMemberConversationDto,
     UpdateNameConversationDto,
 } from './dto/update-conversation.dto';
@@ -77,6 +78,19 @@ export class ConversationsController {
             id,
             req.user._id,
             removeMemberConversationDto.memberId,
+        );
+    }
+
+    @Patch(':id/read')
+    markAsRead(
+        @Param('id') id: string,
+        @Body() readMessageDto: ReadMessageDto,
+        @Request() req: any,
+    ) {
+        return this.conversationsService.markAsRead(
+            id,
+            req.user._id,
+            readMessageDto.messageId,
         );
     }
 

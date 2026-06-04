@@ -40,6 +40,13 @@ export class Conversation {
         isDeleted?: boolean;
         deletedAt?: Date;
     }[];
+
+    @Prop({
+        type: Map,
+        of: { type: Types.ObjectId, ref: 'Message' },
+        default: {},
+    })
+    readReceipts?: Map<string, Types.ObjectId>;
 }
 
 export const ConversationSchema = SchemaFactory.createForClass(Conversation);

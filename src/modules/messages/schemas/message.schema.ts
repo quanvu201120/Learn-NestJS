@@ -2,7 +2,13 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 
 export type MessageDocument = HydratedDocument<Message>;
-
+export enum MessageEnumType {
+    TEXT = 'text',
+    IMAGE = 'image',
+    VIDEO = 'video',
+    FILE = 'file',
+    SYSTEM = 'system',
+}
 @Schema({ timestamps: true })
 export class Message {
     @Prop({
@@ -16,11 +22,21 @@ export class Message {
     @Prop({ type: Types.ObjectId, ref: 'User', required: true })
     senderId: Types.ObjectId;
 
+    @Prop({
+        type: String,
+        enum: MessageEnumType,
+        default: MessageEnumType.TEXT,
+    })
+    type: MessageEnumType;
+
     @Prop({ type: String, required: true })
     content: string;
 
-    @Prop({ type: [{ type: Types.ObjectId, ref: 'User' }], default: [] })
-    readBy: Types.ObjectId[];
+    @Prop({ type: Types.ObjectId, ref: 'Message' })
+    replyTo?: Types.ObjectId;
+
+    @Prop({ default: false })
+    isDeleted: boolean;
 }
 
 export const MessageSchema = SchemaFactory.createForClass(Message);

@@ -261,7 +261,15 @@ export class ConversationsService {
 
         return await this.conversationModel.findByIdAndUpdate(
             objectConversationId,
-            { $pull: { users: objectMemberId } },
+            {
+                $pull: {
+                    users: objectMemberId,
+                    deletedHistory: { userId: objectMemberId },
+                },
+                $unset: {
+                    [`readReceipts.${memberId}`]: 1,
+                },
+            },
             { new: true },
         );
     }
@@ -328,17 +336,50 @@ export class ConversationsService {
         );
     }
 
-    async checkMember(conversationId: string, userId: string) {
-        const objectConversationId = toObjectId(
+    async markAsRead(
+        conversationId: string,
+        userId: string,
+        messageId: string,
+    ) {
+        const { conversation, objectConversationId } =
+            await this.getConversationOrThrow(conversationId);
+        const { objectMessageId } = await this.getMessageInConverOrThrow(
+            messageId,
             conversationId,
-            'conversation id',
         );
-        const objectUserId = toObjectId(userId, 'user id');
-        const count = await this.conversationModel.countDocuments({
-            _id: objectConversationId,
-            users: objectUserId,
-        });
-        return count > 0;
+        this.ensureMemberInConversation(conversation, userId);
+        const lastReadMessageId = conversation.readReceipts?.get(userId);
+
+        if (
+            lastReadMessageId &&
+            this.isObjectIdAfter(lastReadMessageId, objectMessageId)
+        ) {
+            throw new BadRequestException(
+                'Cannot mark as read to an older message',
+            );
+        }
+        return await this.conversationModel.findByIdAndUpdate(
+            objectConversationId,
+            {
+                $set: {
+                    [`readReceipts.${userId}`]: objectMessageId,
+                },
+            },
+            { new: true },
+        );
+    }
+
+    async getMessageInConverOrThrow(messageId: string, conversationId: string) {
+        const message =
+            await this.messageService.checkMessageExistInConversation(
+                messageId,
+                conversationId,
+            );
+        if (!message) {
+            throw new BadRequestException('Message not found');
+        }
+        const objectMessageId = toObjectId(messageId, 'message id');
+        return { message, objectMessageId };
     }
 
     private async getConversationOrThrow(conversationId: string) {
@@ -391,5 +432,13 @@ export class ConversationsService {
         }
 
         return objectMemberId;
+    }
+
+    private isObjectIdAfter(currentId: Types.ObjectId, nextId: Types.ObjectId) {
+        if (currentId.equals(nextId)) {
+            return false;
+        }
+
+        return currentId.toString() > nextId.toString();
     }
 }

@@ -23,3 +23,7 @@ export class RemoveMemberConversationDto {
     @IsMongoId()
     memberId: string;
 }
+export class ReadMessageDto {
+    @IsMongoId()
+    messageId: string;
+}

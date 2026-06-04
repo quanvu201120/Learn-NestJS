@@ -1,26 +1,38 @@
 import { Injectable } from '@nestjs/common';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
+import { InjectModel } from '@nestjs/mongoose';
+import { Message, MessageDocument } from './schemas/message.schema';
+import { Model } from 'mongoose';
+import { toObjectId } from '@/utils/utils';
 
 @Injectable()
 export class MessagesService {
-  create(createMessageDto: CreateMessageDto) {
-    return 'This action adds a new message';
-  }
+    constructor(
+        @InjectModel(Message.name)
+        private readonly messageModel: Model<MessageDocument>,
+    ) {}
 
-  findAll() {
-    return `This action returns all messages`;
-  }
-
-  findOne(id: number) {
-    return `This action returns a #${id} message`;
-  }
-
-  update(id: number, updateMessageDto: UpdateMessageDto) {
-    return `This action updates a #${id} message`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} message`;
-  }
+    async getMessageById(messageId: string) {
+        const objectMessageId = toObjectId(messageId, 'message id');
+        return await this.messageModel
+            .findById(objectMessageId)
+            .populate('senderId', '-password');
+    }
+    async checkMessageExistInConversation(
+        messageId: string,
+        conversationId: string,
+    ) {
+        const objectMessageId = toObjectId(messageId, 'message id');
+        const objectConversationId = toObjectId(
+            conversationId,
+            'conversation id',
+        );
+        return await this.messageModel
+            .findOne({
+                _id: objectMessageId,
+                conversationId: objectConversationId,
+            })
+            .populate('senderId', '-password');
+    }
 }
