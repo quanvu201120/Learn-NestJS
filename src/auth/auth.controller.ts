@@ -33,6 +33,7 @@ import {
 } from './dto/password-auth.dto';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { buildDeviceNameFromUA } from '@/utils/utils';
+import { LoginResponse, RefreshTokenResponse } from './types/auth';
 
 @ApiTags('Auth - Xác thực')
 @Controller('auth')
@@ -70,12 +71,11 @@ export class AuthController {
                 ) as StringValue,
             ),
         });
-        const { accessToken, message, user } = data;
+
         return {
-            accessToken,
-            result: user,
-            message,
-        };
+            accessToken: data.accessToken,
+            user: data.user,
+        } as LoginResponse;
     }
 
     @Post('refreshToken')
@@ -97,8 +97,10 @@ export class AuthController {
                 ) as StringValue,
             ),
         });
-
-        return data.accessToken;
+        const res: RefreshTokenResponse = {
+            accessToken: data.accessToken,
+        };
+        return res;
     }
 
     @Post('logout')
@@ -123,7 +125,7 @@ export class AuthController {
             maxAge: 0,
         });
 
-        return null;
+        return 'Đăng xuất thành công';
     }
 
     @Post('logoutAll')

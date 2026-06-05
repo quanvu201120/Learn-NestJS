@@ -33,6 +33,16 @@ export const toObjectId = (id: string, fieldName: string): Types.ObjectId => {
     return new Types.ObjectId(id);
 };
 
+export const parseDateOrThrow = (value: string, fieldName: string): Date => {
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        throw new BadRequestException(`Invalid ${fieldName}`);
+    }
+
+    return date;
+};
+
 export const generateJWT = async (
     payload: {
         _id: string;

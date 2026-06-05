@@ -35,7 +35,7 @@ export class Conversation {
         ],
         default: [],
     })
-    hiddenHistory?: {
+    hiddenHistory: {
         userId: Types.ObjectId;
         isHidden?: boolean;
         hiddenAt?: Date;

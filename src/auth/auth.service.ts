@@ -84,7 +84,6 @@ export class AuthService {
                 accessToken,
                 refreshToken,
                 user,
-                message: 'Đăng nhập thành công',
             };
         } catch (error) {
             if (sessionId) {

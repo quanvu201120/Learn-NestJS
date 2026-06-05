@@ -1,4 +1,12 @@
-import { Controller, Post, Body, Param, Request } from '@nestjs/common';
+import {
+    Controller,
+    Post,
+    Body,
+    Param,
+    Request,
+    Get,
+    Query,
+} from '@nestjs/common';
 import { MessagesService } from './messages.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 
@@ -17,6 +25,28 @@ export class MessagesController {
             req.user._id.toString(),
             conversationId,
             createMessageDto,
+        );
+    }
+
+    @Get('conversations/:conversationId/latest-message')
+    getLatestMessageOfConversation(
+        @Param('conversationId') conversationId: string,
+    ) {
+        return this.messagesService.getLatestMessageOfConversation(
+            conversationId,
+        );
+    }
+    @Get('conversations/:conversationId/message')
+    getMessageOfConversation(
+        @Param('conversationId') conversationId: string,
+        @Request() req,
+        @Query('cursor') cursor?: string,
+    ) {
+        return this.messagesService.getMessagesByConversation(
+            conversationId,
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+            req.user._id.toString(),
+            cursor,
         );
     }
 }

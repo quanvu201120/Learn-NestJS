@@ -16,8 +16,10 @@ import {
     Conversation,
     ConversationDocument,
 } from './schemas/conversation.schema';
+import { serializeMessage } from '../messages/utils/message.serializer';
 import { MessagesService } from '../messages/messages.service';
 import { UsersService } from '../users/users.service';
+import { ConversationResponse } from './types/conversation';
 
 @Injectable()
 export class ConversationsService {
@@ -31,6 +33,19 @@ export class ConversationsService {
         @Inject(forwardRef(() => UsersService))
         private readonly userService: UsersService,
     ) {}
+
+    private serializeConversation(conversation: any): ConversationResponse {
+        const { lastMessageId, ...rest } = conversation;
+
+        return {
+            ...rest,
+            lastMessage: lastMessageId
+                ? typeof lastMessageId === 'object' && '_id' in lastMessageId
+                    ? serializeMessage(lastMessageId)
+                    : lastMessageId
+                : undefined,
+        };
+    }
 
     async createConversation(
         createConversationDto: CreateConversationDto,
@@ -72,13 +87,18 @@ export class ConversationsService {
 
         // 1. Nếu là chat 1-1, kiểm tra xem đã tồn tại cuộc trò chuyện nào chưa
         if (!isGroup) {
-            const existingConversation = await this.conversationModel.findOne({
-                isGroup: false,
-                users: {
-                    $all: listMember,
-                    $size: 2,
-                },
-            });
+            const existingConversation = await this.conversationModel
+                .findOne({
+                    isGroup: false,
+                    users: {
+                        $all: listMember,
+                        $size: 2,
+                    },
+                })
+                .select('-__v')
+                .populate('users', '-password -__v')
+                .populate('lastMessageId', '-__v')
+                .lean();
 
             if (existingConversation) {
                 const isRemove = existingConversation.hiddenHistory?.find(
@@ -87,26 +107,33 @@ export class ConversationsService {
                         item.isHidden === true,
                 );
                 if (isRemove) {
-                    return await this.conversationModel.findByIdAndUpdate(
-                        existingConversation._id,
-                        {
-                            $set: {
-                                'hiddenHistory.$[item].isHidden': false,
-                            },
-                        },
-                        {
-                            new: true,
-                            arrayFilters: [
-                                {
-                                    'item.userId': new Types.ObjectId(
-                                        currentUserId,
-                                    ),
+                    const updatedConversation = await this.conversationModel
+                        .findByIdAndUpdate(
+                            existingConversation._id,
+                            {
+                                $set: {
+                                    'hiddenHistory.$[item].isHidden': false,
                                 },
-                            ],
-                        },
-                    );
+                            },
+                            {
+                                new: true,
+                                arrayFilters: [
+                                    {
+                                        'item.userId': new Types.ObjectId(
+                                            currentUserId,
+                                        ),
+                                    },
+                                ],
+                            },
+                        )
+                        .select('-__v')
+                        .populate('users', '-password -__v')
+                        .populate('lastMessageId', '-__v')
+                        .lean();
+
+                    return this.serializeConversation(updatedConversation);
                 }
-                return existingConversation;
+                return this.serializeConversation(existingConversation);
             }
         }
         const adminGroupId = isGroup ? objectCurrentUserId : undefined;
@@ -120,20 +147,26 @@ export class ConversationsService {
                   }))
             : undefined;
         // 2. Nếu là group chat hoặc phòng 1-1 chưa tồn tại -> Tiến hành tạo mới
-        const newConversation = new this.conversationModel({
+        const createConversation = await this.conversationModel.create({
             name,
             isGroup,
             users: listMember,
             adminGroupId,
             hiddenHistory,
         });
-
-        return await newConversation.save();
+        const { __v, ...result } = (
+            createConversation as ConversationDocument
+        ).toObject();
+        return this.serializeConversation(result);
     }
 
     async findAllByUser(userId: string) {
         const objectUserId = toObjectId(userId, 'user id');
-        return await this.conversationModel
+        const user = await this.userService.findOne(userId);
+        if (!user) {
+            throw new BadRequestException('User not found');
+        }
+        const res = await this.conversationModel
             .find({
                 users: objectUserId,
                 hiddenHistory: {
@@ -145,9 +178,14 @@ export class ConversationsService {
                     },
                 },
             })
-            .populate('users', '-password')
-            .populate('lastMessageId')
-            .sort({ updatedAt: -1 });
+            .select('-__v')
+            .populate('users', '-password -__v')
+            .populate('lastMessageId', '-__v')
+            .sort({ updatedAt: -1 })
+            .lean();
+        return res.map((conversation) =>
+            this.serializeConversation(conversation),
+        );
     }
 
     async findOne(conversationId: string, userId: string) {
@@ -156,7 +194,7 @@ export class ConversationsService {
             'conversation id',
         );
         const objectUserId = toObjectId(userId, 'user id');
-        return await this.conversationModel
+        const res = await this.conversationModel
             .findOne({
                 _id: objectConversationId,
                 users: objectUserId,
@@ -169,8 +207,11 @@ export class ConversationsService {
                     },
                 },
             })
-            .populate('users', '-password')
-            .populate('lastMessageId');
+            .select('-__v')
+            .populate('users', '-password -__v')
+            .populate('lastMessageId', '-__v')
+            .lean();
+        return res ? this.serializeConversation(res) : null;
     }
 
     async updateLastMessageAndRestoreConversation(
@@ -211,11 +252,17 @@ export class ConversationsService {
         if (!name.trim()) {
             throw new BadRequestException('Name is required');
         }
-        return this.conversationModel.findByIdAndUpdate(
-            objectConversationId,
-            { $set: { name } },
-            { new: true },
-        );
+        const result = await this.conversationModel
+            .findByIdAndUpdate(
+                objectConversationId,
+                { $set: { name } },
+                { new: true },
+            )
+            .select('-__v')
+            .populate('users', '-password -__v')
+            .populate('lastMessageId', '-__v')
+            .lean();
+        return result ? this.serializeConversation(result) : null;
     }
 
     async addMembers(id: string, currentUserId: string, memberIds: string[]) {
@@ -233,17 +280,24 @@ export class ConversationsService {
         if (checkuser !== objectMemberIds.length) {
             throw new BadRequestException('One or more users do not exist');
         }
-        return this.conversationModel.findByIdAndUpdate(
-            objectConversationId,
-            {
-                $addToSet: {
-                    users: {
-                        $each: objectMemberIds,
+        const result = await this.conversationModel
+            .findByIdAndUpdate(
+                objectConversationId,
+                {
+                    $addToSet: {
+                        users: {
+                            $each: objectMemberIds,
+                        },
                     },
                 },
-            },
-            { new: true },
-        );
+                { new: true },
+            )
+            .select('-__v')
+            .populate('users', '-password -__v')
+            .populate('lastMessageId', '-__v')
+            .lean();
+
+        return result ? this.serializeConversation(result) : null;
     }
 
     async removeMember(id: string, currentUserId: string, memberId: string) {
@@ -264,19 +318,26 @@ export class ConversationsService {
             memberId,
         );
 
-        return await this.conversationModel.findByIdAndUpdate(
-            objectConversationId,
-            {
-                $pull: {
-                    users: objectMemberId,
-                    hiddenHistory: { userId: objectMemberId },
+        const result = await this.conversationModel
+            .findByIdAndUpdate(
+                objectConversationId,
+                {
+                    $pull: {
+                        users: objectMemberId,
+                        hiddenHistory: { userId: objectMemberId },
+                    },
+                    $unset: {
+                        [`readReceipts.${memberId}`]: 1,
+                    },
                 },
-                $unset: {
-                    [`readReceipts.${memberId}`]: 1,
-                },
-            },
-            { new: true },
-        );
+                { new: true },
+            )
+            .select('-__v')
+            .populate('users', '-password -__v')
+            .populate('lastMessageId', '-__v')
+            .lean();
+
+        return result ? this.serializeConversation(result) : null;
     }
 
     async hiddenHistory(conversationId: string, userId: string) {
@@ -301,44 +362,53 @@ export class ConversationsService {
                 'Conversation already hidden for this user',
             );
         }
-
+        let result: any = null;
         if (userhiddenHistory) {
-            return await this.conversationModel.findOneAndUpdate(
-                {
-                    _id: objectConversationId,
-                    hiddenHistory: {
-                        $elemMatch: {
-                            userId: objectUserId,
-                            isHidden: false,
+            result = await this.conversationModel
+                .findOneAndUpdate(
+                    {
+                        _id: objectConversationId,
+                        hiddenHistory: {
+                            $elemMatch: {
+                                userId: objectUserId,
+                                isHidden: false,
+                            },
                         },
                     },
-                },
-                {
-                    $set: {
-                        'hiddenHistory.$.isHidden': true,
-                        'hiddenHistory.$.hiddenAt': new Date(),
+                    {
+                        $set: {
+                            'hiddenHistory.$.isHidden': true,
+                            'hiddenHistory.$.hiddenAt': new Date(),
+                        },
                     },
-                },
-                { new: true },
-            );
+                    { new: true },
+                )
+                .lean();
+        } else {
+            result = await this.conversationModel
+                .findOneAndUpdate(
+                    {
+                        _id: objectConversationId,
+                        'hiddenHistory.userId': { $ne: objectUserId },
+                    },
+                    {
+                        $push: {
+                            hiddenHistory: {
+                                userId: objectUserId,
+                                isHidden: true,
+                                hiddenAt: new Date(),
+                            },
+                        },
+                    },
+                    { new: true },
+                )
+                .lean();
         }
 
-        return await this.conversationModel.findOneAndUpdate(
-            {
-                _id: objectConversationId,
-                'hiddenHistory.userId': { $ne: objectUserId },
-            },
-            {
-                $push: {
-                    hiddenHistory: {
-                        userId: objectUserId,
-                        isHidden: true,
-                        hiddenAt: new Date(),
-                    },
-                },
-            },
-            { new: true },
-        );
+        if (result) {
+            return 'Delete conversation successfully';
+        }
+        throw new BadRequestException('Cannot delete conversation');
     }
 
     async markAsRead(

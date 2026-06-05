@@ -22,6 +22,7 @@ import { ActionRedis, COOLDOWN_SECONDS } from '@/utils/contans';
 import * as fs from 'fs';
 import * as path from 'path';
 import handlebars from 'handlebars';
+import { UserResponse } from './types/user';
 
 @Injectable()
 export class UsersService {
@@ -57,7 +58,7 @@ export class UsersService {
 
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password, __v, ...user } = newUser.toObject();
-        return user;
+        return user as UserResponse;
     }
 
     async register(email: string, pass: string) {
@@ -83,16 +84,24 @@ export class UsersService {
         const totalPages = Math.ceil(totalItems / pageSize);
         const skip = (current - 1) * pageSize;
 
-        const userList = await this.userModel
+        const users: UserResponse[] = await this.userModel
             .find(filter)
             .skip(skip)
             .limit(pageSize)
-            .select('-password')
-            .sort(sort as any);
+            .select('-password -__v')
+            .sort(sort as any)
+            .lean();
 
-        return { totalPages, userList };
+        return { totalPages, users };
     }
 
+    async findOneForApi(id: string) {
+        validateObjectId(id, 'user id');
+        return (await this.userModel
+            .findById(id)
+            .select('-password -__v')
+            .lean()) as UserResponse;
+    }
     async findOne(id: string) {
         validateObjectId(id, 'user id');
         return await this.userModel.findById(id);
@@ -102,7 +111,16 @@ export class UsersService {
         return await this.userModel.findOne({ email });
     }
 
-    async update(updateUserDto: UpdateUserDto) {
+    async update(
+        updateUserDto: UpdateUserDto,
+        currentUser: string,
+        role: string,
+    ) {
+        if (role !== 'ADMIN' && updateUserDto._id !== currentUser) {
+            throw new BadRequestException(
+                'You are not authorized to update this user',
+            );
+        }
         if (updateUserDto.email) {
             const isEmailExisted = await this.userModel.exists({
                 email: updateUserDto.email,
@@ -114,18 +132,27 @@ export class UsersService {
             }
         }
 
-        return await this.userModel
-            .findOneAndUpdate(
-                { _id: updateUserDto._id },
-                { ...updateUserDto },
-                { new: true },
-            )
-            .select('-password');
+        const { _id, ...updateData } = updateUserDto;
+
+        const user = (await this.userModel
+            .findOneAndUpdate({ _id }, { ...updateData }, { new: true })
+            .select('-password -__v')
+            .lean()) as UserResponse;
+
+        if (!user) {
+            throw new BadRequestException('User not found');
+        }
+
+        return user;
     }
 
     async deleteUser(id: string) {
         validateObjectId(id, 'user id');
-        return await this.userModel.deleteOne({ _id: id });
+        const result = await this.userModel.deleteOne({ _id: id });
+        if (result.deletedCount > 0) {
+            return `Deleted user successfully`;
+        }
+        throw new BadRequestException('Delete user failed');
     }
 
     async sendEmailActive(email: string, code: string) {
@@ -165,7 +192,8 @@ export class UsersService {
         );
 
         user.isActive = true;
-        return await user.save();
+        await user.save();
+        return 'Active user successfully';
     }
 
     private async verifyCodeWithRedis(keyRedis: string, code: string) {
@@ -233,11 +261,7 @@ export class UsersService {
 
         user.password = passwordNewHash;
         await user.save();
-        return {
-            _id: user._id,
-            email: user.email,
-            message: 'Change password successfully',
-        };
+        return 'Change password successfully';
     }
 
     async sendMailForgotPassword(email: string) {

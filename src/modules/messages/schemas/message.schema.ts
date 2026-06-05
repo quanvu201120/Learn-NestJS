@@ -35,8 +35,12 @@ export class Message {
     @Prop({ type: Types.ObjectId, ref: 'Message' })
     replyTo?: Types.ObjectId;
 
+    //soft delete => hidden
     @Prop({ default: false })
     isDeleted: boolean;
+
+    @Prop({ type: Date })
+    deletedAt?: Date;
 }
 
 export const MessageSchema = SchemaFactory.createForClass(Message);
