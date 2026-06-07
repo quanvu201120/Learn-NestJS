@@ -1,3 +1,4 @@
+/* eslint-disable no-useless-catch */
 import { PayloadJWT } from '@/modules/users/schemas/user.schema';
 import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -129,3 +130,21 @@ export function buildDeviceNameFromUA(userAgent?: string): string {
     if (browser && os) return `${browser} trên ${os}`;
     return browser || os || 'Thiết bị không xác định';
 }
+
+export const getRoomNameConversation = (conversationId: string) => {
+    try {
+        toObjectId(conversationId, 'conversationId');
+        return `conversation:${conversationId}`;
+    } catch (error) {
+        throw error;
+    }
+};
+
+export const getRoomNameUser = (userId: string) => {
+    try {
+        toObjectId(userId, 'userId');
+        return `user:${userId}`;
+    } catch (error) {
+        throw error;
+    }
+};

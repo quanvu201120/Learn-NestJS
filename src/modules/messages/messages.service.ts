@@ -9,7 +9,11 @@ import {
 import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
-import { Message, MessageDocument } from './schemas/message.schema';
+import {
+    Message,
+    MessageDocument,
+    MessageEnumType,
+} from './schemas/message.schema';
 import { Connection, Model, Types } from 'mongoose';
 import { parseDateOrThrow, toObjectId } from '@/utils/utils';
 import { ConversationsService } from '../conversations/conversations.service';
@@ -60,7 +64,9 @@ export class MessagesService {
     async createMessage(
         senderId: string,
         conversationId: string,
-        createMessageDto: CreateMessageDto,
+        type: MessageEnumType,
+        content: string,
+        replyTo?: string,
     ) {
         const { conversation, objectConversationId } =
             await this.conversationService.getConversationOrThrow(
@@ -71,7 +77,6 @@ export class MessagesService {
                 conversation,
                 senderId,
             );
-        const { type, content, replyTo } = createMessageDto;
         let objectReplyTo: Types.ObjectId | undefined;
         if (replyTo) {
             const replyMessage = await this.checkMessageExistInConversation(

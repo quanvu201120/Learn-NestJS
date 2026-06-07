@@ -24,7 +24,9 @@ export class MessagesController {
             // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
             req.user._id.toString(),
             conversationId,
-            createMessageDto,
+            createMessageDto.type,
+            createMessageDto.content,
+            createMessageDto.replyTo,
         );
     }
 

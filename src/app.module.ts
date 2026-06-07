@@ -10,6 +10,7 @@ import { JwtAuthGuard } from './auth/passport/jwt-auth.guard';
 import { RedisModule } from './redis/redis.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { MessagesModule } from './modules/messages/messages.module';
+import { RealtimeModule } from './modules/realtime/realtime.module';
 
 @Module({
     imports: [
@@ -19,6 +20,7 @@ import { MessagesModule } from './modules/messages/messages.module';
         RedisModule,
         ConversationsModule,
         MessagesModule,
+        RealtimeModule,
         MongooseModule.forRootAsync({
             imports: [ConfigModule],
             // eslint-disable-next-line @typescript-eslint/require-await

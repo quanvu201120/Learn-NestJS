@@ -1,0 +1,952 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Chat Test Client</title>
+        <style>
+            :root {
+                --bg: #f4efe6;
+                --panel: #fffdf9;
+                --panel-alt: #f8f2e8;
+                --border: #d9cdbd;
+                --text: #2f261c;
+                --muted: #75685a;
+                --accent: #0f766e;
+                --accent-soft: #d8f1ee;
+                --danger: #b42318;
+                --shadow: 0 18px 40px rgba(85, 66, 43, 0.12);
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            body {
+                margin: 0;
+                min-height: 100vh;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                color: var(--text);
+                background:
+                    radial-gradient(
+                        circle at top left,
+                        #fff9ef 0,
+                        transparent 35%
+                    ),
+                    linear-gradient(
+                        135deg,
+                        #efe5d4 0%,
+                        #f4efe6 45%,
+                        #ebe1d0 100%
+                    );
+            }
+
+            .app {
+                display: grid;
+                grid-template-rows: auto minmax(0, 1fr);
+                height: 100vh;
+            }
+
+            .toolbar {
+                padding: 20px;
+                border-bottom: 1px solid rgba(117, 104, 90, 0.15);
+                background: rgba(255, 253, 249, 0.9);
+                backdrop-filter: blur(12px);
+            }
+
+            .toolbar-grid {
+                display: grid;
+                grid-template-columns: 1fr auto auto auto;
+                gap: 12px;
+                align-items: end;
+            }
+
+            .field {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            }
+
+            .field label {
+                font-size: 12px;
+                font-weight: 700;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+                color: var(--muted);
+            }
+
+            .current-user {
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                gap: 4px;
+                min-width: 220px;
+                padding: 10px 14px;
+                border: 1px solid rgba(217, 205, 189, 0.9);
+                border-radius: 14px;
+                background: rgba(248, 242, 232, 0.8);
+            }
+
+            .current-user-label {
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+                color: var(--muted);
+            }
+
+            .current-user-name {
+                font-size: 14px;
+                font-weight: 700;
+                color: var(--text);
+            }
+
+            input,
+            textarea,
+            button {
+                font: inherit;
+            }
+
+            input,
+            textarea {
+                width: 100%;
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                padding: 12px 14px;
+                background: #fff;
+                color: var(--text);
+                outline: none;
+            }
+
+            input:focus,
+            textarea:focus {
+                border-color: var(--accent);
+                box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.1);
+            }
+
+            button {
+                border: 0;
+                border-radius: 12px;
+                padding: 12px 16px;
+                cursor: pointer;
+                background: var(--panel-alt);
+                color: var(--text);
+                font-weight: 700;
+            }
+
+            button.primary {
+                background: var(--accent);
+                color: #fff;
+            }
+
+            button.danger {
+                background: #fbe7e5;
+                color: var(--danger);
+            }
+
+            .layout {
+                display: grid;
+                grid-template-columns: 320px 1fr;
+                gap: 20px;
+                padding: 20px;
+                min-height: 0;
+                height: 100%;
+                overflow: hidden;
+            }
+
+            .panel {
+                min-height: 0;
+                background: rgba(255, 253, 249, 0.94);
+                border: 1px solid rgba(217, 205, 189, 0.8);
+                border-radius: 24px;
+                box-shadow: var(--shadow);
+                overflow: hidden;
+            }
+
+            .panel-header {
+                padding: 18px 20px;
+                border-bottom: 1px solid rgba(217, 205, 189, 0.8);
+                background: linear-gradient(
+                    180deg,
+                    rgba(255, 255, 255, 0.7),
+                    rgba(248, 242, 232, 0.7)
+                );
+            }
+
+            .panel-title {
+                margin: 0;
+                font-size: 18px;
+            }
+
+            .panel-subtitle {
+                margin: 6px 0 0;
+                font-size: 13px;
+                color: var(--muted);
+            }
+
+            .conversation-list {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                padding: 14px;
+                height: calc(100% - 88px);
+                overflow: auto;
+            }
+
+            .conversation-item {
+                border: 1px solid rgba(217, 205, 189, 0.9);
+                border-radius: 18px;
+                padding: 14px;
+                background: #fff;
+                cursor: pointer;
+                transition:
+                    transform 120ms ease,
+                    border-color 120ms ease,
+                    background 120ms ease;
+            }
+
+            .conversation-item:hover {
+                transform: translateY(-1px);
+                border-color: #c7b59f;
+            }
+
+            .conversation-item.active {
+                background: var(--accent-soft);
+                border-color: rgba(15, 118, 110, 0.35);
+            }
+
+            .conversation-name {
+                font-weight: 700;
+                margin-bottom: 6px;
+            }
+
+            .conversation-meta,
+            .message-meta,
+            .empty,
+            .status {
+                font-size: 13px;
+                color: var(--muted);
+            }
+
+            .messages-wrap {
+                display: grid;
+                grid-template-rows: auto minmax(0, 1fr) auto;
+                height: 100%;
+                min-height: 0;
+            }
+
+            .messages-toolbar {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 12px;
+                padding: 16px 20px;
+                border-bottom: 1px solid rgba(217, 205, 189, 0.8);
+                background: rgba(248, 242, 232, 0.55);
+            }
+
+            .message-list {
+                min-height: 0;
+                padding: 18px;
+                overflow: auto;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .composer {
+                flex-shrink: 0;
+                display: grid;
+                grid-template-columns: 1fr auto;
+                gap: 12px;
+                padding: 16px 20px 20px;
+                border-top: 1px solid rgba(217, 205, 189, 0.8);
+                background: rgba(255, 253, 249, 0.92);
+            }
+
+            .message-card {
+                display: flex;
+                max-width: 78%;
+            }
+
+            .message-card.own {
+                align-self: flex-end;
+                justify-content: flex-end;
+            }
+
+            .message-card.other {
+                align-self: flex-start;
+                justify-content: flex-start;
+            }
+
+            .message-bubble {
+                border-radius: 20px;
+                padding: 12px 14px 10px;
+                box-shadow: 0 10px 24px rgba(85, 66, 43, 0.08);
+            }
+
+            .message-card.own .message-bubble {
+                background: linear-gradient(180deg, #1d8f85, #0f766e);
+                color: #fff;
+                border-bottom-right-radius: 8px;
+            }
+
+            .message-card.other .message-bubble {
+                background: #fff;
+                color: var(--text);
+                border: 1px solid rgba(217, 205, 189, 0.9);
+                border-bottom-left-radius: 8px;
+            }
+
+            .message-card.deleted {
+                opacity: 0.65;
+            }
+
+            .message-content {
+                white-space: pre-wrap;
+                line-height: 1.45;
+            }
+
+            .message-time {
+                margin-top: 8px;
+                font-size: 11px;
+                text-align: right;
+                opacity: 0.72;
+            }
+
+            .message-card.other .message-time {
+                color: var(--muted);
+            }
+
+            .message-card.own .message-time {
+                color: rgba(255, 255, 255, 0.82);
+            }
+
+            .hidden {
+                display: none;
+            }
+
+            @media (max-width: 900px) {
+                .toolbar-grid {
+                    grid-template-columns: 1fr;
+                }
+
+                .layout {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="app">
+            <header class="toolbar">
+                <div class="toolbar-grid">
+                    <div class="field">
+                        <label for="tokenInput">Bearer Token</label>
+                        <input
+                            id="tokenInput"
+                            placeholder="Paste JWT access token here"
+                        />
+                    </div>
+                    <button id="connectBtn" class="primary">Connect</button>
+                    <button id="disconnectBtn" class="danger">
+                        Disconnect
+                    </button>
+                    <div class="current-user">
+                        <span class="current-user-label">Current User</span>
+                        <span id="currentUserText" class="current-user-name">
+                            Chua xac dinh
+                        </span>
+                    </div>
+                </div>
+                <p id="statusText" class="status">Socket: disconnected</p>
+            </header>
+
+            <main class="layout">
+                <section class="panel">
+                    <div class="panel-header">
+                        <h1 class="panel-title">Conversations</h1>
+                        <p class="panel-subtitle">
+                            Danh sach cuoc tro chuyen cua user hien tai
+                        </p>
+                    </div>
+                    <div id="conversationList" class="conversation-list">
+                        <div class="empty">
+                            Chua co du lieu. Hay nhap token va bam Connect.
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel messages-wrap">
+                    <div class="messages-toolbar">
+                        <div>
+                            <h2 id="messagesTitle" class="panel-title">
+                                Messages
+                            </h2>
+                            <p id="messagesSubtitle" class="panel-subtitle">
+                                Chon mot conversation de tai history message
+                            </p>
+                        </div>
+                        <button id="reloadMessagesBtn" class="hidden">
+                            Reload Messages
+                        </button>
+                    </div>
+                    <div id="messageList" class="message-list">
+                        <div class="empty">No conversation selected.</div>
+                    </div>
+                    <div id="messageComposer" class="composer hidden">
+                        <input
+                            id="messageInput"
+                            placeholder="Nhap noi dung tin nhan..."
+                        />
+                        <button id="sendMessageBtn" class="primary">
+                            Send Message
+                        </button>
+                    </div>
+                </section>
+            </main>
+        </div>
+
+        <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+        <script>
+            let socket = null;
+            let conversations = [];
+            let selectedConversationId = null;
+            let currentUser = null;
+            let currentMessages = [];
+
+            const tokenInput = document.getElementById('tokenInput');
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            const reloadMessagesBtn =
+                document.getElementById('reloadMessagesBtn');
+            const statusText = document.getElementById('statusText');
+            const conversationList =
+                document.getElementById('conversationList');
+            const messageList = document.getElementById('messageList');
+            const messageComposer = document.getElementById('messageComposer');
+            const messageInput = document.getElementById('messageInput');
+            const sendMessageBtn = document.getElementById('sendMessageBtn');
+            const messagesTitle = document.getElementById('messagesTitle');
+            const messagesSubtitle =
+                document.getElementById('messagesSubtitle');
+            const currentUserText = document.getElementById('currentUserText');
+            const SOCKET_URL = 'http://localhost:8080';
+            const API_BASE_URL = 'http://localhost:8080/api/v1';
+
+            function log(message, data) {
+                if (data === undefined) {
+                    console.log(message);
+                    return;
+                }
+
+                console.log(message, data);
+            }
+
+            function getToken() {
+                return tokenInput.value.trim().replace(/^Bearer\s+/i, '');
+            }
+
+            function getHeaders() {
+                const token = getToken();
+                if (!token) {
+                    throw new Error('Bearer token is required');
+                }
+
+                return {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                };
+            }
+
+            function formatDate(value) {
+                if (!value) {
+                    return 'Unknown time';
+                }
+
+                const date = new Date(value);
+                return Number.isNaN(date.getTime())
+                    ? String(value)
+                    : date.toLocaleString();
+            }
+
+            function getUserLabel(user) {
+                if (!user) {
+                    return 'Unknown user';
+                }
+
+                if (typeof user === 'string') {
+                    return user;
+                }
+
+                return user.name || user.email || user._id || 'Unknown user';
+            }
+
+            function updateCurrentUserUI() {
+                currentUserText.textContent = currentUser
+                    ? getUserLabel(currentUser)
+                    : 'Chua xac dinh';
+            }
+
+            function normalizeId(value) {
+                if (!value) {
+                    return '';
+                }
+
+                if (typeof value === 'string') {
+                    return value;
+                }
+
+                if (typeof value === 'object') {
+                    if (typeof value._id === 'string') {
+                        return value._id;
+                    }
+
+                    if (typeof value.$oid === 'string') {
+                        return value.$oid;
+                    }
+                }
+
+                return String(value);
+            }
+
+            function decodeJwtPayload(token) {
+                if (!token) {
+                    return null;
+                }
+
+                try {
+                    const base64Url = token.split('.')[1];
+                    if (!base64Url) {
+                        return null;
+                    }
+
+                    const base64 = base64Url
+                        .replace(/-/g, '+')
+                        .replace(/_/g, '/');
+                    const padded = base64.padEnd(
+                        base64.length + ((4 - (base64.length % 4)) % 4),
+                        '=',
+                    );
+
+                    return JSON.parse(atob(padded));
+                } catch (error) {
+                    console.error('Decode JWT failed', error);
+                    return null;
+                }
+            }
+
+            async function loadCurrentUserFromToken() {
+                const payload = decodeJwtPayload(getToken());
+                const userId = normalizeId(payload?._id);
+
+                if (!userId) {
+                    currentUser = null;
+                    updateCurrentUserUI();
+                    return null;
+                }
+
+                try {
+                    const user = await fetchJson(`/users/${userId}`);
+                    currentUser = user;
+                } catch (error) {
+                    console.error('Load current user failed', error);
+                    currentUser = { _id: userId, name: userId };
+                }
+
+                updateCurrentUserUI();
+                return currentUser;
+            }
+
+            function getConversationName(conversation) {
+                if (
+                    conversation.isGroup &&
+                    typeof conversation.name === 'string' &&
+                    conversation.name.trim()
+                ) {
+                    return conversation.name;
+                }
+
+                if (Array.isArray(conversation.users)) {
+                    const currentUserId = normalizeId(currentUser?._id);
+                    const otherUsers = conversation.isGroup
+                        ? conversation.users
+                        : conversation.users.filter(
+                              (user) =>
+                                  normalizeId(user?._id || user) !==
+                                  currentUserId,
+                          );
+                    const memberLabel = otherUsers
+                        .map(getUserLabel)
+                        .slice(0, 3)
+                        .join(', ');
+
+                    if (memberLabel) {
+                        return memberLabel;
+                    }
+                }
+
+                return normalizeId(conversation._id) || 'Unknown conversation';
+            }
+
+            function createMessageMarkup(message) {
+                const senderId = normalizeId(
+                    message.sender?._id || message.sender,
+                );
+                const currentUserId = normalizeId(currentUser?._id);
+                const isOwnMessage =
+                    senderId && currentUserId && senderId === currentUserId;
+                const messageClass = isOwnMessage ? 'own' : 'other';
+                const deletedClass = message.isDeleted ? 'deleted' : '';
+                const content = message.isDeleted
+                    ? 'Tin nhan da bi xoa'
+                    : message.content || '';
+
+                return `
+                    <article class="message-card ${messageClass} ${deletedClass}">
+                        <div class="message-bubble">
+                            <div class="message-content">${escapeHtml(content)}</div>
+                            <div class="message-time">${escapeHtml(formatDate(message.createdAt))}</div>
+                        </div>
+                    </article>
+                `;
+            }
+
+            function renderConversations() {
+                if (!conversations.length) {
+                    conversationList.innerHTML =
+                        '<div class="empty">Khong co conversation nao.</div>';
+                    return;
+                }
+
+                try {
+                    conversationList.innerHTML = conversations
+                        .map((conversation) => {
+                            const conversationId = normalizeId(
+                                conversation._id,
+                            );
+                            const lastMessage = conversation.lastMessage;
+                            const preview =
+                                lastMessage && typeof lastMessage === 'object'
+                                    ? lastMessage.content || '[Empty message]'
+                                    : 'Chua co last message';
+
+                            return `
+                                <article
+                                    class="conversation-item ${selectedConversationId === conversationId ? 'active' : ''}"
+                                    data-id="${escapeHtml(conversationId)}"
+                                >
+                                    <div class="conversation-name">${escapeHtml(getConversationName(conversation))}</div>
+                                    <div class="conversation-meta">ID: ${escapeHtml(conversationId)}</div>
+                                    <div class="conversation-meta">Updated: ${escapeHtml(formatDate(conversation.updatedAt))}</div>
+                                    <div class="conversation-meta">Last: ${escapeHtml(preview)}</div>
+                                </article>
+                            `;
+                        })
+                        .join('');
+                } catch (error) {
+                    log('Render conversations failed', {
+                        message: error.message,
+                        conversations,
+                    });
+                    conversationList.innerHTML =
+                        '<div class="empty">Co data nhung render sidebar bi loi. Xem log ben duoi.</div>';
+                    return;
+                }
+
+                conversationList
+                    .querySelectorAll('.conversation-item')
+                    .forEach((item) => {
+                        item.addEventListener('click', () => {
+                            const { id } = item.dataset;
+                            if (!id || !socket) {
+                                return;
+                            }
+
+                            socket.emit(
+                                'chat:join-conversation',
+                                { conversationId: id },
+                                (response) => {
+                                    console.log(
+                                        'join conversation response',
+                                        response,
+                                    );
+
+                                    if (response?.data?.joined) {
+                                        selectedConversationId = id;
+                                        renderConversations();
+                                        loadMessages(id);
+                                    } else if (response?.error) {
+                                        console.error(
+                                            'Join conversation failed',
+                                            response.error,
+                                        );
+                                    }
+                                },
+                            );
+                        });
+                    });
+            }
+
+            function renderMessages(messages) {
+                if (!messages.length) {
+                    messageList.innerHTML =
+                        '<div class="empty">Conversation nay chua co message nao.</div>';
+                    return;
+                }
+
+                messageList.innerHTML = messages
+                    .map(createMessageMarkup)
+                    .join('');
+            }
+
+            function appendMessage(message) {
+                currentMessages = [...currentMessages, message];
+                renderMessages(currentMessages);
+                messageList.scrollTop = messageList.scrollHeight;
+            }
+
+            function renderEmptyMessages(text) {
+                messageList.innerHTML = `<div class="empty">${escapeHtml(text)}</div>`;
+            }
+
+            function setStatus(text) {
+                statusText.textContent = text;
+            }
+
+            function resetConversationUI() {
+                conversations = [];
+                currentMessages = [];
+                selectedConversationId = null;
+                conversationList.innerHTML = `
+                    <div class="empty">
+                        Chua co du lieu. Hay nhap token va bam Connect.
+                    </div>
+                `;
+                messagesTitle.textContent = 'Messages';
+                messagesSubtitle.textContent =
+                    'Chon mot conversation de tai history message';
+                reloadMessagesBtn.classList.add('hidden');
+                messageComposer.classList.add('hidden');
+                renderEmptyMessages('No conversation selected.');
+            }
+
+            function resetAppState() {
+                currentUser = null;
+                updateCurrentUserUI();
+                messageInput.value = '';
+                resetConversationUI();
+                setStatus('Socket: disconnected');
+            }
+
+            function escapeHtml(value) {
+                return String(value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            async function fetchJson(path) {
+                log('fetchJson', `${API_BASE_URL}${path}`);
+                const response = await fetch(`${API_BASE_URL}${path}`, {
+                    headers: getHeaders(),
+                    cache: 'no-store',
+                });
+
+                const text = await response.text();
+                const data = text ? JSON.parse(text) : null;
+                if (!response.ok) {
+                    throw new Error(
+                        data?.message
+                            ? Array.isArray(data.message)
+                                ? data.message.join(', ')
+                                : data.message
+                            : `Request failed: ${response.status}`,
+                    );
+                }
+
+                return data.data;
+            }
+
+            async function loadConversations() {
+                try {
+                    await loadCurrentUserFromToken();
+                    const data = await fetchJson('/conversations');
+                    conversations = Array.isArray(data) ? data : [];
+                    log('Loaded conversations', conversations);
+                    renderConversations();
+
+                    if (selectedConversationId) {
+                        const stillExists = conversations.some(
+                            (conversation) =>
+                                normalizeId(conversation._id) ===
+                                selectedConversationId,
+                        );
+                        if (!stillExists) {
+                            selectedConversationId = null;
+                            messagesTitle.textContent = 'Messages';
+                            messagesSubtitle.textContent =
+                                'Chon mot conversation de tai history message';
+                            reloadMessagesBtn.classList.add('hidden');
+                            renderEmptyMessages('No conversation selected.');
+                        }
+                    }
+                } catch (error) {
+                    log('Load conversations failed', {
+                        message: error.message,
+                    });
+                    conversationList.innerHTML =
+                        '<div class="empty">Khong tai duoc conversations.</div>';
+                }
+            }
+
+            async function loadMessages(conversationId) {
+                try {
+                    const data = await fetchJson(
+                        `/conversations/${conversationId}/message`,
+                    );
+                    const activeConversation = conversations.find(
+                        (conversation) =>
+                            normalizeId(conversation._id) ===
+                            String(conversationId),
+                    );
+
+                    messagesTitle.textContent = getConversationName(
+                        activeConversation || { _id: conversationId },
+                    );
+                    messagesSubtitle.textContent = `Conversation ID: ${conversationId}`;
+                    reloadMessagesBtn.classList.remove('hidden');
+                    messageComposer.classList.remove('hidden');
+                    currentMessages = Array.isArray(data) ? data : [];
+                    renderMessages(currentMessages);
+                    messageList.scrollTop = messageList.scrollHeight;
+                    log(
+                        `Loaded messages for conversation ${conversationId}`,
+                        data,
+                    );
+                } catch (error) {
+                    log('Load messages failed', {
+                        conversationId,
+                        message: error.message,
+                    });
+                    renderEmptyMessages(
+                        'Khong tai duoc messages cua conversation nay.',
+                    );
+                }
+            }
+
+            async function connectSocket() {
+                const token = getToken();
+                if (!token) {
+                    alert('Please paste bearer token first.');
+                    return;
+                }
+
+                if (socket) {
+                    socket.disconnect();
+                }
+
+                try {
+                    await loadCurrentUserFromToken();
+                } catch (error) {
+                    console.error('Prepare current user failed', error);
+                }
+
+                socket = io(SOCKET_URL, {
+                    transports: ['websocket'],
+                    auth: { token },
+                });
+
+                socket.on('connect', () => {
+                    setStatus(`Socket: connected (${socket.id})`);
+                    log('Socket connected', { socketId: socket.id });
+                    loadConversations().catch((error) => {
+                        console.error('Auto load conversations failed', error);
+                    });
+                });
+
+                socket.on('disconnect', (reason) => {
+                    setStatus(`Socket: disconnected (${reason})`);
+                    log('Socket disconnected', { reason });
+                });
+
+                socket.on('connect_error', (err) => {
+                    setStatus(`Socket: connect error (${err.message})`);
+                    log('Socket connect error', { message: err.message });
+                });
+
+                socket.on('chat:new-message', (payload) => {
+                    log('Received chat:new-message', payload);
+
+                    const conversationId = normalizeId(payload?.conversationId);
+                    const message = payload?.message;
+
+                    if (!conversationId || !message) {
+                        return;
+                    }
+
+                    if (conversationId === selectedConversationId) {
+                        appendMessage(message);
+                    }
+                });
+            }
+
+            connectBtn.addEventListener('click', connectSocket);
+
+            disconnectBtn.addEventListener('click', () => {
+                if (socket) {
+                    socket.disconnect();
+                    socket = null;
+                }
+
+                resetAppState();
+            });
+
+            reloadMessagesBtn.addEventListener('click', () => {
+                if (selectedConversationId) {
+                    loadMessages(selectedConversationId);
+                }
+            });
+
+            function sendCurrentMessage() {
+                const content = messageInput.value.trim();
+
+                if (socket && selectedConversationId && content) {
+                    socket.emit(
+                        'chat:create-message',
+                        {
+                            conversationId: selectedConversationId,
+                            content,
+                            type: 'text',
+                            replyTo: undefined,
+                        },
+                        (response) => {
+                            console.log('Message send response:', response);
+                            if (!response?.data?.created) {
+                                const errorMsg = response?.error?.message
+                                    ? response.error.message
+                                    : 'Failed to send message';
+                                console.error('Message send failed:', errorMsg);
+                                alert(`Error: ${errorMsg}`);
+                            }
+                        },
+                    );
+                    messageInput.value = '';
+                }
+            }
+
+            sendMessageBtn.addEventListener('click', sendCurrentMessage);
+
+            messageInput.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter') {
+                    return;
+                }
+
+                event.preventDefault();
+                sendCurrentMessage();
+            });
+        </script>
+    </body>
+</html>
