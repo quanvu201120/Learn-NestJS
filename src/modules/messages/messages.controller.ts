@@ -15,12 +15,12 @@ export class MessagesController {
     constructor(private readonly messagesService: MessagesService) {}
 
     @Post('conversations/:conversationId/send')
-    sendMessage(
+    async sendMessage(
         @Param('conversationId') conversationId: string,
         @Body() createMessageDto: CreateMessageDto,
         @Request() req,
     ) {
-        return this.messagesService.createMessage(
+        const { message } = await this.messagesService.createMessage(
             // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
             req.user._id.toString(),
             conversationId,
@@ -28,6 +28,7 @@ export class MessagesController {
             createMessageDto.content,
             createMessageDto.replyTo,
         );
+        return message;
     }
 
     @Get('conversations/:conversationId/latest-message')

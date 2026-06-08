@@ -215,9 +215,75 @@
                 border-color: rgba(15, 118, 110, 0.35);
             }
 
+            .conversation-item.unseen {
+                border-color: rgba(15, 118, 110, 0.45);
+                box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.12);
+            }
+
             .conversation-name {
                 font-weight: 700;
                 margin-bottom: 6px;
+            }
+
+            .conversation-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                margin-bottom: 6px;
+            }
+
+            .conversation-head-main {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                min-width: 0;
+            }
+
+            .conversation-unseen-badge {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                min-width: 42px;
+                height: 22px;
+                padding: 0 8px;
+                border-radius: 999px;
+                background: #d8f1ee;
+                color: #0f766e;
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 0.02em;
+            }
+
+            .conversation-presence {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 11px;
+                font-weight: 700;
+                color: var(--muted);
+                white-space: nowrap;
+                min-width: 10px;
+            }
+
+            .conversation-presence::before {
+                content: '';
+                width: 8px;
+                height: 8px;
+                border-radius: 999px;
+                background: #b0a08c;
+            }
+
+            .conversation-presence.online {
+                color: #116149;
+            }
+
+            .conversation-presence.online::before {
+                background: #16a34a;
+            }
+
+            .conversation-presence.offline {
+                color: #7b6857;
             }
 
             .conversation-meta,
@@ -243,6 +309,75 @@
                 padding: 16px 20px;
                 border-bottom: 1px solid rgba(217, 205, 189, 0.8);
                 background: rgba(248, 242, 232, 0.55);
+            }
+
+            .messages-heading {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .presence-row {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+
+            .presence-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 6px 10px;
+                border-radius: 999px;
+                font-size: 12px;
+                font-weight: 700;
+                background: #efe8dc;
+                color: var(--muted);
+            }
+
+            .presence-badge.dot-only {
+                width: 18px;
+                min-width: 18px;
+                height: 18px;
+                padding: 0;
+                justify-content: center;
+                border-radius: 999px;
+                font-size: 0;
+            }
+
+            .presence-badge::before {
+                content: '';
+                width: 9px;
+                height: 9px;
+                border-radius: 999px;
+                background: #b0a08c;
+                box-shadow: 0 0 0 3px rgba(176, 160, 140, 0.15);
+            }
+
+            .presence-badge.online {
+                background: #ddf3ea;
+                color: #116149;
+            }
+
+            .presence-badge.online::before {
+                background: #16a34a;
+                box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
+            }
+
+            .presence-badge.offline {
+                background: #f3ebe4;
+                color: #7b6857;
+            }
+
+            .presence-summary {
+                font-size: 12px;
+                color: var(--muted);
+            }
+
+            .secondary-btn {
+                border: 1px solid rgba(217, 205, 189, 0.95);
+                background: rgba(255, 253, 249, 0.92);
             }
 
             .message-list {
@@ -322,8 +457,84 @@
                 color: rgba(255, 255, 255, 0.82);
             }
 
+            .modal-backdrop {
+                position: fixed;
+                inset: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 20px;
+                background: rgba(47, 38, 28, 0.45);
+                z-index: 20;
+            }
+
+            .modal-card {
+                width: min(480px, 100%);
+                max-height: min(78vh, 640px);
+                overflow: hidden;
+                border-radius: 24px;
+                border: 1px solid rgba(217, 205, 189, 0.95);
+                background: var(--panel);
+                box-shadow: 0 28px 60px rgba(47, 38, 28, 0.24);
+            }
+
+            .modal-header,
+            .modal-footer {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                padding: 18px 20px;
+            }
+
+            .modal-header {
+                border-bottom: 1px solid rgba(217, 205, 189, 0.8);
+                background: rgba(248, 242, 232, 0.72);
+            }
+
+            .modal-title {
+                margin: 0;
+                font-size: 18px;
+            }
+
+            .modal-subtitle {
+                margin: 4px 0 0;
+                font-size: 13px;
+                color: var(--muted);
+            }
+
+            .member-presence-list {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                padding: 18px 20px;
+                overflow: auto;
+                max-height: calc(min(78vh, 640px) - 150px);
+            }
+
+            .member-presence-item {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                padding: 14px 16px;
+                border: 1px solid rgba(217, 205, 189, 0.85);
+                border-radius: 18px;
+                background: #fff;
+            }
+
+            .member-presence-name {
+                font-weight: 700;
+            }
+
+            .member-presence-meta {
+                margin-top: 4px;
+                font-size: 12px;
+                color: var(--muted);
+            }
+
             .hidden {
-                display: none;
+                display: none !important;
             }
 
             @media (max-width: 900px) {
@@ -379,17 +590,42 @@
 
                 <section class="panel messages-wrap">
                     <div class="messages-toolbar">
-                        <div>
+                        <div class="messages-heading">
                             <h2 id="messagesTitle" class="panel-title">
                                 Messages
                             </h2>
                             <p id="messagesSubtitle" class="panel-subtitle">
                                 Chon mot conversation de tai history message
                             </p>
+                            <div id="presenceRow" class="presence-row hidden">
+                                <span
+                                    id="directPresenceBadge"
+                                    class="presence-badge dot-only offline hidden"
+                                    title="Offline"
+                                ></span>
+                                <span
+                                    id="groupPresenceSummary"
+                                    class="presence-summary hidden"
+                                ></span>
+                            </div>
                         </div>
-                        <button id="reloadMessagesBtn" class="hidden">
-                            Reload Messages
-                        </button>
+                        <div
+                            style="
+                                display: flex;
+                                align-items: center;
+                                gap: 10px;
+                            "
+                        >
+                            <button
+                                id="viewMembersBtn"
+                                class="secondary-btn hidden"
+                            >
+                                View Members
+                            </button>
+                            <button id="reloadMessagesBtn" class="hidden">
+                                Reload Messages
+                            </button>
+                        </div>
                     </div>
                     <div id="messageList" class="message-list">
                         <div class="empty">No conversation selected.</div>
@@ -407,6 +643,25 @@
             </main>
         </div>
 
+        <div id="memberPresenceModal" class="modal-backdrop hidden">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <div>
+                        <h3 class="modal-title">Trang thai thanh vien</h3>
+                        <p id="memberPresenceSubtitle" class="modal-subtitle">
+                            Xem ai dang online trong group hien tai
+                        </p>
+                    </div>
+                    <button id="closeMembersBtn" class="secondary-btn">
+                        Close
+                    </button>
+                </div>
+                <div id="memberPresenceList" class="member-presence-list">
+                    <div class="empty">Chua co du lieu thanh vien.</div>
+                </div>
+            </div>
+        </div>
+
         <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
         <script>
             let socket = null;
@@ -414,12 +669,16 @@
             let selectedConversationId = null;
             let currentUser = null;
             let currentMessages = [];
+            let selectedConversationPresence = new Set();
+            let sidebarPresenceMap = new Map();
+            let unseenConversationIds = new Set();
 
             const tokenInput = document.getElementById('tokenInput');
             const connectBtn = document.getElementById('connectBtn');
             const disconnectBtn = document.getElementById('disconnectBtn');
             const reloadMessagesBtn =
                 document.getElementById('reloadMessagesBtn');
+            const viewMembersBtn = document.getElementById('viewMembersBtn');
             const statusText = document.getElementById('statusText');
             const conversationList =
                 document.getElementById('conversationList');
@@ -431,8 +690,25 @@
             const messagesSubtitle =
                 document.getElementById('messagesSubtitle');
             const currentUserText = document.getElementById('currentUserText');
+            const presenceRow = document.getElementById('presenceRow');
+            const directPresenceBadge = document.getElementById(
+                'directPresenceBadge',
+            );
+            const groupPresenceSummary = document.getElementById(
+                'groupPresenceSummary',
+            );
+            const memberPresenceModal = document.getElementById(
+                'memberPresenceModal',
+            );
+            const memberPresenceList =
+                document.getElementById('memberPresenceList');
+            const memberPresenceSubtitle = document.getElementById(
+                'memberPresenceSubtitle',
+            );
+            const closeMembersBtn = document.getElementById('closeMembersBtn');
             const SOCKET_URL = 'http://localhost:8080';
             const API_BASE_URL = 'http://localhost:8080/api/v1';
+            const DEFAULT_PAGE_TITLE = 'Chat Test Client';
 
             function log(message, data) {
                 if (data === undefined) {
@@ -508,6 +784,103 @@
                 }
 
                 return String(value);
+            }
+
+            function getMessageSenderId(message) {
+                return normalizeId(message?.sender?._id || message?.sender);
+            }
+
+            function getLatestMessage(messages) {
+                if (!Array.isArray(messages) || !messages.length) {
+                    return null;
+                }
+
+                let latestMessage = messages[0];
+                let latestTime = new Date(messages[0]?.createdAt || 0).getTime();
+
+                messages.forEach((message) => {
+                    const messageTime = new Date(
+                        message?.createdAt || 0,
+                    ).getTime();
+
+                    if (Number.isFinite(messageTime) && messageTime >= latestTime) {
+                        latestMessage = message;
+                        latestTime = messageTime;
+                    }
+                });
+
+                return latestMessage;
+            }
+
+            function setConversationUnseen(conversationId, unseen) {
+                const normalizedConversationId = normalizeId(conversationId);
+                if (!normalizedConversationId) {
+                    return;
+                }
+
+                if (unseen) {
+                    unseenConversationIds.add(normalizedConversationId);
+                } else {
+                    unseenConversationIds.delete(normalizedConversationId);
+                }
+            }
+
+            function getConversationLastReadMessageId(conversation) {
+                const currentUserId = normalizeId(currentUser?._id);
+                if (!conversation || !currentUserId) {
+                    return '';
+                }
+
+                const readReceipts = conversation.readReceipts;
+                if (!readReceipts || typeof readReceipts !== 'object') {
+                    return '';
+                }
+
+                return normalizeId(readReceipts[currentUserId]);
+            }
+
+            function syncUnseenConversationsFromConversationList() {
+                const nextUnseenConversationIds = new Set();
+
+                conversations.forEach((conversation) => {
+                    const conversationId = normalizeId(conversation?._id);
+                    const lastMessageId = normalizeId(
+                        conversation?.lastMessage?._id ||
+                            conversation?.lastMessage,
+                    );
+                    const lastReadMessageId =
+                        getConversationLastReadMessageId(conversation);
+
+                    if (
+                        conversationId &&
+                        lastMessageId &&
+                        lastReadMessageId !== lastMessageId
+                    ) {
+                        nextUnseenConversationIds.add(conversationId);
+                    }
+                });
+
+                unseenConversationIds = nextUnseenConversationIds;
+            }
+
+            function updateConversationWithMessage(conversationId, message) {
+                const normalizedConversationId = normalizeId(conversationId);
+                if (!normalizedConversationId || !message) {
+                    return;
+                }
+
+                const conversation = getConversationById(normalizedConversationId);
+                if (!conversation) {
+                    return;
+                }
+
+                conversation.lastMessage = message;
+                conversation.updatedAt = message.createdAt || new Date().toISOString();
+                conversations = [...conversations].sort((left, right) => {
+                    const leftTime = new Date(left?.updatedAt || 0).getTime();
+                    const rightTime = new Date(right?.updatedAt || 0).getTime();
+                    return rightTime - leftTime;
+                });
             }
 
             function decodeJwtPayload(token) {
@@ -589,6 +962,264 @@
                 return normalizeId(conversation._id) || 'Unknown conversation';
             }
 
+            function updatePageTitle(conversationId) {
+                const conversation = getConversationById(conversationId);
+
+                if (!conversation) {
+                    document.title = DEFAULT_PAGE_TITLE;
+                    return;
+                }
+
+                document.title = getConversationName(conversation);
+            }
+
+            function getConversationById(conversationId) {
+                return (
+                    conversations.find(
+                        (conversation) =>
+                            normalizeId(conversation._id) ===
+                            String(conversationId),
+                    ) || null
+                );
+            }
+
+            function getConversationMembers(conversation) {
+                if (!conversation || !Array.isArray(conversation.users)) {
+                    return [];
+                }
+
+                return conversation.users.map((user) => {
+                    if (typeof user === 'string') {
+                        return {
+                            _id: user,
+                            name: user,
+                        };
+                    }
+
+                    return {
+                        ...user,
+                        _id: normalizeId(user?._id || user),
+                    };
+                });
+            }
+
+            function getDirectConversationPeer(conversation) {
+                if (!conversation || conversation.isGroup) {
+                    return null;
+                }
+
+                const members = getConversationMembers(conversation);
+                const currentUserId = normalizeId(currentUser?._id);
+
+                return (
+                    members.find(
+                        (member) => normalizeId(member._id) !== currentUserId,
+                    ) || null
+                );
+            }
+
+            function getDirectConversationPeerId(conversation) {
+                return normalizeId(
+                    getDirectConversationPeer(conversation)?._id,
+                );
+            }
+
+            function setSidebarPresence(userId, online) {
+                const normalizedUserId = normalizeId(userId);
+                if (!normalizedUserId) {
+                    return;
+                }
+
+                sidebarPresenceMap.set(normalizedUserId, Boolean(online));
+            }
+
+            function extractDirectConversationPeerIds() {
+                const peerIds = conversations
+                    .filter((conversation) => !conversation.isGroup)
+                    .map(getDirectConversationPeerId)
+                    .filter(Boolean);
+
+                return [...new Set(peerIds)];
+            }
+
+            async function refreshSidebarPresence() {
+                if (!socket || !socket.connected || !conversations.length) {
+                    return;
+                }
+
+                const userIds = extractDirectConversationPeerIds();
+
+                if (!userIds.length) {
+                    sidebarPresenceMap = new Map();
+                    renderConversations();
+                    return;
+                }
+
+                try {
+                    const onlineUserIds = await fetchJson(
+                        '/presence/users-online',
+                        {
+                            method: 'POST',
+                            body: {
+                                userIds,
+                            },
+                        },
+                    );
+
+                    const onlineIdSet = new Set(
+                        (Array.isArray(onlineUserIds) ? onlineUserIds : [])
+                            .map(normalizeId)
+                            .filter(Boolean),
+                    );
+
+                    sidebarPresenceMap = new Map();
+                    userIds.forEach((userId) => {
+                        sidebarPresenceMap.set(userId, onlineIdSet.has(userId));
+                    });
+
+                    renderConversations();
+                } catch (error) {
+                    log('Refresh sidebar presence failed', {
+                        message: error.message,
+                    });
+                }
+            }
+
+            function setSelectedConversationPresence(userIds) {
+                selectedConversationPresence = new Set(
+                    (Array.isArray(userIds) ? userIds : [])
+                        .map(normalizeId)
+                        .filter(Boolean),
+                );
+            }
+
+            function syncSidebarPresenceFromConversation(
+                conversationId,
+                onlineUserIds,
+            ) {
+                const conversation = getConversationById(conversationId);
+                if (!conversation || conversation.isGroup) {
+                    return;
+                }
+
+                const peerId = getDirectConversationPeerId(conversation);
+                if (!peerId) {
+                    return;
+                }
+
+                const onlineIdSet = new Set(
+                    (Array.isArray(onlineUserIds) ? onlineUserIds : [])
+                        .map(normalizeId)
+                        .filter(Boolean),
+                );
+
+                setSidebarPresence(peerId, onlineIdSet.has(peerId));
+            }
+
+            function getDirectConversationPresence(conversation) {
+                const members = getConversationMembers(conversation);
+                const currentUserId = normalizeId(currentUser?._id);
+                return (
+                    members.find(
+                        (member) => normalizeId(member._id) !== currentUserId,
+                    ) || null
+                );
+            }
+
+            function renderMemberPresenceModal() {
+                const conversation = getConversationById(
+                    selectedConversationId,
+                );
+                const members = getConversationMembers(conversation);
+
+                if (!conversation || !conversation.isGroup || !members.length) {
+                    memberPresenceList.innerHTML =
+                        '<div class="empty">Chua co du lieu thanh vien.</div>';
+                    return;
+                }
+
+                memberPresenceSubtitle.textContent = `Group ${getConversationName(conversation)} co ${members.length} thanh vien`;
+                memberPresenceList.innerHTML = members
+                    .map((member) => {
+                        const memberId = normalizeId(member._id);
+                        const online =
+                            selectedConversationPresence.has(memberId);
+
+                        return `
+                            <article class="member-presence-item">
+                                <div>
+                                    <div class="member-presence-name">${escapeHtml(getUserLabel(member))}</div>
+                                    <div class="member-presence-meta">ID: ${escapeHtml(memberId)}</div>
+                                </div>
+                                <span
+                                    class="presence-badge dot-only ${online ? 'online' : 'offline'}"
+                                    title="${online ? 'Online' : 'Offline'}"
+                                ></span>
+                            </article>
+                        `;
+                    })
+                    .join('');
+            }
+
+            function openMemberPresenceModal() {
+                renderMemberPresenceModal();
+                memberPresenceModal.classList.remove('hidden');
+            }
+
+            function closeMemberPresenceModal() {
+                memberPresenceModal.classList.add('hidden');
+            }
+
+            function renderPresenceUI() {
+                const conversation = getConversationById(
+                    selectedConversationId,
+                );
+
+                if (!conversation) {
+                    presenceRow.classList.add('hidden');
+                    directPresenceBadge.classList.add('hidden');
+                    groupPresenceSummary.classList.add('hidden');
+                    viewMembersBtn.classList.add('hidden');
+                    return;
+                }
+
+                presenceRow.classList.remove('hidden');
+
+                if (conversation.isGroup) {
+                    const members = getConversationMembers(conversation);
+                    const onlineCount = members.filter((member) =>
+                        selectedConversationPresence.has(
+                            normalizeId(member._id),
+                        ),
+                    ).length;
+
+                    directPresenceBadge.classList.add('hidden');
+                    groupPresenceSummary.classList.remove('hidden');
+                    groupPresenceSummary.textContent = `${onlineCount}/${members.length} thanh vien dang online`;
+                    viewMembersBtn.classList.remove('hidden');
+                    return;
+                }
+
+                const otherMember = getDirectConversationPresence(conversation);
+                const otherMemberId = normalizeId(otherMember?._id);
+                const isOnline =
+                    otherMemberId &&
+                    selectedConversationPresence.has(otherMemberId);
+
+                viewMembersBtn.classList.add('hidden');
+                groupPresenceSummary.classList.add('hidden');
+                directPresenceBadge.classList.remove('hidden');
+                directPresenceBadge.classList.toggle(
+                    'online',
+                    Boolean(isOnline),
+                );
+                directPresenceBadge.classList.toggle(
+                    'offline',
+                    !Boolean(isOnline),
+                );
+                directPresenceBadge.title = isOnline ? 'Online' : 'Offline';
+            }
+
             function createMessageMarkup(message) {
                 const senderId = normalizeId(
                     message.sender?._id || message.sender,
@@ -625,6 +1256,15 @@
                             const conversationId = normalizeId(
                                 conversation._id,
                             );
+                            const isUnseen =
+                                unseenConversationIds.has(conversationId) &&
+                                selectedConversationId !== conversationId;
+                            const directPeerId =
+                                getDirectConversationPeerId(conversation);
+                            const isDirectConversation = !conversation.isGroup;
+                            const isDirectPeerOnline = directPeerId
+                                ? sidebarPresenceMap.get(directPeerId)
+                                : false;
                             const lastMessage = conversation.lastMessage;
                             const preview =
                                 lastMessage && typeof lastMessage === 'object'
@@ -633,10 +1273,27 @@
 
                             return `
                                 <article
-                                    class="conversation-item ${selectedConversationId === conversationId ? 'active' : ''}"
+                                    class="conversation-item ${selectedConversationId === conversationId ? 'active' : ''} ${isUnseen ? 'unseen' : ''}"
                                     data-id="${escapeHtml(conversationId)}"
                                 >
-                                    <div class="conversation-name">${escapeHtml(getConversationName(conversation))}</div>
+                                    <div class="conversation-head">
+                                        <div class="conversation-head-main">
+                                            <div class="conversation-name">${escapeHtml(getConversationName(conversation))}</div>
+                                            ${
+                                                isUnseen
+                                                    ? '<span class="conversation-unseen-badge">New</span>'
+                                                    : ''
+                                            }
+                                        </div>
+                                        ${
+                                            isDirectConversation && directPeerId
+                                                ? `<span
+                                                    class="conversation-presence ${isDirectPeerOnline ? 'online' : 'offline'}"
+                                                    title="${isDirectPeerOnline ? 'Online' : 'Offline'}"
+                                                ></span>`
+                                                : ''
+                                        }
+                                    </div>
                                     <div class="conversation-meta">ID: ${escapeHtml(conversationId)}</div>
                                     <div class="conversation-meta">Updated: ${escapeHtml(formatDate(conversation.updatedAt))}</div>
                                     <div class="conversation-meta">Last: ${escapeHtml(preview)}</div>
@@ -674,7 +1331,16 @@
 
                                     if (response?.data?.joined) {
                                         selectedConversationId = id;
+                                        setSelectedConversationPresence(
+                                            response.data.membersOnline,
+                                        );
+                                        syncSidebarPresenceFromConversation(
+                                            id,
+                                            response.data.membersOnline,
+                                        );
                                         renderConversations();
+                                        renderPresenceUI();
+                                        updatePageTitle(id);
                                         loadMessages(id);
                                     } else if (response?.error) {
                                         console.error(
@@ -718,6 +1384,10 @@
                 conversations = [];
                 currentMessages = [];
                 selectedConversationId = null;
+                setSelectedConversationPresence([]);
+                sidebarPresenceMap = new Map();
+                unseenConversationIds = new Set();
+                updatePageTitle(null);
                 conversationList.innerHTML = `
                     <div class="empty">
                         Chua co du lieu. Hay nhap token va bam Connect.
@@ -727,7 +1397,10 @@
                 messagesSubtitle.textContent =
                     'Chon mot conversation de tai history message';
                 reloadMessagesBtn.classList.add('hidden');
+                viewMembersBtn.classList.add('hidden');
                 messageComposer.classList.add('hidden');
+                closeMemberPresenceModal();
+                renderPresenceUI();
                 renderEmptyMessages('No conversation selected.');
             }
 
@@ -748,11 +1421,21 @@
                     .replace(/'/g, '&#39;');
             }
 
-            async function fetchJson(path) {
+            async function fetchJson(path, options) {
                 log('fetchJson', `${API_BASE_URL}${path}`);
-                const response = await fetch(`${API_BASE_URL}${path}`, {
+                const method = options?.method || 'GET';
+                const requestOptions = {
+                    method,
                     headers: getHeaders(),
                     cache: 'no-store',
+                };
+
+                if (options?.body !== undefined) {
+                    requestOptions.body = JSON.stringify(options.body);
+                }
+
+                const response = await fetch(`${API_BASE_URL}${path}`, {
+                    ...requestOptions,
                 });
 
                 const text = await response.text();
@@ -770,12 +1453,59 @@
                 return data.data;
             }
 
+            async function markConversationAsRead(
+                conversationId,
+                messageId,
+                options = {},
+            ) {
+                const normalizedConversationId = normalizeId(conversationId);
+                const normalizedMessageId = normalizeId(messageId);
+                if (!normalizedConversationId || !normalizedMessageId) {
+                    return;
+                }
+
+                try {
+                    await fetchJson(
+                        `/conversations/${normalizedConversationId}/read`,
+                        {
+                            method: 'PATCH',
+                            body: {
+                                messageId: normalizedMessageId,
+                            },
+                        },
+                    );
+                    const conversation = getConversationById(
+                        normalizedConversationId,
+                    );
+                    if (conversation) {
+                        const nextReadReceipts = {
+                            ...(conversation.readReceipts || {}),
+                        };
+                        nextReadReceipts[normalizeId(currentUser?._id)] =
+                            normalizedMessageId;
+                        conversation.readReceipts = nextReadReceipts;
+                    }
+                    setConversationUnseen(normalizedConversationId, false);
+                    renderConversations();
+                } catch (error) {
+                    if (!options.silent) {
+                        log('Mark conversation as read failed', {
+                            conversationId: normalizedConversationId,
+                            messageId: normalizedMessageId,
+                            message: error.message,
+                        });
+                    }
+                }
+            }
+
             async function loadConversations() {
                 try {
                     await loadCurrentUserFromToken();
                     const data = await fetchJson('/conversations');
                     conversations = Array.isArray(data) ? data : [];
                     log('Loaded conversations', conversations);
+                    syncUnseenConversationsFromConversationList();
+                    await refreshSidebarPresence();
                     renderConversations();
 
                     if (selectedConversationId) {
@@ -786,10 +1516,14 @@
                         );
                         if (!stillExists) {
                             selectedConversationId = null;
+                            updatePageTitle(null);
                             messagesTitle.textContent = 'Messages';
                             messagesSubtitle.textContent =
                                 'Chon mot conversation de tai history message';
                             reloadMessagesBtn.classList.add('hidden');
+                            viewMembersBtn.classList.add('hidden');
+                            setSelectedConversationPresence([]);
+                            renderPresenceUI();
                             renderEmptyMessages('No conversation selected.');
                         }
                     }
@@ -821,6 +1555,18 @@
                     messageComposer.classList.remove('hidden');
                     currentMessages = Array.isArray(data) ? data : [];
                     renderMessages(currentMessages);
+                    const latestMessage = getLatestMessage(currentMessages);
+                    if (latestMessage) {
+                        await markConversationAsRead(
+                            conversationId,
+                            latestMessage._id,
+                            { silent: true },
+                        );
+                    } else {
+                        setConversationUnseen(conversationId, false);
+                        renderConversations();
+                    }
+                    renderPresenceUI();
                     messageList.scrollTop = messageList.scrollHeight;
                     log(
                         `Loaded messages for conversation ${conversationId}`,
@@ -838,6 +1584,8 @@
             }
 
             async function connectSocket() {
+                let heartbeatInterval;
+                let sidebarPresenceInterval;
                 const token = getToken();
                 if (!token) {
                     alert('Please paste bearer token first.');
@@ -865,11 +1613,40 @@
                     loadConversations().catch((error) => {
                         console.error('Auto load conversations failed', error);
                     });
+                    heartbeatInterval = setInterval(() => {
+                        if (socket && socket.connected) {
+                            socket.emit('user:heartbeat', {}, (res) => {
+                                console.log('User heartbeat sent', res);
+                            });
+                        }
+                    }, 50000);
+                    refreshSidebarPresence().catch((error) => {
+                        console.error(
+                            'Initial sidebar presence refresh failed',
+                            error,
+                        );
+                    });
+                    sidebarPresenceInterval = setInterval(() => {
+                        refreshSidebarPresence().catch((error) => {
+                            console.error(
+                                'Sidebar presence refresh failed',
+                                error,
+                            );
+                        });
+                    }, 60000);
                 });
 
                 socket.on('disconnect', (reason) => {
                     setStatus(`Socket: disconnected (${reason})`);
                     log('Socket disconnected', { reason });
+                    if (heartbeatInterval) {
+                        clearInterval(heartbeatInterval);
+                        heartbeatInterval = null;
+                    }
+                    if (sidebarPresenceInterval) {
+                        clearInterval(sidebarPresenceInterval);
+                        sidebarPresenceInterval = null;
+                    }
                 });
 
                 socket.on('connect_error', (err) => {
@@ -877,19 +1654,87 @@
                     log('Socket connect error', { message: err.message });
                 });
 
-                socket.on('chat:new-message', (payload) => {
-                    log('Received chat:new-message', payload);
+                socket.on('user:offline', (payload) => {
+                    const offlineUserId = normalizeId(payload?.userId);
+                    if (!offlineUserId) {
+                        return;
+                    }
 
+                    selectedConversationPresence.delete(offlineUserId);
+                    setSidebarPresence(offlineUserId, false);
+                    renderConversations();
+                    renderPresenceUI();
+
+                    if (!memberPresenceModal.classList.contains('hidden')) {
+                        renderMemberPresenceModal();
+                    }
+
+                    log('User offline client', { userId: offlineUserId });
+                });
+
+                socket.on('user:online', (payload) => {
+                    const onlineUserId = normalizeId(payload?.userId);
+                    if (!onlineUserId) {
+                        return;
+                    }
+
+                    selectedConversationPresence.add(onlineUserId);
+                    setSidebarPresence(onlineUserId, true);
+                    renderConversations();
+                    renderPresenceUI();
+
+                    if (!memberPresenceModal.classList.contains('hidden')) {
+                        renderMemberPresenceModal();
+                    }
+
+                    log('User online client', { userId: onlineUserId });
+                });
+
+                socket.on('chat:new-message', (payload) => {
                     const conversationId = normalizeId(payload?.conversationId);
                     const message = payload?.message;
 
                     if (!conversationId || !message) {
                         return;
                     }
+                    log('Received chat:new-message', payload);
+                    updateConversationWithMessage(conversationId, message);
+                    renderConversations();
 
                     if (conversationId === selectedConversationId) {
                         appendMessage(message);
+                        if (
+                            getMessageSenderId(message) !==
+                            normalizeId(currentUser?._id)
+                        ) {
+                            markConversationAsRead(
+                                conversationId,
+                                message._id,
+                                { silent: true },
+                            ).catch((error) => {
+                                console.error(
+                                    'Auto mark read after realtime message failed',
+                                    error,
+                                );
+                            });
+                        }
                     }
+                });
+
+                socket.on('user:unseen-message', (payload) => {
+                    const conversationId = normalizeId(payload?.conversationId);
+                    if (!conversationId) {
+                        return;
+                    }
+
+                    log('Received user:unseen-message', payload);
+
+                    if (conversationId === selectedConversationId) {
+                        return;
+                    }
+
+                    setConversationUnseen(conversationId, true);
+                    renderConversations();
                 });
             }
 
@@ -907,6 +1752,23 @@
             reloadMessagesBtn.addEventListener('click', () => {
                 if (selectedConversationId) {
                     loadMessages(selectedConversationId);
+                }
+            });
+
+            viewMembersBtn.addEventListener('click', () => {
+                const conversation = getConversationById(
+                    selectedConversationId,
+                );
+                if (conversation?.isGroup) {
+                    openMemberPresenceModal();
+                }
+            });
+
+            closeMembersBtn.addEventListener('click', closeMemberPresenceModal);
+
+            memberPresenceModal.addEventListener('click', (event) => {
+                if (event.target === memberPresenceModal) {
+                    closeMemberPresenceModal();
                 }
             });
 

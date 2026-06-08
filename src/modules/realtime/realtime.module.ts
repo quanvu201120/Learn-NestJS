@@ -3,9 +3,10 @@ import { ChatGateway } from './chat.gateway';
 import { AuthModule } from '@/auth/auth.module';
 import { ConversationsModule } from '../conversations/conversations.module';
 import { MessagesModule } from '../messages/messages.module';
+import { RedisModule } from '@/redis/redis.module';
 
 @Module({
-    imports: [AuthModule, ConversationsModule, MessagesModule],
+    imports: [AuthModule, ConversationsModule, MessagesModule, RedisModule],
     exports: [ChatGateway],
     providers: [ChatGateway],
 })

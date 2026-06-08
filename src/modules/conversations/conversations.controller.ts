@@ -18,10 +18,14 @@ import {
     RemoveMemberConversationDto,
     UpdateNameConversationDto,
 } from './dto/update-conversation.dto';
+import { RedisService } from '@/redis/redis.service';
 
 @Controller('conversations')
 export class ConversationsController {
-    constructor(private readonly conversationsService: ConversationsService) {}
+    constructor(
+        private readonly conversationsService: ConversationsService,
+        private readonly redisService: RedisService,
+    ) {}
 
     @Post()
     create(
@@ -82,16 +86,18 @@ export class ConversationsController {
     }
 
     @Patch(':id/read')
-    markAsRead(
+    async markAsRead(
         @Param('id') id: string,
         @Body() readMessageDto: ReadMessageDto,
         @Request() req: any,
     ) {
-        return this.conversationsService.markAsRead(
+        const result = await this.conversationsService.markAsRead(
             id,
             req.user._id,
             readMessageDto.messageId,
         );
+        await this.redisService.removeUnseenConversation(req.user._id, id);
+        return result;
     }
 
     @Delete(':id')

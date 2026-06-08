@@ -2,10 +2,11 @@
 
 ## 1. Mục tiêu
 
-- Xây dựng được một chat realtime cơ bản bằng NestJS + Socket.IO + MongoDB.
+- Xây dựng được chat realtime cơ bản bằng NestJS + Socket.IO + MongoDB.
 - Xác thực người dùng bằng JWT khi mở kết nối WebSocket.
-- Lưu tin nhắn vào database và phát realtime cho các thành viên trong phòng.
-- Có thể mở rộng lên nhiều instance bằng Redis Adapter khi cần scale.
+- Lưu tin nhắn vào database và phát realtime cho đúng thành viên.
+- Quản lý online/offline và `unseen conversation` bằng Redis.
+- Làm nền cho `mark_read`, sidebar có tin nhắn mới, và sau đó mới tới read receipt chi tiết.
 
 ## 2. Kiến trúc tổng quan
 
@@ -14,149 +15,10 @@ graph TD
     Client[Socket.IO Client / Frontend] <-->|WebSocket| Gateway[NestJS Chat Gateway]
     Gateway <-->|Verify JWT| AuthService[Auth Service]
     Gateway <-->|Save history| MongoDB[(MongoDB / Mongoose)]
-    Gateway <-->|Sync events| Redis[(Redis Pub/Sub)]
+    Gateway <-->|Presence + unseen| Redis[(Redis)]
 ```
 
-## 3. Kiến thức cần nắm theo thứ tự
-
-### Bước 1: WebSocket và NestJS Gateway
-
-- Hiểu khác biệt giữa HTTP request/response và kết nối WebSocket 2 chiều.
-- Nắm cách NestJS tổ chức realtime qua `@nestjs/websockets`.
-- Chọn Socket.IO để có sẵn reconnect, rooms, namespaces, ack event.
-
-```bash
-npm i @nestjs/websockets @nestjs/platform-socket.io socket.io socket.io-client
-```
-
-### Bước 2: Thiết kế dữ liệu chat
-
-Tối thiểu nên có 2 collection:
-
-#### `conversations`
-
-- `name`: tên phòng, dùng cho group chat
-- `isGroup`: phân biệt chat 1-1 hay chat nhóm
-- `users`: danh sách `ObjectId` của thành viên
-- `lastMessage`: tham chiếu tin nhắn gần nhất để render danh sách chat
-
-#### `messages`
-
-- `conversation`: phòng chat chứa tin nhắn
-- `sender`: người gửi
-- `content`: nội dung text hoặc link media
-- `readBy` hoặc read state riêng nếu cần tối ưu
-
-#### Việc cần làm ở bước này
-
-- Tạo `conversation.schema.ts` và `message.schema.ts`
-- Tạo `conversations.module.ts` và `messages.module.ts`
-- Tạo service xử lý dữ liệu chat, chưa cần full CRUD scaffold
-- Tạo REST API tối thiểu để frontend có dữ liệu nền trước khi nối realtime
-
-#### API tối thiểu nên có
-
-- `POST /conversations`
-- `GET /conversations`
-- `GET /conversations/:id`
-- `GET /conversations/:id/messages`
-
-#### Chưa cần làm ngay
-
-- Chưa cần `PUT /messages/:id`
-- Chưa cần `DELETE /messages/:id` theo kiểu hard delete
-- Chưa cần edit message, recall for everyone, delete for everyone ở giai đoạn đầu
-
-#### Kết quả mong đợi
-
-- MongoDB lưu được conversation và message đúng quan hệ
-- Có API để frontend render danh sách chat và lịch sử chat
-- Có service sẵn để Gateway gọi khi nhận event `send_message`
-
-### Bước 3: Xác thực JWT trong WebSocket
-
-- Client gửi token khi khởi tạo socket, ví dụ `io(url, { auth: { token } })`
-- Ở server, lấy token từ `client.handshake.auth.token`
-- Verify token bằng `AuthService` hoặc `JwtService`
-- Nếu hợp lệ, gán user vào `client.data.user`
-- Nếu không hợp lệ, ngắt kết nối
-
-### Bước 4: Rooms và luồng tin nhắn
-
-- Mỗi user join vào room riêng bằng chính `userId` để nhận thông báo cá nhân
-- Khi mở một cuộc trò chuyện, client gửi event `join_room`
-- Gateway cho socket join room `conversationId`
-- Khi gửi tin nhắn:
-  - client emit `send_message`
-  - gateway kiểm tra quyền truy cập phòng
-  - lưu message vào MongoDB
-  - broadcast qua room bằng `this.server.to(conversationId).emit(...)`
-
-### Bước 5: Online, typing, read status
-
-- Online/offline: theo dõi socket đang active theo `userId`
-- Typing indicator: phát event ngắn hạn trong room
-- Read status: cập nhật receipt hoặc bảng trạng thái riêng nếu cần tối ưu
-
-### Bước 6: Redis Adapter khi scale
-
-- Khi app chạy nhiều instance, Socket.IO cần Redis để sync event giữa các server
-- Dùng `@socket.io/redis-adapter`
-- Mục tiêu là user ở server A vẫn nhận được message từ user ở server B
-
-## 4. Lộ trình thực hành
-
-### Tuần 1: Kết nối realtime cơ bản
-
-- Tạo `chat.gateway.ts`
-- Bắt event connect/disconnect
-- Verify JWT lúc connect
-- Làm một file client test đơn giản để gửi/nhận event
-
-Kết quả mong đợi:
-
-- Kết nối socket thành công
-- Biết được user nào đang online
-- Có thể join room cá nhân
-
-### Tuần 2: Dữ liệu và API nền
-
-- Hoàn thiện schema `Conversation` và `Message`
-- Viết REST API để:
-  - tạo cuộc trò chuyện
-  - lấy danh sách cuộc trò chuyện
-  - lấy lịch sử tin nhắn
-- Kiểm tra quyền truy cập conversation trước khi trả dữ liệu
-
-Kết quả mong đợi:
-
-- Có thể tạo và đọc dữ liệu chat từ MongoDB
-- Có API đủ dùng để frontend hiển thị danh sách và lịch sử chat
-
-### Tuần 3: Realtime message flow
-
-- Hoàn thiện event `join_room` và `send_message`
-- Lưu message rồi broadcast cho đúng room
-- Thêm typing indicator
-- Thêm online/offline state
-
-Kết quả mong đợi:
-
-- Gửi tin nhắn realtime được end-to-end
-- Người trong cùng phòng nhận message ngay lập tức
-
-### Tuần 4: Tối ưu và mở rộng
-
-- Tích hợp Redis Adapter cho Socket.IO
-- Kiểm tra chạy nhiều instance
-- Bổ sung test cơ bản cho gateway / luồng realtime nếu có thể
-
-Kết quả mong đợi:
-
-- Realtime chạy ổn khi scale
-- Kiến trúc đủ sạch để mở rộng thêm notification, read receipt, file upload
-
-## 5. Trạng thái hiện tại
+## 3. Trạng thái hiện tại
 
 ### Backend nền đã có
 
@@ -164,140 +26,337 @@ Kết quả mong đợi:
 - `ConversationsService.findAllByUser`
 - `ConversationsService.findOne`
 - `ConversationsService.markAsRead`
+- `ConversationsService.getAllConversationIdsByUser`
+- `ConversationsService.getConversationOrThrow`
+- `ConversationsService.ensureMemberInConversation`
 - `MessagesService.createMessage`
 - `MessagesService.getMessagesByConversation`
 - `MessagesService.getMessageById`
 - `MessagesService.checkMessageExistInConversation`
 - `MessagesService.softDeleteMessage`
 
-### Đánh giá hiện tại
+### Realtime hiện đã làm xong
 
-- Đã đủ điều kiện để chuyển sang làm `socket realtime`.
-- REST vẫn nên dùng để load danh sách conversation và history ban đầu.
-- Socket chỉ nên tập trung vào các event realtime như `join_room`, `send_message`, `mark_read`, `typing`.
+- Đã có `chat.gateway.ts`
+- Đã verify JWT khi socket connect
+- Đã gán `client.data.user`
+- Đã cho socket join room riêng theo `userId`
+- Đã có event join conversation: `chat:join-conversation`
+- Đã có event gửi tin nhắn: `chat:create-message`
+- Đã lưu DB xong rồi mới emit `chat:new-message`
+- Đã có heartbeat: `user:heartbeat`
+- Đã có presence online/offline bằng Redis TTL
+- Đã emit `user:online` và `user:offline` theo conversation room
+- Đã có file FE test để connect, join conversation, load history, send message, và nhận realtime
 
-### Cần chốt lại trước khi ráp socket
+### Redis hiện đã làm xong
 
-- Đảm bảo payload message trả từ REST và payload emit từ socket cùng một shape.
-- Soát lại các chỗ dùng `hiddenHistory.find(...)` để tránh lỗi khi `hiddenHistory` là `undefined`.
-- Xác định rõ tên event và format ack/error để FE test dễ biết cách bắt.
+- Đã có `setPresence(userId)` với TTL
+- Đã có `getPresence(userId)`
+- Đã có `getUserOnlineInListIds(members)`
+- Đã subscribe Redis key expiration để phát hiện offline
+- Đã dùng Redis cho online/offline
 
-## 6. Kế hoạch tiếp theo với realtime
+### Những gì chưa xong
+
+- Chưa có `unseen conversation` cho sidebar
+- Chưa có event riêng báo sidebar có tin mới
+- Chưa có chống emit lặp cho cùng 1 conversation chưa xem
+- Chưa nối `mark_read` với Redis để clear trạng thái unseen
+- Chưa có typing event
+- Chưa có read receipt chi tiết ở mức từng message / từng user
+
+## 4. Đánh giá hiện tại
+
+Hiện tại backend đã đi qua được phần khó nhất của giai đoạn đầu:
+
+- Socket auth đã chạy
+- Join room đã chạy
+- Gửi tin nhắn realtime đã chạy end-to-end
+- Presence online/offline đã có Redis nền
+
+Nghĩa là project đã qua giai đoạn "lắp socket cơ bản". Phần tiếp theo không nên nhảy ngay vào UI `đã xem`, mà nên chốt trước state nghiệp vụ cho `unseen` ở backend. Nếu không chốt phần này trước thì sidebar, `mark_read`, và read receipt sẽ bị chồng logic lên nhau.
+
+## 5. Chốt hướng xử lý tiếp theo
+
+### Nguyên tắc
+
+- `Đang gửi` và `đã gửi` là state hiển thị ở FE.
+- `Có tin mới chưa xem` và `đã xem` là state nghiệp vụ, nên chốt ở BE trước.
+- FE chỉ nên render theo state / event mà BE phát ra, không nên tự đoán unread/read.
+
+### Ưu tiên tiếp theo
+
+1. Làm `unseen conversation` ở Redis
+2. Emit event riêng cho sidebar khi có tin mới
+3. Cho FE load và render trạng thái unseen
+4. Nối `mark_read` với Redis để clear unseen
+5. Sau đó mới làm read receipt chi tiết
+
+## 6. Kế hoạch Redis cho unseen conversation
+
+### Mục tiêu
+
+Chưa cần unread count chính xác. Giai đoạn này chỉ cần biết:
+
+- user nào đang có conversation chưa xem
+- conversation nào cần tô đậm / gắn badge ở sidebar
+- tránh emit lặp lại cùng một tín hiệu "có tin mới" khi conversation đã dirty rồi
+
+### Redis key
+
+Mỗi user có một `Set`:
+
+```text
+unseen:conversations:{userId}
+```
+
+Ví dụ:
+
+```text
+unseen:conversations:123
+```
+
+Set này chứa các `conversationId` mà user `123` đang có tin mới chưa xem.
+
+### Luồng khi tạo message
+
+Giả sử user A gửi message vào conversation `convG`.
+
+#### Bước 1: Tạo message trong DB
+
+- Gateway nhận `chat:create-message`
+- Gọi `messagesService.createMessage(...)`
+- Chỉ đi tiếp khi DB tạo thành công
+
+#### Bước 2: Emit message realtime cho room conversation
+
+- Emit `chat:new-message` vào room conversation như hiện tại
+- Người đang mở conversation sẽ thấy tin nhắn ngay
+
+#### Bước 3: Lấy danh sách thành viên của conversation
+
+- Lấy toàn bộ member ids
+- Bỏ sender ra khỏi danh sách
+
+#### Bước 4: Lọc user online
+
+- Dùng Redis hiện có để biết member nào đang online
+- Chỉ cần xử lý `unseen` realtime cho user online ở giai đoạn này
+
+#### Bước 5: Đánh dấu unseen bằng `SADD`
+
+Với từng user online khác sender:
+
+```text
+SADD unseen:conversations:{userId} {conversationId}
+```
+
+Ý nghĩa giá trị trả về:
+
+- `1`: conversation vừa chuyển từ `clean` sang `dirty`
+- `0`: conversation đã dirty từ trước rồi
+
+#### Bước 6: Chỉ emit khi `SADD == 1`
+
+Nếu `SADD == 1` thì emit event riêng cho room user đó:
+
+```ts
+this.server.to(getRoomNameUser(userId)).emit('conversation:dirty', {
+    conversationId,
+});
+```
+
+Nếu `SADD == 0` thì bỏ qua.
+
+Đây là chỗ chống gửi lặp.
+
+### Tại sao `SADD` hợp với bài toán này
+
+Vì `SADD` tự trả lời luôn câu hỏi:
+
+- user này với conversation này đã có cờ unseen chưa?
+
+Không cần:
+
+- `GET`
+- `EXISTS`
+- rồi mới `SET`
+
+Chỉ cần `SADD` là đủ để biết có cần emit sidebar nữa hay không.
+
+### Tối ưu khi có nhiều user online
+
+Không nên `await redis.sadd(...)` tuần tự từng vòng.
+
+Nên dùng `pipeline`:
+
+- gom nhiều lệnh `SADD`
+- chạy một lần
+- dựa vào kết quả để lọc user nào cần emit `conversation:dirty`
+
+## 7. Kế hoạch mark read gắn với unseen
+
+### Mục tiêu
+
+Khi user mở conversation hoặc FE xác nhận đã đọc:
+
+- cập nhật read state trong DB
+- clear cờ unseen trong Redis
+- báo về FE để sidebar bỏ badge / bỏ highlight
+
+### Luồng đề xuất
+
+#### Bước 1: Tạo event `chat:mark-read`
+
+Payload tối thiểu:
+
+- `conversationId`
+- `messageId`
+
+#### Bước 2: Xử lý DB
+
+- Gateway check membership
+- Gọi `conversationsService.markAsRead(conversationId, userId, messageId)`
+
+#### Bước 3: Clear unseen trong Redis
+
+```text
+SREM unseen:conversations:{userId} {conversationId}
+```
+
+#### Bước 4: Trả ack hoặc emit event
+
+Có thể chọn một trong hai:
+
+- trả ack cho sender socket hiện tại
+- hoặc emit `conversation:read` vào room riêng của user để nhiều tab cùng clear
+
+Nếu user có thể mở nhiều tab thì nên emit vào room riêng của user.
+
+## 8. Kế hoạch cho sidebar
 
 ### Mục tiêu giai đoạn này
 
-- Kết nối được socket có JWT.
-- User join được room theo `conversationId`.
-- Gửi tin nhắn realtime và lưu DB thành công.
-- Đọc message và typing có event để FE test ngay được.
+Sidebar chỉ cần biết:
 
-### Thứ tự làm thực dụng
+- conversation nào đang unseen
+- conversation nào vừa mới dirty
 
-#### Bước 1: Dọn backend để socket-friendly
+Chưa cần unread count chính xác.
 
-- Chuẩn hóa `serializeMessage` để `createMessage`, `getMessageById`, `getMessagesByConversation` trả cùng shape.
-- Kiểm tra lại `replyTo`, `sender`, `conversationId`, `createdAt`.
-- Fix các edge case liên quan `hiddenHistory`.
-- Nếu cần, bổ sung helper check member conversation để gateway gọi lại dễ đọc hơn.
+### Dữ liệu FE cần có
 
-Kết quả mong đợi:
+- danh sách conversation từ REST như hiện tại
+- thêm danh sách `unseen conversation ids`
+- lắng nghe event `conversation:dirty`
+- lắng nghe event `conversation:read` nếu dùng multi-tab
 
-- Service đủ ổn định để gateway gọi trực tiếp.
-- Payload REST và socket không bị lệch nhau.
+### Hướng load ban đầu
 
-#### Bước 2: Tạo `chat.gateway.ts`
+Khi connect socket hoặc load conversations:
 
-- Dùng `@WebSocketGateway()`.
-- Bắt `handleConnection` và `handleDisconnect`.
-- Verify JWT từ `client.handshake.auth.token`.
-- Gán user vào `client.data.user`.
-- Cho mỗi socket join room riêng theo `userId`.
+- FE nên gọi thêm một API hoặc socket event để lấy toàn bộ unseen conversations hiện tại của user
+- sau đó realtime chỉ cần cập nhật incrementally bằng event `conversation:dirty` và `conversation:read`
 
-Kết quả mong đợi:
+## 9. Thứ tự làm tiếp theo
 
-- Kết nối socket hợp lệ mới được phép vào.
-- Có thể quản lý socket theo user.
+### Bước 1: Hoàn thiện Redis service cho unseen
 
-#### Bước 3: Làm event `join_room`
+Thêm các helper:
 
-- Client gửi `conversationId`.
-- Gateway check user có phải member của conversation không.
-- Nếu hợp lệ thì `client.join(conversationId)`.
-- Có thể trả ack thành công kèm thông tin room đã join.
+- `addUnseenConversation(userId, conversationId)`
+- `removeUnseenConversation(userId, conversationId)`
+- `getUnseenConversationIds(userId)`
+- `isConversationUnseen(userId, conversationId)` nếu cần
+- helper batch bằng `pipeline` để đánh dấu unseen cho nhiều user online
 
 Kết quả mong đợi:
 
-- Socket chỉ join được room mà user có quyền truy cập.
+- RedisService đủ API để gateway dùng thẳng
 
-#### Bước 4: Làm event `send_message`
+### Bước 2: Nối unseen vào `chat:create-message`
 
-- Gateway nhận `conversationId`, `type`, `content`, `replyTo`.
-- Gọi `messagesService.createMessage(...)`.
-- Emit `message_created` vào room `conversationId`.
-- Nếu muốn để debug ngon hơn, trả ack message vừa tạo cho sender.
-
-Kết quả mong đợi:
-
-- Gửi tin nhắn realtime end-to-end.
-- Message lưu DB xong mới phát cho room.
-
-#### Bước 5: Làm event `mark_read`
-
-- Gateway nhận `conversationId` và `messageId`.
-- Gọi `conversationsService.markAsRead(...)`.
-- Emit `conversation_read` hoặc `message_read` vào room.
+- Sau khi create message thành công và emit `chat:new-message`
+- Lấy member ids, bỏ sender
+- Lọc user online
+- Dùng `SADD` hoặc `pipeline`
+- Emit `conversation:dirty` cho đúng user khi `SADD == 1`
 
 Kết quả mong đợi:
 
-- Có read state cơ bản để sau này gắn vào UI.
+- Sidebar có tín hiệu realtime "conversation này vừa có tin mới chưa xem"
+- Không bị spam emit lặp
 
-#### Bước 6: Làm event `typing`
+### Bước 3: Thêm event lấy unseen ban đầu
 
-- `typing_start`
-- `typing_stop`
-- Broadcast vào room, không cần lưu DB.
+Có thể là:
+
+- REST API riêng
+- hoặc socket event như `chat:get-unseen-conversations`
 
 Kết quả mong đợi:
 
-- FE test thấy được typing indicator cơ bản.
+- FE vừa connect xong là sync được trạng thái sidebar hiện tại
 
-## 7. FE nên làm đến mức nào
+### Bước 4: Làm `chat:mark-read`
 
-### Khuyến nghị
+- Gọi `markAsRead(...)`
+- `SREM unseen:conversations:{userId} {conversationId}`
+- ack hoặc emit `conversation:read`
 
-- Chưa cần làm FE thật ngay.
-- Nên làm một FE test đơn giản trước, có thể là 1 trang HTML hoặc 1 page React rất mỏng.
+Kết quả mong đợi:
 
-### FE test tối thiểu cần có
+- User mở conversation thì sidebar sạch lại đúng cách
 
-- Ô nhập `token`
-- Ô nhập `conversationId`
-- Nút `connect socket`
-- Nút `join room`
-- Ô nhập message và nút `send`
-- Khu vực log event nhận được từ socket
+### Bước 5: FE test lại toàn bộ flow
 
-### Tại sao nên đi theo cách này
+Test ít nhất các case:
 
-- Debug socket nhanh hơn debug UI thật.
-- Tách được lỗi backend realtime với lỗi state management ở frontend.
-- Khi flow ổn rồi mới ghép vào FE thật sẽ ít rối hơn.
+- User B đang online nhưng chưa mở conversation, A gửi tin nhắn => B nhận `conversation:dirty`
+- A gửi tiếp nhiều tin trong cùng conversation chưa xem => B không bị spam dirty lặp
+- B mở conversation và mark read => cờ unseen bị clear
+- Sau khi B đã read, A gửi tin mới lần nữa => B lại nhận dirty mới
 
-## 8. Todo rất cụ thể để code tiếp
+### Bước 6: Sau đó mới làm read receipt chi tiết
+
+Chỉ làm bước này sau khi `unseen` + `mark_read` + sidebar đã ổn.
+
+Lúc đó mới quyết định:
+
+- event `message:read`
+- payload ai đã xem
+- hiển thị `đã xem` ở message cuối hay ở từng message
+
+## 10. Todo rất cụ thể để code tiếp
 
 ### Todo ngay bây giờ
 
-- Fix các chỗ có khả năng lỗi trong `messages.service.ts`.
-- Chuẩn hóa serializer message.
-- Tạo `chat.gateway.ts`.
-- Code `handleConnection`, `join_room`, `send_message`, `mark_read`, `typing`.
-- Tạo FE test đơn giản để bạn tự bấm và nhìn log.
+- Bổ sung helper Redis cho `unseen conversation`
+- Chèn logic `unseen` vào sau `chat:create-message`
+- Tạo event hoặc API lấy `unseen conversations` ban đầu
+- Tạo event `chat:mark-read`
+- Clear unseen bằng `SREM` khi read
+- Emit event sync sidebar nếu cần multi-tab
+- FE test lại flow dirty/read cơ bản
 
 ### Chưa cần làm ngay
 
-- Redis adapter
-- Multi instance
-- Notification đầy đủ
+- Redis adapter cho multi-instance Socket.IO
 - Unread count chính xác cho mỗi conversation
+- Typing indicator
+- Read receipt chi tiết từng message
+- Notification đầy đủ
 - File upload realtime
 - Recall message for everyone
+
+## 11. Chốt ngắn gọn
+
+Hiện tại project đã xong phần:
+
+- socket auth
+- join conversation
+- send message realtime
+- presence online/offline
+
+Việc nên làm tiếp theo không phải là UI `đã xem`, mà là chốt state `unseen conversation` ở Redis trước. Khi phần này ổn thì sidebar, `mark_read`, và read receipt mới có nền chung để đi tiếp mà không bị vá chồng logic.

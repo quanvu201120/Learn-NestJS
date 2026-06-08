@@ -444,6 +444,19 @@ export class ConversationsService {
         );
     }
 
+    async getAllConversationIdsByUser(userId: string): Promise<string[]> {
+        const objectUserId = toObjectId(userId, 'user id');
+
+        const res = await this.conversationModel
+            .find({
+                users: objectUserId,
+            })
+            .select('_id')
+            .lean();
+
+        return res.map((conv) => conv._id.toString());
+    }
+
     async getMessageInConverOrThrow(messageId: string, conversationId: string) {
         const message =
             await this.messageService.checkMessageExistInConversation(

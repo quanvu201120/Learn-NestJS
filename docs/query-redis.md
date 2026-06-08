@@ -1,63 +1,163 @@
-# Redis Cơ Bản Cho Project Chat Realtime
+# Redis methods cheat sheet
 
-File này dành cho người mới. Mục tiêu là giúp bạn hiểu:
+File này là ghi chú nhanh về các nhóm lệnh Redis hay gặp:
 
-- Redis là gì trong project này
-- Dùng method nào cho bài toán nào
-- Flow từ `send_message` đến `emit`
-- Khi nào dùng `get/set/del`
-- Khi nào dùng `set`, `sadd`, `srem`, `smembers`, `sismember`, `exists`, `expire`, `setex`, `pipeline`
+- method làm gì
+- ví dụ ngắn
+- khi nào nên dùng
 
-## 1. Redis trong project này dùng để làm gì
+File này ưu tiên thực dụng, không cố liệt kê 100% toàn bộ command của Redis. Phần đầu là những lệnh hay dùng nhất khi đi làm và cũng là những lệnh sát với app chat này. Phần sau vẫn chia nhóm để tiện tra cứu.
 
-Trong project chat realtime, Redis rất hợp cho 2 bài toán:
+## 1. Những lệnh thường dùng nhất
 
-### A. Online / offline
+Nếu học để đi làm trước, hoặc để làm app này trước, nên nhớ mấy lệnh sau:
 
-Ví dụ:
+### Nhóm đọc / ghi cơ bản
 
-- user A đang online
-- user B đang offline
-
-Ta không muốn query DB nặng chỉ để biết user có online không. Redis giúp lưu trạng thái này rất nhanh.
-
-### B. Conversation nào có tin nhắn mới chưa xem
+- `SET`: lưu 1 key
+- `GET`: đọc 1 key
+- `MGET`: đọc nhiều key cùng lúc
+- `DEL`: xóa key
+- `EXISTS`: kiểm tra key có tồn tại không
 
 Ví dụ:
-
-- user B chưa mở group `conv123`
-- group đó vừa có tin mới
-- sidebar của B cần tô đậm
-
-Ta không cần unread count ngay. Chỉ cần biết:
-
-- conversation này đã có tin mới chưa xem hay chưa
-
-Redis rất hợp để lưu cờ này.
-
-## 2. Những lệnh Redis bạn cần nhớ
-
-Bạn không cần học hết Redis. Chỉ cần nắm mấy nhóm lệnh này là đủ.
-
-### `SET`
-
-Lưu một giá trị đơn.
 
 ```text
 SET presence:user:123 online
+GET presence:user:123
+MGET presence:user:1 presence:user:2 presence:user:3
+DEL presence:user:123
+EXISTS presence:user:123
 ```
 
-Ý nghĩa:
+### Nhóm TTL rất hay dùng
 
-- key là `presence:user:123`
-- value là `online`
+- `EXPIRE`: gắn thời gian sống cho key
+- `TTL`: xem key còn sống bao lâu
+- `SETEX`: set value + TTL trong một lệnh
+
+Ví dụ:
+
+```text
+EXPIRE presence:user:123 60
+TTL presence:user:123
+SETEX presence:user:123 60 online
+```
+
+### Nhóm Set cực hay dùng cho app
+
+- `SADD`: thêm phần tử vào set
+- `SREM`: xóa phần tử khỏi set
+- `SMEMBERS`: lấy toàn bộ phần tử trong set
+- `SISMEMBER`: check một phần tử có nằm trong set không
+
+Ví dụ:
+
+```text
+SADD unseen:conversations:123 convA
+SREM unseen:conversations:123 convA
+SMEMBERS unseen:conversations:123
+SISMEMBER unseen:conversations:123 convA
+```
+
+### Nhóm counter hay gặp
+
+- `INCR`
+- `DECR`
+- `INCRBY`
+
+Ví dụ:
+
+```text
+INCR counter:page:view
+DECR stock:item:1
+INCRBY score:user:1 10
+```
+
+### Nhóm debug / duyệt key
+
+- `SCAN`: duyệt key an toàn hơn `KEYS`
+- `TYPE`: xem kiểu dữ liệu
+
+Ví dụ:
+
+```text
+SCAN 0 MATCH presence:user:* COUNT 100
+TYPE unseen:conversations:123
+```
+
+### Nhóm batch rất hay dùng trong code
+
+- `pipeline`: gom nhiều lệnh Redis rồi chạy một lần
+
+Ví dụ:
+
+```ts
+const pipeline = redis.pipeline();
+pipeline.get('presence:user:1');
+pipeline.get('presence:user:2');
+const results = await pipeline.exec();
+```
+
+## 2. Những lệnh dùng nhiều trong app chat này
+
+Nếu chỉ xét app hiện tại thì các lệnh bạn dùng nhiều nhất là:
+
+- `SETEX` hoặc `SET ... EX ...`
+- `GET`
+- `MGET`
+- `TTL`
+- `SADD`
+- `SREM`
+- `SMEMBERS`
+- `pipeline`
+
+### Mapping nhanh với app hiện tại
+
+- Online/offline:
+  - `SETEX`
+  - `GET`
+  - `MGET`
+  - `TTL`
+
+- Unseen conversation:
+  - `SADD`
+  - `SREM`
+  - `SMEMBERS`
+
+- Tối ưu nhiều user online:
+  - `pipeline`
+
+## 3. String commands
+
+### `SET`
+
+Lưu một key với value.
+
+```text
+SET user:1 online
+```
 
 ### `GET`
 
-Lấy giá trị của một key.
+Lấy value của một key.
 
 ```text
-GET presence:user:123
+GET user:1
+```
+
+### `MGET`
+
+Lấy value của nhiều key cùng lúc.
+
+```text
+MGET user:1 user:2 user:3
+```
+
+Ví dụ kết quả:
+
+```text
+[online, nil, online]
 ```
 
 ### `DEL`
@@ -65,507 +165,807 @@ GET presence:user:123
 Xóa key.
 
 ```text
-DEL presence:user:123
+DEL user:1
 ```
-
-### `EXPIRE`
-
-Đặt thời gian sống cho key.
-
-```text
-EXPIRE presence:user:123 60
-```
-
-Ý nghĩa:
-
-- nếu sau 60 giây không được gia hạn thì key tự mất
-
-### `SETEX`
-
-Vừa set vừa gắn TTL trong một lệnh.
-
-```text
-SETEX presence:user:123 60 online
-```
-
-Ý nghĩa:
-
-- lưu `presence:user:123 = online`
-- key sống 60 giây
 
 ### `EXISTS`
 
 Kiểm tra key có tồn tại không.
 
 ```text
-EXISTS presence:user:123
+EXISTS user:1
 ```
 
 Kết quả:
 
-- `1`: key có tồn tại
-- `0`: key không tồn tại
+- `1`: có tồn tại
+- `0`: không tồn tại
 
-Trong bài toán online/offline:
+### `APPEND`
 
-- có key = online
-- không có key = offline
+Nối thêm chuỗi vào cuối value hiện tại.
+
+```text
+APPEND log:1 " hello"
+```
+
+### `GETRANGE`
+
+Lấy một phần chuỗi theo vị trí.
+
+```text
+GETRANGE article:1 0 9
+```
+
+### `SETRANGE`
+
+Ghi đè một đoạn của chuỗi từ vị trí chỉ định.
+
+```text
+SETRANGE article:1 0 "Hello"
+```
+
+## 4. TTL commands
+
+### `EXPIRE`
+
+Gắn thời gian sống cho key.
+
+```text
+EXPIRE user:1 60
+```
+
+### `PEXPIRE`
+
+Giống `EXPIRE` nhưng tính theo millisecond.
+
+```text
+PEXPIRE user:1 1500
+```
+
+### `TTL`
+
+Xem key còn sống bao nhiêu giây.
+
+```text
+TTL user:1
+```
+
+Kết quả thường gặp:
+
+- `> 0`: số giây còn lại
+- `-1`: key tồn tại nhưng không có TTL
+- `-2`: key không tồn tại
+
+### `PTTL`
+
+Giống `TTL` nhưng trả về millisecond.
+
+```text
+PTTL user:1
+```
+
+### `SETEX`
+
+Set value và gắn TTL trong một lệnh.
+
+```text
+SETEX user:1 60 online
+```
+
+### `PSETEX`
+
+Giống `SETEX` nhưng TTL theo millisecond.
+
+```text
+PSETEX user:1 1500 online
+```
+
+### `PERSIST`
+
+Xóa TTL của key, giữ key sống vô thời hạn.
+
+```text
+PERSIST user:1
+```
+
+## 5. Numeric commands
+
+### `INCR`
+
+Tăng giá trị số lên 1.
+
+```text
+INCR counter:page:view
+```
+
+### `DECR`
+
+Giảm giá trị số xuống 1.
+
+```text
+DECR stock:item:1
+```
+
+### `INCRBY`
+
+Tăng giá trị số theo bước chỉ định.
+
+```text
+INCRBY score:user:1 10
+```
+
+### `DECRBY`
+
+Giảm giá trị số theo bước chỉ định.
+
+```text
+DECRBY stock:item:1 2
+```
+
+### `INCRBYFLOAT`
+
+Tăng số thực.
+
+```text
+INCRBYFLOAT wallet:user:1 12.5
+```
+
+## 6. Hash commands
+
+Hash hợp khi muốn lưu nhiều field trong một object nhỏ.
+
+Ví dụ:
+
+```text
+user:1 => {name, email, status}
+```
+
+### `HSET`
+
+Set một hoặc nhiều field của hash.
+
+```text
+HSET user:1 name "An" email "an@test.com" status "online"
+```
+
+### `HGET`
+
+Lấy value của một field.
+
+```text
+HGET user:1 email
+```
+
+### `HMGET`
+
+Lấy nhiều field cùng lúc.
+
+```text
+HMGET user:1 name status
+```
+
+### `HGETALL`
+
+Lấy toàn bộ field và value của hash.
+
+```text
+HGETALL user:1
+```
+
+### `HDEL`
+
+Xóa một hoặc nhiều field khỏi hash.
+
+```text
+HDEL user:1 status
+```
+
+### `HEXISTS`
+
+Kiểm tra field có tồn tại không.
+
+```text
+HEXISTS user:1 email
+```
+
+### `HINCRBY`
+
+Tăng giá trị số của một field trong hash.
+
+```text
+HINCRBY stats:post:1 views 1
+```
+
+### `HKEYS`
+
+Lấy danh sách field.
+
+```text
+HKEYS user:1
+```
+
+### `HVALS`
+
+Lấy danh sách value.
+
+```text
+HVALS user:1
+```
+
+## 7. List commands
+
+List hợp khi cần queue hoặc danh sách có thứ tự.
+
+### `LPUSH`
+
+Thêm phần tử vào đầu list.
+
+```text
+LPUSH jobs pending
+```
+
+### `RPUSH`
+
+Thêm phần tử vào cuối list.
+
+```text
+RPUSH jobs done
+```
+
+### `LPOP`
+
+Lấy và xóa phần tử đầu list.
+
+```text
+LPOP jobs
+```
+
+### `RPOP`
+
+Lấy và xóa phần tử cuối list.
+
+```text
+RPOP jobs
+```
+
+### `LRANGE`
+
+Lấy một đoạn phần tử trong list.
+
+```text
+LRANGE jobs 0 -1
+```
+
+### `LLEN`
+
+Đếm số phần tử trong list.
+
+```text
+LLEN jobs
+```
+
+### `LINDEX`
+
+Lấy phần tử tại một vị trí.
+
+```text
+LINDEX jobs 0
+```
+
+### `LSET`
+
+Gán lại phần tử tại một vị trí.
+
+```text
+LSET jobs 0 processing
+```
+
+## 8. Set commands
+
+Set hợp khi cần tập hợp không trùng lặp.
 
 ### `SADD`
 
-Thêm phần tử vào một `Set`.
+Thêm phần tử vào set.
 
 ```text
-SADD unseen:conversations:123 convA
+SADD tags:post:1 redis
 ```
 
-Ý nghĩa:
-
-- thêm `convA` vào tập các conversation chưa xem của user `123`
-
-Kết quả trả về:
+Kết quả:
 
 - `1`: phần tử được thêm mới
-- `0`: phần tử đã có từ trước
-
-Đây là lệnh cực quan trọng cho sidebar.
+- `0`: phần tử đã tồn tại từ trước
 
 ### `SREM`
 
-Xóa phần tử khỏi `Set`.
+Xóa phần tử khỏi set.
 
 ```text
-SREM unseen:conversations:123 convA
+SREM tags:post:1 redis
 ```
-
-Ý nghĩa:
-
-- user `123` đã mở `convA`
-- conversation này không còn là "chưa xem" nữa
 
 ### `SMEMBERS`
 
-Lấy toàn bộ phần tử trong `Set`.
+Lấy toàn bộ phần tử trong set.
 
 ```text
-SMEMBERS unseen:conversations:123
-```
-
-Ví dụ trả về:
-
-```text
-[convA, convB, convC]
+SMEMBERS tags:post:1
 ```
 
 ### `SISMEMBER`
 
-Kiểm tra 1 phần tử có nằm trong `Set` không.
+Kiểm tra phần tử có nằm trong set không.
 
 ```text
-SISMEMBER unseen:conversations:123 convA
+SISMEMBER tags:post:1 redis
 ```
 
-Kết quả:
+### `SCARD`
 
-- `1`: có
-- `0`: không có
-
-### `pipeline`
-
-`pipeline` không phải là lệnh Redis đơn lẻ. Đây là cách:
-
-- gom nhiều lệnh Redis lại
-- gửi một lần
-- lấy kết quả một lần
-
-Rất hợp khi bạn có một mảng `userIds` lớn.
-
-## 3. Bài toán online / offline nên dùng lệnh nào
-
-Với nhu cầu hiện tại của bạn: chỉ cần biết user online hay offline, cách đơn giản nhất là:
-
-- key: `presence:user:{userId}`
-- value: `online`
-- TTL: `60s`
-
-### Khi socket connect
-
-Set key:
+Đếm số phần tử trong set.
 
 ```text
-SETEX presence:user:123 60 online
+SCARD tags:post:1
 ```
 
-### Khi client gửi heartbeat
+### `SPOP`
 
-Gia hạn key:
+Lấy và xóa ngẫu nhiên một phần tử.
 
 ```text
-EXPIRE presence:user:123 60
+SPOP tags:post:1
 ```
 
-Hoặc set lại:
+### `SRANDMEMBER`
+
+Lấy ngẫu nhiên một phần tử nhưng không xóa.
 
 ```text
-SETEX presence:user:123 60 online
+SRANDMEMBER tags:post:1
 ```
 
-### Khi check user online không
+### `SUNION`
+
+Lấy hợp của nhiều set.
 
 ```text
-EXISTS presence:user:123
+SUNION set:a set:b
 ```
 
-Nếu:
+### `SINTER`
 
-- `1` => online
-- `0` => offline
-
-### Khi logout
+Lấy giao của nhiều set.
 
 ```text
-DEL presence:user:123
+SINTER set:a set:b
 ```
 
-## 4. Bài toán sidebar "có tin nhắn mới" nên dùng gì
+### `SDIFF`
 
-Bạn không cần unread count ngay. Bạn chỉ cần biết:
-
-- conversation này đã có tin mới chưa xem hay chưa
-
-Cách đẹp nhất là:
-
-- mỗi user có một `Set`
-- Set này chứa các `conversationId` đang có tin mới chưa xem
-
-### Redis key
+Lấy phần tử có trong set đầu nhưng không có trong set sau.
 
 ```text
-unseen:conversations:{userId}
+SDIFF set:a set:b
 ```
+
+## 9. Sorted Set commands
+
+Sorted Set hợp khi cần xếp hạng theo điểm.
+
+### `ZADD`
+
+Thêm phần tử với score.
+
+```text
+ZADD leaderboard 100 user:1 95 user:2
+```
+
+### `ZRANGE`
+
+Lấy phần tử theo thứ tự score.
+
+```text
+ZRANGE leaderboard 0 -1
+```
+
+### `ZREVRANGE`
+
+Lấy phần tử theo score giảm dần.
+
+```text
+ZREVRANGE leaderboard 0 9
+```
+
+### `ZSCORE`
+
+Lấy score của một member.
+
+```text
+ZSCORE leaderboard user:1
+```
+
+### `ZRANK`
+
+Lấy thứ hạng tăng dần của member.
+
+```text
+ZRANK leaderboard user:1
+```
+
+### `ZREVRANK`
+
+Lấy thứ hạng giảm dần của member.
+
+```text
+ZREVRANK leaderboard user:1
+```
+
+### `ZREM`
+
+Xóa member khỏi sorted set.
+
+```text
+ZREM leaderboard user:2
+```
+
+### `ZCARD`
+
+Đếm số member.
+
+```text
+ZCARD leaderboard
+```
+
+## 10. Key commands
+
+### `KEYS`
+
+Tìm key theo pattern.
+
+```text
+KEYS user:*
+```
+
+Không nên dùng `KEYS` trên production dataset lớn vì có thể block.
+
+### `SCAN`
+
+Duyệt key theo từng đợt, an toàn hơn `KEYS`.
+
+```text
+SCAN 0 MATCH user:* COUNT 100
+```
+
+### `TYPE`
+
+Xem kiểu dữ liệu của key.
+
+```text
+TYPE user:1
+```
+
+### `RENAME`
+
+Đổi tên key.
+
+```text
+RENAME user:1 user:100
+```
+
+### `UNLINK`
+
+Xóa key bất đồng bộ, nhẹ hơn `DEL` trong vài trường hợp.
+
+```text
+UNLINK cache:big:1
+```
+
+## 11. Transaction và optimistic locking
+
+### `MULTI`
+
+Bắt đầu transaction.
+
+```text
+MULTI
+```
+
+### `EXEC`
+
+Chạy transaction.
+
+```text
+EXEC
+```
+
+### `DISCARD`
+
+Hủy transaction đang chờ.
+
+```text
+DISCARD
+```
+
+### `WATCH`
+
+Theo dõi key để làm optimistic locking.
+
+```text
+WATCH balance:user:1
+```
+
+Ý tưởng:
+
+- đọc key
+- chuẩn bị ghi
+- nếu key bị đổi bởi client khác trước `EXEC` thì transaction fail
+
+## 12. Pub/Sub commands
+
+Pub/Sub hợp khi cần phát tín hiệu realtime giữa publisher và subscriber.
+
+### `PUBLISH`
+
+Phát message lên channel.
+
+```text
+PUBLISH chat-events "new-message"
+```
+
+### `SUBSCRIBE`
+
+Lắng nghe channel.
+
+```text
+SUBSCRIBE chat-events
+```
+
+### `PSUBSCRIBE`
+
+Subscribe theo pattern.
+
+```text
+PSUBSCRIBE chat-*
+```
+
+## 13. Stream commands
+
+Redis Streams hợp khi cần event log hoặc consumer groups.
+
+### `XADD`
+
+Thêm event vào stream.
+
+```text
+XADD orders * userId 1 total 99
+```
+
+### `XRANGE`
+
+Đọc event theo khoảng id.
+
+```text
+XRANGE orders - +
+```
+
+### `XREAD`
+
+Đọc stream từ id chỉ định.
+
+```text
+XREAD COUNT 10 STREAMS orders 0
+```
+
+### `XGROUP`
+
+Quản lý consumer group cho stream.
+
+```text
+XGROUP CREATE orders workers 0
+```
+
+### `XREADGROUP`
+
+Đọc stream theo consumer group.
+
+```text
+XREADGROUP GROUP workers c1 COUNT 10 STREAMS orders >
+```
+
+## 14. Bitmap commands
+
+Bitmap hợp khi lưu cờ nhị phân rất lớn.
+
+### `SETBIT`
+
+Set bit tại offset.
+
+```text
+SETBIT online:days 5 1
+```
+
+### `GETBIT`
+
+Lấy bit tại offset.
+
+```text
+GETBIT online:days 5
+```
+
+### `BITCOUNT`
+
+Đếm số bit đang bật.
+
+```text
+BITCOUNT online:days
+```
+
+## 15. HyperLogLog commands
+
+HyperLogLog hợp khi cần ước lượng số phần tử unique với bộ nhớ nhỏ.
+
+### `PFADD`
+
+Thêm phần tử.
+
+```text
+PFADD visitors ip1 ip2 ip3
+```
+
+### `PFCOUNT`
+
+Ước lượng số phần tử unique.
+
+```text
+PFCOUNT visitors
+```
+
+### `PFMERGE`
+
+Gộp nhiều HyperLogLog.
+
+```text
+PFMERGE visitors:all visitors:web visitors:app
+```
+
+## 16. Geo commands
+
+Geo hợp khi lưu vị trí địa lý.
+
+### `GEOADD`
+
+Thêm tọa độ.
+
+```text
+GEOADD stores 106.7 10.7 hcm_store
+```
+
+### `GEOPOS`
+
+Lấy tọa độ.
+
+```text
+GEOPOS stores hcm_store
+```
+
+### `GEODIST`
+
+Tính khoảng cách.
+
+```text
+GEODIST stores hcm_store hn_store km
+```
+
+### `GEOSEARCH`
+
+Tìm điểm trong bán kính hoặc vùng.
+
+```text
+GEOSEARCH stores FROMLONLAT 106.7 10.7 BYRADIUS 5 km
+```
+
+## 17. Batch commands với `pipeline`
+
+`pipeline` là cách gom nhiều lệnh lại rồi gửi một lần.
+
+Nó hữu ích khi:
+
+- cần chạy nhiều lệnh giống nhau
+- muốn giảm số lần round-trip tới Redis
 
 Ví dụ:
-
-```text
-unseen:conversations:123
-```
-
-### Bên trong Set có gì
-
-Ví dụ:
-
-```text
-unseen:conversations:123 = { convA, convB }
-```
-
-Ý nghĩa:
-
-- user `123` đang có tin mới chưa xem ở `convA` và `convB`
-
-## 5. Flow từ lúc `createMessage` đến lúc `emit`
-
-Đây là phần quan trọng nhất.
-
-### Giả sử
-
-- A gửi message vào group `convG`
-- thành viên group là `A, B, C, D`
-- A là người gửi
-
-### Bước 1: server tạo message trong DB
-
-Server gọi:
-
-- `messagesService.createMessage(...)`
-
-Kết quả:
-
-- tạo message thành công
-
-### Bước 2: emit cho người đang mở room chat
-
-Server emit:
-
-```ts
-this.server.to(conversationId).emit('message_created', message);
-```
-
-Ý nghĩa:
-
-- ai đang mở `convG`
-- đã `join(convG)`
-- sẽ thấy message realtime
-
-### Bước 3: lấy danh sách member
-
-Từ DB lấy:
-
-```ts
-memberIds = [A, B, C, D];
-```
-
-### Bước 4: bỏ người gửi
-
-```ts
-memberIdsWithoutSender = [B, C, D];
-```
-
-### Bước 5: lọc người online
-
-Ví dụ chỉ có:
-
-```ts
-onlineUserIds = [B, D];
-```
-
-### Bước 6: với từng user online, thử `SADD`
-
-Ví dụ với `B`:
-
-```text
-SADD unseen:conversations:B convG
-```
-
-Nếu trả `1`:
-
-- nghĩa là `convG` trước đó chưa có trong unseen set của B
-- bây giờ mới được thêm lần đầu
-- phải emit event nhẹ cho B
-
-Nếu trả `0`:
-
-- nghĩa là B đã có cờ chưa xem với `convG` rồi
-- không cần emit nữa
-
-### Bước 7: emit event nhẹ cho sidebar
-
-Chỉ emit nếu `SADD == 1`:
-
-```ts
-this.server.to(userId).emit('conversation_dirty', {
-    conversationId,
-});
-```
-
-Payload chỉ cần:
-
-```ts
-{
-    conversationId: 'convG',
-}
-```
-
-### Bước 8: khi user mở conversation đó
-
-Ví dụ B click vào `convG`, thì clear cờ:
-
-```text
-SREM unseen:conversations:B convG
-```
-
-Ý nghĩa:
-
-- B đã xem group đó rồi
-- lần sau có message mới thì `SADD` sẽ lại trả `1`
-
-## 6. Tại sao `SADD` lại rất hợp bài toán này
-
-Vì `SADD` tự trả lời câu hỏi:
-
-- conversation này với user này đã được đánh dấu "chưa xem" chưa?
-
-Bạn không cần:
-
-- `EXISTS`
-- rồi `GET`
-- rồi `SET`
-
-Chỉ cần:
-
-```text
-SADD unseen:conversations:{userId} {conversationId}
-```
-
-Kết quả:
-
-- `1` => vừa chuyển từ `clean -> dirty`
-- `0` => đã dirty rồi
-
-Đây chính là lý do tin nhắn thứ 2, 3, 4 không phải emit lại cho cùng user đó.
-
-## 7. Có cần check key set tồn tại trước không
-
-Không cần.
-
-Ví dụ:
-
-```text
-SADD unseen:conversations:123 convA
-```
-
-Nếu key `unseen:conversations:123` chưa tồn tại:
-
-- Redis sẽ tự tạo Set mới
-
-Đây là điểm rất tiện.
-
-## 8. Vấn đề tối ưu: đừng `await` Redis từng vòng
-
-Nếu bạn có 500 user online và code kiểu:
-
-```ts
-for (const userId of userIds) {
-    const added = await redis.sadd(...);
-}
-```
-
-thì bị chậm vì:
-
-- query Redis tuần tự
-- mỗi vòng chờ xong mới đến vòng sau
-
-### Cách tốt hơn
-
-Dùng `pipeline`.
-
-## 9. `pipeline` dùng như nào
-
-Ví dụ bạn có:
-
-```ts
-const onlineUserIds = ['u1', 'u2', 'u3'];
-const conversationId = 'conv123';
-```
-
-### Tạo pipeline
 
 ```ts
 const pipeline = redis.pipeline();
-```
 
-### Add lệnh vào pipeline
+pipeline.get('user:1');
+pipeline.get('user:2');
+pipeline.get('user:3');
 
-```ts
-for (const userId of onlineUserIds) {
-    pipeline.sadd(`unseen:conversations:${userId}`, conversationId);
-}
-```
-
-Lúc này:
-
-- các lệnh được xếp hàng
-- chưa gửi ngay
-
-### Chạy pipeline
-
-```ts
 const results = await pipeline.exec();
 ```
 
-### Kết quả
-
-`results` thường có dạng:
+Ví dụ kết quả:
 
 ```ts
 [
-    [null, 1],
-    [null, 0],
-    [null, 1],
+  [null, 'online'],
+  [null, null],
+  [null, 'online'],
 ]
 ```
 
-Ý nghĩa:
+## 18. Khi nào dùng cấu trúc nào
 
-- user 1: `SADD == 1`
-- user 2: `SADD == 0`
-- user 3: `SADD == 1`
+### String
 
-### Lọc user cần emit
+Dùng khi:
 
-```ts
-const usersNeedNotify: string[] = [];
+- lưu một value đơn
+- token
+- OTP
+- status ngắn
 
-results.forEach((item, index) => {
-    const [error, added] = item;
-    const userId = onlineUserIds[index];
+### Hash
 
-    if (!error && added === 1) {
-        usersNeedNotify.push(userId);
-    }
-});
-```
+Dùng khi:
 
-### Emit sau cùng
+- lưu object nhỏ
+- profile ngắn
+- config theo field
 
-```ts
-for (const userId of usersNeedNotify) {
-    this.server.to(userId).emit('conversation_dirty', {
-        conversationId,
-    });
-}
-```
+### List
 
-## 10. Tóm tắt Redis method theo bài toán
+Dùng khi:
 
-### Online / offline
+- queue đơn giản
+- danh sách có thứ tự
 
-- `SETEX`: lưu user online với TTL
-- `EXPIRE`: gia hạn TTL
-- `EXISTS`: check online không
-- `DEL`: xóa key khi logout nếu cần
+### Set
 
-### Sidebar "có tin mới"
+Dùng khi:
 
-- `SADD`: đánh dấu conversation có tin chưa xem
-- `SREM`: clear cờ khi user mở conversation
-- `SMEMBERS`: lấy danh sách conversation chưa xem
-- `SISMEMBER`: check một conversation có đang unseen không
+- membership
+- tag
+- danh sách id không trùng
 
-### Tối ưu nhiều lệnh
+### Sorted Set
 
-- `pipeline`: gom batch Redis commands
+Dùng khi:
 
-## 11. Chốt tư duy
+- leaderboard
+- ranking
+- sắp xếp theo score hoặc thời gian
 
-Bạn chỉ cần nhớ 3 ý:
+### Stream
 
-### A. Presence online/offline
+Dùng khi:
 
-```text
-presence:user:{userId}
-```
+- event log
+- queue nhiều consumer
+- cần ack/consumer group
 
-TTL 60 giây, heartbeat gia hạn.
+## 19. Ghi nhớ nhanh
 
-### B. Sidebar unseen
+Nhóm lệnh nên nhớ trước:
 
-```text
-unseen:conversations:{userId}
-```
-
-Đây là Set chứa các `conversationId` chưa xem.
-
-### C. Khi gửi message
-
-1. tạo message trong DB
-2. emit `message_created` vào room conversation
-3. với user online khác:
-   - `SADD unseen:conversations:{userId} {conversationId}`
-   - nếu trả `1` thì emit `conversation_dirty`
-   - nếu trả `0` thì bỏ qua
-
-## 12. Bạn nên học thuộc gì trước
-
-Nếu mới học, cứ học thuộc mấy cái này trước là đủ:
-
-- `SETEX`
-- `EXPIRE`
-- `EXISTS`
-- `DEL`
-- `SADD`
-- `SREM`
-- `SMEMBERS`
-- `SISMEMBER`
+- `SET`, `GET`, `MGET`, `DEL`, `EXISTS`
+- `EXPIRE`, `TTL`, `SETEX`
+- `INCR`, `DECR`, `INCRBY`
+- `HSET`, `HGET`, `HGETALL`
+- `LPUSH`, `RPUSH`, `LPOP`, `LRANGE`
+- `SADD`, `SREM`, `SMEMBERS`, `SISMEMBER`
+- `ZADD`, `ZRANGE`, `ZREVRANGE`, `ZSCORE`
+- `SCAN`
+- `MULTI`, `EXEC`, `WATCH`
+- `PUBLISH`, `SUBSCRIBE`
+- `XADD`, `XREAD`
 - `pipeline`
 
-Chỉ cần nắm được 9 thứ này là bạn đủ dùng Redis cho phần realtime đầu tiên của project này.
+## 20. Ghi chú
+
+- `KEYS` tiện để học và debug nhưng không nên lạm dụng ở production lớn.
+- `SCAN` thường an toàn hơn `KEYS`.
+- Nếu cần áp dụng các method này vào flow của app chat thì xem ở `docs/plan.md`.

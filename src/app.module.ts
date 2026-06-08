@@ -11,6 +11,7 @@ import { RedisModule } from './redis/redis.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { MessagesModule } from './modules/messages/messages.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
+import { PresenceModule } from './modules/presence/presence.module';
 
 @Module({
     imports: [
@@ -21,6 +22,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
         ConversationsModule,
         MessagesModule,
         RealtimeModule,
+        PresenceModule,
         MongooseModule.forRootAsync({
             imports: [ConfigModule],
             // eslint-disable-next-line @typescript-eslint/require-await

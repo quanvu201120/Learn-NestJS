@@ -126,7 +126,7 @@ export class MessagesService {
             const { __v, ...result } = (
                 newMessage as MessageDocument
             ).toObject();
-            return serializeMessage(result);
+            return { message: serializeMessage(result), conversation };
         } finally {
             await session.endSession();
         }
