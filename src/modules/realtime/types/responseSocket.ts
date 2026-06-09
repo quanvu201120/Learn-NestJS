@@ -22,3 +22,9 @@ export type TypingUpdateEvent = {
     userId: string;
     typing: boolean;
 };
+
+export type MarkReadEvent = {
+    conversationId: string;
+    userId: string;
+    messageId: string;
+};

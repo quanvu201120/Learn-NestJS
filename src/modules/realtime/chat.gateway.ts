@@ -22,12 +22,14 @@ import { ConversationsService } from '../conversations/conversations.service';
 import { PayloadJWT } from '../users/schemas/user.schema';
 import { getRoomNameConversation, getRoomNameUser } from '@/utils/utils';
 import { CreateMessageSocketDto } from '../messages/dto/create-message.dto';
+import { MarkReadSocketDto, TypingSocketDto } from './dto/chat-socket.dto';
 import { RedisService } from '@/redis/redis.service';
 import {
     CreatedMessageEvent,
     JoinConversationEvent,
     SocketResponse,
     TypingUpdateEvent,
+    MarkReadEvent,
 } from './types/responseSocket';
 
 @WebSocketGateway({
@@ -280,7 +282,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     async handleTypingStart(
         @ConnectedSocket() client: Socket,
         @Ack() ack: (response: any) => void,
-        @MessageBody() body: { conversationId: string },
+        @MessageBody() body: TypingSocketDto,
     ) {
         try {
             const payload = this.validateUse(client);
@@ -337,7 +339,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     async handleTypingStop(
         @ConnectedSocket() client: Socket,
         @Ack() ack: (response: any) => void,
-        @MessageBody() body: { conversationId: string },
+        @MessageBody() body: TypingSocketDto,
     ) {
         try {
             const payload = this.validateUse(client);
@@ -381,6 +383,47 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             ack?.(res);
         } catch (error) {
             console.log('Error typing stop:', error);
+            const res: SocketResponse = {
+                ok: false,
+                message:
+                    error instanceof Error ? error.message : 'Unknown error',
+            };
+            ack?.(res);
+        }
+    }
+
+    @SubscribeMessage('chat:mark-read')
+    async handleMarkRead(
+        @ConnectedSocket() client: Socket,
+        @Ack() ack: (response: any) => void,
+        @MessageBody() body: MarkReadSocketDto,
+    ) {
+        try {
+            const payload = this.validateUse(client);
+            await this.conversationService.markAsRead(
+                body.conversationId,
+                payload._id,
+                body.messageId,
+            );
+
+            const roomName = getRoomNameConversation(body.conversationId);
+            const eventData: MarkReadEvent = {
+                conversationId: body.conversationId,
+                userId: payload._id,
+                messageId: body.messageId,
+            };
+            
+            client.to(roomName).emit('user:mark-read', eventData);
+
+            const res: SocketResponse = {
+                ok: true,
+                data: {
+                    markRead: true,
+                },
+            };
+            ack?.(res);
+        } catch (error) {
+            console.log('Error marking as read:', error);
             const res: SocketResponse = {
                 ok: false,
                 message:

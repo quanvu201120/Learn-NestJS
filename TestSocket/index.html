@@ -399,6 +399,63 @@
                 background: rgba(255, 253, 249, 0.92);
             }
 
+            .message-status {
+                font-size: 11px;
+                margin-top: 4px;
+                display: none;
+                align-items: center;
+                gap: 4px;
+                opacity: 0.8;
+            }
+
+            .message-card.show-status .message-status {
+                display: flex;
+            }
+
+            .message-card.own .message-status {
+                color: var(--muted);
+                justify-content: flex-end;
+            }
+
+            .message-card.other .message-status {
+                color: var(--muted);
+                justify-content: flex-start;
+            }
+
+            .message-status.seen {
+                cursor: pointer;
+                text-decoration: underline;
+                text-decoration-style: dotted;
+            }
+            .message-status.seen:hover {
+                color: #0f766e;
+            }
+
+            .message-status.error {
+                color: #ef4444;
+            }
+
+            /* Read Details Modal */
+            .read-details-list {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                margin-top: 10px;
+            }
+            .read-details-section {
+                font-size: 13px;
+                font-weight: bold;
+                margin-bottom: 4px;
+                color: var(--text);
+            }
+            .read-details-user {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 14px;
+                padding-left: 8px;
+            }
+
             .typing-indicator {
                 min-height: 20px;
                 padding: 0 20px 8px;
@@ -410,16 +467,33 @@
             .message-card {
                 display: flex;
                 max-width: 78%;
+                flex-direction: column;
+                cursor: pointer;
             }
 
             .message-card.own {
                 align-self: flex-end;
-                justify-content: flex-end;
+                align-items: flex-end;
             }
 
             .message-card.other {
                 align-self: flex-start;
-                justify-content: flex-start;
+                align-items: flex-start;
+            }
+
+            .date-divider {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 12px 0;
+            }
+            .date-divider span {
+                background: rgba(217, 205, 189, 0.4);
+                color: #55422b;
+                padding: 4px 12px;
+                border-radius: 12px;
+                font-size: 11px;
+                font-weight: 600;
             }
 
             .message-bubble {
@@ -752,15 +826,26 @@
                 };
             }
 
-            function formatDate(value) {
-                if (!value) {
-                    return 'Unknown time';
-                }
-
+            function formatTime(value) {
+                if (!value) return 'Unknown time';
                 const date = new Date(value);
-                return Number.isNaN(date.getTime())
-                    ? String(value)
-                    : date.toLocaleString();
+                if (Number.isNaN(date.getTime())) return String(value);
+                return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+            }
+
+            function formatDateOnly(value) {
+                if (!value) return '';
+                const date = new Date(value);
+                if (Number.isNaN(date.getTime())) return String(value);
+                
+                const today = new Date();
+                const yesterday = new Date(today);
+                yesterday.setDate(yesterday.getDate() - 1);
+                
+                if (date.toDateString() === today.toDateString()) return 'Hôm nay';
+                if (date.toDateString() === yesterday.toDateString()) return 'Hôm qua';
+                
+                return date.toLocaleDateString('vi-VN');
             }
 
             function getUserLabel(user) {
@@ -1408,7 +1493,7 @@
                 directPresenceBadge.title = isOnline ? 'Online' : 'Offline';
             }
 
-            function createMessageMarkup(message) {
+            function createMessageMarkup(message, isLatest = false) {
                 const senderId = normalizeId(
                     message.sender?._id || message.sender,
                 );
@@ -1421,14 +1506,120 @@
                     ? 'Tin nhan da bi xoa'
                     : message.content || '';
 
+                let statusHtml = '';
+                if (isOwnMessage) {
+                    if (message.status === 'sending') {
+                        statusHtml = '<div class="message-status">Đang gửi...</div>';
+                    } else if (message.status === 'error') {
+                        statusHtml = '<div class="message-status error">Lỗi</div>';
+                    } else {
+                        const conversation = getConversationById(selectedConversationId);
+                        const seenUsers = [];
+                        if (conversation && conversation.readReceipts) {
+                            const currMsgIdx = currentMessages.findIndex(m => normalizeId(m._id) === normalizeId(message._id));
+                            for (const [userId, msgId] of Object.entries(conversation.readReceipts)) {
+                                if (userId !== currentUserId) {
+                                    const readMsgIdx = currentMessages.findIndex(m => normalizeId(m._id) === normalizeId(msgId));
+                                    if (currMsgIdx !== -1 && readMsgIdx !== -1 && currMsgIdx <= readMsgIdx) {
+                                        const members = getConversationMembers(conversation);
+                                        const user = members.find(m => normalizeId(m._id) === userId);
+                                        if (user) seenUsers.push(user);
+                                    }
+                                }
+                            }
+                        }
+                        if (seenUsers.length > 0) {
+                            const seenNames = seenUsers.slice(0, 2).map(getUserLabel).join(', ');
+                            const moreCount = seenUsers.length > 2 ? ` và ${seenUsers.length - 2} người khác` : '';
+                            statusHtml = `<div class="message-status seen" data-msg-id="${message._id}" title="Nhấn để xem chi tiết">Đã xem bởi ${escapeHtml(seenNames)}${moreCount}</div>`;
+                        } else {
+                            statusHtml = '<div class="message-status sent">Đã gửi</div>';
+                        }
+                    }
+                }
+
+                let timeStr = message.createdAt ? escapeHtml(formatTime(message.createdAt)) : '';
+                const showStatusClass = isLatest && isOwnMessage ? 'show-status' : '';
+
                 return `
-                    <article class="message-card ${messageClass} ${deletedClass}">
+                    <article class="message-card ${messageClass} ${deletedClass} ${showStatusClass}">
                         <div class="message-bubble">
                             <div class="message-content">${escapeHtml(content)}</div>
-                            <div class="message-time">${escapeHtml(formatDate(message.createdAt))}</div>
+                            <div class="message-time">${timeStr}</div>
                         </div>
+                        ${statusHtml}
                     </article>
                 `;
+            }
+
+            function attachMessageEvents() {
+                document.querySelectorAll('.message-card').forEach((card) => {
+                    card.addEventListener('click', (e) => {
+                        if (e.target.closest('.message-status.seen')) {
+                            // Handled separately
+                            return;
+                        }
+                        // Toggle showing status
+                        card.classList.toggle('show-status');
+                    });
+                });
+
+                document.querySelectorAll('.message-status.seen').forEach((btn) => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const msgId = btn.dataset.msgId;
+                        showReadDetails(msgId);
+                    });
+                });
+            }
+
+            function showReadDetails(messageId) {
+                const conversation = getConversationById(selectedConversationId);
+                const message = currentMessages.find(m => m._id === messageId);
+                if (!conversation || !message) return;
+
+                const members = getConversationMembers(conversation);
+                const currentUserId = normalizeId(currentUser?._id);
+                
+                const seenUsers = [];
+                const unseenUsers = [];
+
+                members.forEach(member => {
+                    const mId = normalizeId(member._id);
+                    if (mId === currentUserId) return; // Skip self
+
+                    const receiptMsgId = conversation.readReceipts ? conversation.readReceipts[mId] : null;
+                    const currMsgIdx = currentMessages.findIndex(m => normalizeId(m._id) === normalizeId(messageId));
+                    const readMsgIdx = currentMessages.findIndex(m => normalizeId(m._id) === normalizeId(receiptMsgId));
+                    
+                    if (currMsgIdx !== -1 && readMsgIdx !== -1 && currMsgIdx <= readMsgIdx) {
+                        seenUsers.push(member);
+                    } else {
+                        unseenUsers.push(member);
+                    }
+                });
+
+                let html = '<div class="read-details-list">';
+                if (seenUsers.length > 0) {
+                    html += '<div class="read-details-section">Đã xem:</div>';
+                    seenUsers.forEach(u => {
+                        html += `<div class="read-details-user">✔️ ${escapeHtml(getUserLabel(u))}</div>`;
+                    });
+                }
+                if (unseenUsers.length > 0) {
+                    html += '<div class="read-details-section" style="margin-top: 10px;">Chưa xem:</div>';
+                    unseenUsers.forEach(u => {
+                        html += `<div class="read-details-user">➖ ${escapeHtml(getUserLabel(u))}</div>`;
+                    });
+                }
+                if (seenUsers.length === 0 && unseenUsers.length === 0) {
+                    html += '<div class="read-details-user">Không có thông tin</div>';
+                }
+                html += '</div>';
+
+                memberPresenceSubtitle.textContent = 'Chi tiết người đã xem';
+                memberPresenceList.innerHTML = html;
+                memberPresenceModal.classList.remove('hidden');
             }
 
             function renderConversations() {
@@ -1483,7 +1674,7 @@
                                         }
                                     </div>
                                     <div class="conversation-meta">ID: ${escapeHtml(conversationId)}</div>
-                                    <div class="conversation-meta">Updated: ${escapeHtml(formatDate(conversation.updatedAt))}</div>
+                                    <div class="conversation-meta">Updated: ${escapeHtml(formatTime(conversation.updatedAt))} ${escapeHtml(formatDateOnly(conversation.updatedAt))}</div>
                                     <div class="conversation-meta">Last: ${escapeHtml(preview)}</div>
                                 </article>
                             `;
@@ -1557,14 +1748,35 @@
                     return;
                 }
 
-                messageList.innerHTML = messages
-                    .map(createMessageMarkup)
-                    .join('');
+                let html = '';
+                let lastDate = null;
+
+                messages.forEach((message, index) => {
+                    if (message.createdAt) {
+                        const dateStr = formatDateOnly(message.createdAt);
+                        if (dateStr !== lastDate) {
+                            html += `<div class="date-divider"><span>${escapeHtml(dateStr)}</span></div>`;
+                            lastDate = dateStr;
+                        }
+                    }
+                    const isLatest = index === messages.length - 1;
+                    html += createMessageMarkup(message, isLatest);
+                });
+
+                messageList.innerHTML = html;
+                attachMessageEvents();
             }
 
             function appendMessage(message) {
                 currentMessages = [...currentMessages, message];
-                renderMessages(currentMessages);
+                try {
+                    renderMessages(currentMessages);
+                } catch (error) {
+                    log('Render messages failed', { message: error.message });
+                    renderEmptyMessages('Render error. Check console.');
+                }
+                
+                attachMessageEvents();
                 messageList.scrollTop = messageList.scrollHeight;
             }
 
@@ -1660,42 +1872,38 @@
             ) {
                 const normalizedConversationId = normalizeId(conversationId);
                 const normalizedMessageId = normalizeId(messageId);
-                if (!normalizedConversationId || !normalizedMessageId) {
+                if (!normalizedConversationId || !normalizedMessageId || !socket) {
                     return;
                 }
 
-                try {
-                    await fetchJson(
-                        `/conversations/${normalizedConversationId}/read`,
-                        {
-                            method: 'PATCH',
-                            body: {
-                                messageId: normalizedMessageId,
-                            },
-                        },
-                    );
-                    const conversation = getConversationById(
-                        normalizedConversationId,
-                    );
-                    if (conversation) {
-                        const nextReadReceipts = {
-                            ...(conversation.readReceipts || {}),
-                        };
-                        nextReadReceipts[normalizeId(currentUser?._id)] =
-                            normalizedMessageId;
-                        conversation.readReceipts = nextReadReceipts;
-                    }
-                    setConversationUnseen(normalizedConversationId, false);
-                    renderConversations();
-                } catch (error) {
-                    if (!options.silent) {
-                        log('Mark conversation as read failed', {
-                            conversationId: normalizedConversationId,
-                            messageId: normalizedMessageId,
-                            message: error.message,
-                        });
-                    }
-                }
+                return new Promise((resolve) => {
+                    socket.emit('chat:mark-read', {
+                        conversationId: normalizedConversationId,
+                        messageId: normalizedMessageId
+                    }, (response) => {
+                        if (response?.ok) {
+                            const conversation = getConversationById(
+                                normalizedConversationId,
+                            );
+                            if (conversation) {
+                                const nextReadReceipts = {
+                                    ...(conversation.readReceipts || {}),
+                                };
+                                nextReadReceipts[normalizeId(currentUser?._id)] =
+                                    normalizedMessageId;
+                                conversation.readReceipts = nextReadReceipts;
+                            }
+                            setConversationUnseen(normalizedConversationId, false);
+                            renderConversations();
+                            if (selectedConversationId === normalizedConversationId) {
+                                renderMessages(currentMessages);
+                            }
+                        } else if (!options.silent) {
+                            log('Mark conversation as read failed', response);
+                        }
+                        resolve();
+                    });
+                });
             }
 
             async function loadConversations() {
@@ -1904,7 +2112,16 @@
                     renderConversations();
 
                     if (conversationId === selectedConversationId) {
-                        appendMessage(message);
+                        const existingIdx = currentMessages.findIndex(m => m.status === 'sending' && m.content === message.content && normalizeId(m.sender?._id || m.sender) === normalizeId(message.sender?._id || message.sender));
+                        
+                        if (existingIdx !== -1) {
+                            currentMessages[existingIdx] = message;
+                            renderMessages(currentMessages);
+                            messageList.scrollTop = messageList.scrollHeight;
+                        } else {
+                            appendMessage(message);
+                        }
+
                         if (
                             getMessageSenderId(message) !==
                             normalizeId(currentUser?._id)
@@ -1920,6 +2137,29 @@
                                 );
                             });
                         }
+                    }
+                });
+
+                socket.on('user:mark-read', (payload) => {
+                    const conversationId = normalizeId(payload?.conversationId);
+                    const userId = normalizeId(payload?.userId);
+                    const messageId = normalizeId(payload?.messageId);
+
+                    if (!conversationId || !userId || !messageId) {
+                        return;
+                    }
+
+                    const conversation = getConversationById(conversationId);
+                    if (conversation) {
+                        const nextReadReceipts = {
+                            ...(conversation.readReceipts || {}),
+                        };
+                        nextReadReceipts[userId] = messageId;
+                        conversation.readReceipts = nextReadReceipts;
+                    }
+                    
+                    if (conversationId === selectedConversationId) {
+                        renderMessages(currentMessages);
                     }
                 });
 
@@ -2002,6 +2242,18 @@
 
                 if (socket && selectedConversationId && content) {
                     stopCurrentTyping();
+                    
+                    const tempId = 'temp-' + Date.now();
+                    const tempMessage = {
+                        _id: tempId,
+                        content,
+                        type: 'text',
+                        sender: currentUser,
+                        createdAt: new Date().toISOString(),
+                        status: 'sending'
+                    };
+                    appendMessage(tempMessage);
+
                     socket.emit(
                         'chat:create-message',
                         {
@@ -2012,12 +2264,23 @@
                         },
                         (response) => {
                             console.log('Message send response:', response);
-                            if (!response?.data?.created) {
+                            if (response?.data?.created) {
+                                const msg = currentMessages.find(m => m._id === tempId);
+                                if (msg) {
+                                    msg._id = response.data.messageId;
+                                    msg.status = 'sent';
+                                    renderMessages(currentMessages);
+                                }
+                            } else {
                                 const errorMsg = response?.error?.message
                                     ? response.error.message
                                     : 'Failed to send message';
                                 console.error('Message send failed:', errorMsg);
-                                alert(`Error: ${errorMsg}`);
+                                const msg = currentMessages.find(m => m._id === tempId);
+                                if (msg) {
+                                    msg.status = 'error';
+                                    renderMessages(currentMessages);
+                                }
                             }
                         },
                     );
