@@ -1753,7 +1753,7 @@
                     messagesSubtitle.textContent = `Conversation ID: ${conversationId}`;
                     reloadMessagesBtn.classList.remove('hidden');
                     messageComposer.classList.remove('hidden');
-                    currentMessages = Array.isArray(data) ? data : [];
+                    currentMessages = Array.isArray(data) ? data.reverse() : [];
                     renderMessages(currentMessages);
                     const latestMessage = getLatestMessage(currentMessages);
                     if (latestMessage) {

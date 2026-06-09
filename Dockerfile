@@ -29,6 +29,9 @@ COPY --from=builder /app/dist ./dist
 # Vì NestJS build không tự gom các file non-JS vào dist nếu không cấu hình assets sao chép chuẩn
 COPY --from=builder /app/dist/mail/template ./dist/mail/template
 
+# SAO CHÉP thư mục TestSocket để ServeStaticModule có thể đọc được file giao diện chat test
+COPY --from=builder /app/TestSocket ./TestSocket
+
 # Mặc định Hugging Face Spaces yêu cầu Web Server phải lắng nghe trên cổng 7860
 ENV PORT=7860
 EXPOSE 7860
