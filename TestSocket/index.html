@@ -723,8 +723,8 @@
                 'memberPresenceSubtitle',
             );
             const closeMembersBtn = document.getElementById('closeMembersBtn');
-            const SOCKET_URL = 'http://localhost:8080';
-            const API_BASE_URL = 'http://localhost:8080/api/v1';
+            const SOCKET_URL = window.location.origin;
+            const API_BASE_URL = `${window.location.origin}/api/v1`;
             const DEFAULT_PAGE_TITLE = 'Chat Test Client';
 
             function log(message, data) {
@@ -813,14 +813,19 @@
                 }
 
                 let latestMessage = messages[0];
-                let latestTime = new Date(messages[0]?.createdAt || 0).getTime();
+                let latestTime = new Date(
+                    messages[0]?.createdAt || 0,
+                ).getTime();
 
                 messages.forEach((message) => {
                     const messageTime = new Date(
                         message?.createdAt || 0,
                     ).getTime();
 
-                    if (Number.isFinite(messageTime) && messageTime >= latestTime) {
+                    if (
+                        Number.isFinite(messageTime) &&
+                        messageTime >= latestTime
+                    ) {
                         latestMessage = message;
                         latestTime = messageTime;
                     }
@@ -886,13 +891,16 @@
                     return;
                 }
 
-                const conversation = getConversationById(normalizedConversationId);
+                const conversation = getConversationById(
+                    normalizedConversationId,
+                );
                 if (!conversation) {
                     return;
                 }
 
                 conversation.lastMessage = message;
-                conversation.updatedAt = message.createdAt || new Date().toISOString();
+                conversation.updatedAt =
+                    message.createdAt || new Date().toISOString();
                 conversations = [...conversations].sort((left, right) => {
                     const leftTime = new Date(left?.updatedAt || 0).getTime();
                     const rightTime = new Date(right?.updatedAt || 0).getTime();
@@ -1041,7 +1049,8 @@
                 }
 
                 const nextTypingUsers = new Set(
-                    typingUsersByConversation.get(normalizedConversationId) || [],
+                    typingUsersByConversation.get(normalizedConversationId) ||
+                        [],
                 );
 
                 if (typing) {
@@ -1067,7 +1076,9 @@
                     return;
                 }
 
-                const conversation = getConversationById(selectedConversationId);
+                const conversation = getConversationById(
+                    selectedConversationId,
+                );
                 const typingUserIds = Array.from(
                     typingUsersByConversation.get(selectedConversationId) || [],
                 );
@@ -1171,12 +1182,7 @@
                 clearTypingTimers();
                 activeTypingConversationId = '';
 
-                if (
-                    silent ||
-                    !socket ||
-                    !socket.connected ||
-                    !conversationId
-                ) {
+                if (silent || !socket || !socket.connected || !conversationId) {
                     return;
                 }
 

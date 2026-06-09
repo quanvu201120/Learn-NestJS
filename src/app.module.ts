@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 import { AppController } from '@/app.controller';
 import { AppService } from '@/app.service';
 import { UsersModule } from '@/modules/users/users.module';
@@ -30,6 +32,10 @@ import { PresenceModule } from './modules/presence/presence.module';
                 uri: configService.get<string>('MONGODB_URI'),
             }),
             inject: [ConfigService],
+        }),
+        ServeStaticModule.forRoot({
+            rootPath: join(__dirname, '..', 'TestSocket'),
+            serveRoot: '/test/chat',
         }),
     ],
     controllers: [AppController],

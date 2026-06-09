@@ -1,4 +1,4 @@
-﻿import { NestFactory } from '@nestjs/core';
+import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -50,9 +50,9 @@ async function bootstrap() {
 
     // CONFIG SWAGGER
     const config = new DocumentBuilder()
-        .setTitle('NestJS API')
+        .setTitle('NestJS Chat API')
         .setDescription(
-            'REST API cho xác thực người dùng, OTP Redis và quản lý session đăng nhập.',
+            'REST API cho xác thực người dùng, OTP Redis, quản lý session và hệ thống Realtime Chat (Conversations & Messages).',
         )
         .setVersion('1.1.0')
         .setContact('Quanvu201120', 'https://github.com/quanvu201120', '')
