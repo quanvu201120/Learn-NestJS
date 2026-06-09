@@ -1,4 +1,4 @@
-﻿---
+---
 title: NestJs-API
 emoji: 🚀
 colorFrom: pink
@@ -7,26 +7,37 @@ sdk: docker
 pinned: false
 ---
 
-# Learn NestJS - Authentication API (MongoDB + Redis)
+# Learn NestJS - Authentication & Realtime Chat API (MongoDB + Redis)
 
-API xác thực người dùng xây dựng bằng **NestJS**, dùng **MongoDB** để lưu dữ liệu nghiệp vụ và **Redis** cho OTP/cooldown.
+API xây dựng bằng **NestJS**, dùng **MongoDB** để lưu dữ liệu nghiệp vụ và **Redis** cho OTP/cooldown, quản lý trạng thái online, cũng như đếm tin nhắn chưa đọc. Hệ thống hiện tại không chỉ xử lý **Authentication** bảo mật mà còn hỗ trợ **Realtime Chat** đầy đủ tính năng thông qua **Socket.IO**.
 
 ## Tính năng chính
 
-- Đăng ký tài khoản, kích hoạt email.
+### 1. Realtime Chat (WebSockets)
+- Chat 1-1 (Direct) và Chat nhóm (Group).
+- Gửi, nhận tin nhắn realtime qua sự kiện (`chat:new-message`).
+- Trạng thái hoạt động (Presence): Hiện trạng online/offline (`user:online`, `user:offline`).
+- Typing indicators (Đang gõ...): Quản lý người dùng gõ trên đa thiết bị (`chat:typing-start`, `chat:typing-stop`).
+- Thông báo tin nhắn chưa đọc (`user:unseen-message`) thông qua Redis.
+- Heartbeat để duy trì phiên kết nối mạng.
+
+### 2. Authentication & Security
+- Đăng ký tài khoản, kích hoạt qua email.
 - Đăng nhập bằng `passport-local` + JWT.
 - Cấp `accessToken` và `refreshToken`.
 - Quản lý phiên đăng nhập theo **session**:
   - Mỗi lần login tạo một session mới.
   - `refreshToken` được hash và lưu trong collection `sessions`.
-  - Hỗ trợ `logout` 1 thiết bị và `logout all devices`.
+- Hỗ trợ `logout` 1 thiết bị và `logout all devices`.
 - `tokenVersion` hỗ trợ thu hồi toàn bộ token cũ sau logout-all.
 - Quên mật khẩu / đặt lại mật khẩu bằng OTP.
+- **Quản lý Constants**: Hardcoded strings và values được gom nhóm tập trung theo module (`Feature-based Constants`) và biến toàn cục (`Global Constants`) để dễ bảo trì.
 - Swagger UI để test API.
 
 ## Công nghệ sử dụng
 
 - NestJS 11
+- Socket.IO (`@nestjs/websockets`, `@nestjs/platform-socket.io`)
 - MongoDB + Mongoose
 - Redis + ioredis
 - Passport (`local`, `jwt`)
@@ -75,34 +86,34 @@ npm run build
 npm run start:prod
 ```
 
-## Swagger API Docs
+## Cấu trúc API & Flow chính
+
+### Swagger API Docs
 
 Sau khi chạy app:
 
 - Swagger UI: `http://localhost:8080/swagger`
 - Base API: `http://localhost:8080/api/v1`
 
-Flow test auth cơ bản:
+### Flow test auth cơ bản
 
 1. `POST /auth/login` để lấy `accessToken` và set cookie `refreshToken`.
 2. Bấm **Authorize** và nhập `Bearer <accessToken>`.
 3. Test `POST /auth/refreshToken`, `POST /auth/logout`, `POST /auth/logoutAll`.
 
-## Session-based auth flow
+### Session-based auth flow
 
-- **Login**
-  - Tạo session mới.
-  - Ký access/refresh token với `sessionId` và `tokenVersion`.
-  - Hash refresh token và lưu vào session.
-- **Refresh token**
-  - Verify refresh token.
-  - Check `tokenVersion`, `sessionId`, ownership, `isRevoked`, `expiresAt`.
-  - Rotate refresh token và cập nhật session.
-- **Logout**
-  - Revoke session hiện tại.
-- **Logout all devices**
-  - Tăng `tokenVersion`.
-  - Revoke toàn bộ session còn active của user.
+- **Login**: Tạo session, ký JWT (accessToken & refreshToken), hash refresh token lưu vào DB.
+- **Refresh token**: Verify token, kiểm tra session chưa bị revoke. Tạo token mới & rotate session.
+- **Logout**: Revoke session hiện tại.
+- **Logout all devices**: Tăng `tokenVersion` và revoke toàn bộ session của user.
+
+### Ứng dụng Client (Test Socket)
+Bạn có thể mở trực tiếp file `TestSocket/index.html` trong trình duyệt để trải nghiệm Web UI giao tiếp với Socket server. Nó bao gồm màn hình danh sách conversation, lịch sử tin nhắn, và tương tác realtime (online/typing/new messages...).
+
+## Tài liệu tham khảo
+
+- Xem bản đồ luồng logic chi tiết (App Flow) tại file: `docs/app-flow.md`
 
 ## Gợi ý deploy free
 

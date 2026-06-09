@@ -56,13 +56,13 @@ graph TD
 - Đã có `getUserOnlineInListIds(members)`
 - Đã subscribe Redis key expiration để phát hiện offline
 - Đã dùng Redis cho online/offline
+- `unseen conversation` cho sidebar
+- event riêng báo sidebar có tin mới
+- chống emit lặp cho cùng 1 conversation chưa xem
+- `mark_read` với Redis để clear trạng thái unseen
 
 ### Những gì chưa xong
 
-- Chưa có `unseen conversation` cho sidebar
-- Chưa có event riêng báo sidebar có tin mới
-- Chưa có chống emit lặp cho cùng 1 conversation chưa xem
-- Chưa nối `mark_read` với Redis để clear trạng thái unseen
 - Chưa có typing event
 - Chưa có read receipt chi tiết ở mức từng message / từng user
 

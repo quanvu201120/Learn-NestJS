@@ -26,6 +26,7 @@ import {
     CreatedMessageEvent,
     JoinConversationEvent,
     SocketResponse,
+    TypingUpdateEvent,
 } from './types/responseSocket';
 
 @WebSocketGateway({
@@ -103,6 +104,32 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 console.log('Error user offline:', error);
             }
         });
+
+        this.redisService.userTypingStop$.subscribe(
+            async ({ userId, conversationId }) => {
+                try {
+                    const isStillTyping =
+                        await this.redisService.hasTypingConversation(
+                            userId,
+                            conversationId,
+                        );
+                    if (isStillTyping) {
+                        return;
+                    }
+                    const roomName = getRoomNameConversation(conversationId);
+                    const typingData: TypingUpdateEvent = {
+                        conversationId,
+                        userId,
+                        typing: false,
+                    };
+                    this.server
+                        .to(roomName)
+                        .emit('user:typing-update', typingData);
+                } catch (error) {
+                    console.log('Error user typing stop:', error);
+                }
+            },
+        );
     }
 
     @SubscribeMessage('chat:join-conversation')
@@ -141,7 +168,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                     membersOnline,
                 },
             };
-            ack(res);
+            ack?.(res);
         } catch (error) {
             console.log('Error joining conversation:', error);
             const res: SocketResponse = {
@@ -149,7 +176,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 message:
                     error instanceof Error ? error.message : 'Unknown error',
             };
-            ack(res);
+            ack?.(res);
         }
     }
 
@@ -210,7 +237,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                     conversationId,
                 },
             };
-            ack(res);
+            ack?.(res);
         } catch (error) {
             console.log('Error creating message:', error);
             const res: SocketResponse = {
@@ -218,7 +245,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 message:
                     error instanceof Error ? error.message : 'Unknown error',
             };
-            ack(res);
+            ack?.(res);
         }
     }
 
@@ -230,7 +257,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         try {
             const payload = this.validateUse(client);
             await this.redisService.setPresence(payload._id);
-            ack({
+            ack?.({
                 ok: true,
                 data: {
                     setPresence: true,
@@ -238,11 +265,125 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             });
         } catch (error) {
             console.log('Error user heartbeat:', error);
-            ack({
+            ack?.({
                 ok: false,
                 message:
                     error instanceof Error ? error.message : 'Unknown error',
             });
+        }
+    }
+
+    @SubscribeMessage('chat:typing-start')
+    async handleTypingStart(
+        @ConnectedSocket() client: Socket,
+        @Ack() ack: (response: any) => void,
+        @MessageBody() body: { conversationId: string },
+    ) {
+        try {
+            const payload = this.validateUse(client);
+            const { conversation } =
+                await this.conversationService.getConversationOrThrow(
+                    body.conversationId,
+                );
+            this.conversationService.ensureMemberInConversation(
+                conversation,
+                payload._id,
+            );
+            const status = await this.redisService.setTypingConversation(
+                payload._id,
+                body.conversationId,
+                client.id,
+            );
+            if (status === 'new') {
+                const typingCount =
+                    await this.redisService.countTypingConversations(
+                        payload._id,
+                        body.conversationId,
+                    );
+                if (typingCount === 1) {
+                    const roomName = getRoomNameConversation(
+                        body.conversationId,
+                    );
+                    const typingData: TypingUpdateEvent = {
+                        conversationId: body.conversationId,
+                        userId: payload._id,
+                        typing: true,
+                    };
+                    client.to(roomName).emit('user:typing-update', typingData);
+                }
+            }
+            const res: SocketResponse = {
+                ok: true,
+                data: {
+                    setTyping: true,
+                },
+            };
+            ack?.(res);
+        } catch (error) {
+            console.log('Error typing start:', error);
+            const res: SocketResponse = {
+                ok: false,
+                message:
+                    error instanceof Error ? error.message : 'Unknown error',
+            };
+            ack?.(res);
+        }
+    }
+
+    @SubscribeMessage('chat:typing-stop')
+    async handleTypingStop(
+        @ConnectedSocket() client: Socket,
+        @Ack() ack: (response: any) => void,
+        @MessageBody() body: { conversationId: string },
+    ) {
+        try {
+            const payload = this.validateUse(client);
+            const { conversation } =
+                await this.conversationService.getConversationOrThrow(
+                    body.conversationId,
+                );
+            this.conversationService.ensureMemberInConversation(
+                conversation,
+                payload._id,
+            );
+            const result = await this.redisService.removeTypingConversation(
+                payload._id,
+                body.conversationId,
+                client.id,
+            );
+            if (result) {
+                const typingCount =
+                    await this.redisService.countTypingConversations(
+                        payload._id,
+                        body.conversationId,
+                    );
+                if (typingCount === 0) {
+                    const roomName = getRoomNameConversation(
+                        body.conversationId,
+                    );
+                    const typingData: TypingUpdateEvent = {
+                        conversationId: body.conversationId,
+                        userId: payload._id,
+                        typing: false,
+                    };
+                    client.to(roomName).emit('user:typing-update', typingData);
+                }
+            }
+            const res: SocketResponse = {
+                ok: true,
+                data: {
+                    setTyping: false,
+                },
+            };
+            ack?.(res);
+        } catch (error) {
+            console.log('Error typing stop:', error);
+            const res: SocketResponse = {
+                ok: false,
+                message:
+                    error instanceof Error ? error.message : 'Unknown error',
+            };
+            ack?.(res);
         }
     }
 

@@ -399,6 +399,14 @@
                 background: rgba(255, 253, 249, 0.92);
             }
 
+            .typing-indicator {
+                min-height: 20px;
+                padding: 0 20px 8px;
+                font-size: 13px;
+                color: var(--muted);
+                font-style: italic;
+            }
+
             .message-card {
                 display: flex;
                 max-width: 78%;
@@ -630,6 +638,10 @@
                     <div id="messageList" class="message-list">
                         <div class="empty">No conversation selected.</div>
                     </div>
+                    <div
+                        id="typingIndicator"
+                        class="typing-indicator hidden"
+                    ></div>
                     <div id="messageComposer" class="composer hidden">
                         <input
                             id="messageInput"
@@ -672,6 +684,10 @@
             let selectedConversationPresence = new Set();
             let sidebarPresenceMap = new Map();
             let unseenConversationIds = new Set();
+            let typingUsersByConversation = new Map();
+            let activeTypingConversationId = '';
+            let typingStopTimeout = null;
+            let typingRefreshInterval = null;
 
             const tokenInput = document.getElementById('tokenInput');
             const connectBtn = document.getElementById('connectBtn');
@@ -686,6 +702,7 @@
             const messageComposer = document.getElementById('messageComposer');
             const messageInput = document.getElementById('messageInput');
             const sendMessageBtn = document.getElementById('sendMessageBtn');
+            const typingIndicator = document.getElementById('typingIndicator');
             const messagesTitle = document.getElementById('messagesTitle');
             const messagesSubtitle =
                 document.getElementById('messagesSubtitle');
@@ -1000,6 +1017,171 @@
                         ...user,
                         _id: normalizeId(user?._id || user),
                     };
+                });
+            }
+
+            function getTypingUserLabel(conversation, userId) {
+                const normalizedUserId = normalizeId(userId);
+                if (!conversation || !normalizedUserId) {
+                    return 'Ai do';
+                }
+
+                const member = getConversationMembers(conversation).find(
+                    (item) => normalizeId(item._id) === normalizedUserId,
+                );
+
+                return member ? getUserLabel(member) : normalizedUserId;
+            }
+
+            function setTypingUser(conversationId, userId, typing) {
+                const normalizedConversationId = normalizeId(conversationId);
+                const normalizedUserId = normalizeId(userId);
+                if (!normalizedConversationId || !normalizedUserId) {
+                    return;
+                }
+
+                const nextTypingUsers = new Set(
+                    typingUsersByConversation.get(normalizedConversationId) || [],
+                );
+
+                if (typing) {
+                    nextTypingUsers.add(normalizedUserId);
+                } else {
+                    nextTypingUsers.delete(normalizedUserId);
+                }
+
+                if (nextTypingUsers.size > 0) {
+                    typingUsersByConversation.set(
+                        normalizedConversationId,
+                        nextTypingUsers,
+                    );
+                } else {
+                    typingUsersByConversation.delete(normalizedConversationId);
+                }
+            }
+
+            function renderTypingIndicator() {
+                if (!selectedConversationId) {
+                    typingIndicator.textContent = '';
+                    typingIndicator.classList.add('hidden');
+                    return;
+                }
+
+                const conversation = getConversationById(selectedConversationId);
+                const typingUserIds = Array.from(
+                    typingUsersByConversation.get(selectedConversationId) || [],
+                );
+
+                if (!conversation || !typingUserIds.length) {
+                    typingIndicator.textContent = '';
+                    typingIndicator.classList.add('hidden');
+                    return;
+                }
+
+                const typingNames = typingUserIds
+                    .map((userId) => getTypingUserLabel(conversation, userId))
+                    .filter(Boolean);
+
+                if (!typingNames.length) {
+                    typingIndicator.textContent = '';
+                    typingIndicator.classList.add('hidden');
+                    return;
+                }
+
+                if (typingNames.length === 1) {
+                    typingIndicator.textContent = `${typingNames[0]} dang nhap...`;
+                } else if (typingNames.length === 2) {
+                    typingIndicator.textContent = `${typingNames[0]} va ${typingNames[1]} dang nhap...`;
+                } else {
+                    typingIndicator.textContent = `${typingNames[0]}, ${typingNames[1]} va ${
+                        typingNames.length - 2
+                    } nguoi khac dang nhap...`;
+                }
+
+                typingIndicator.classList.remove('hidden');
+            }
+
+            function clearTypingTimers() {
+                if (typingStopTimeout) {
+                    clearTimeout(typingStopTimeout);
+                    typingStopTimeout = null;
+                }
+
+                if (typingRefreshInterval) {
+                    clearInterval(typingRefreshInterval);
+                    typingRefreshInterval = null;
+                }
+            }
+
+            function emitTypingStart(conversationId) {
+                const normalizedConversationId = normalizeId(conversationId);
+                if (!socket || !socket.connected || !normalizedConversationId) {
+                    return;
+                }
+
+                if (activeTypingConversationId !== normalizedConversationId) {
+                    stopCurrentTyping({ silent: true });
+                    activeTypingConversationId = normalizedConversationId;
+                }
+
+                socket.emit('chat:typing-start', {
+                    conversationId: normalizedConversationId,
+                });
+
+                if (!typingRefreshInterval) {
+                    typingRefreshInterval = setInterval(() => {
+                        if (
+                            !socket ||
+                            !socket.connected ||
+                            !activeTypingConversationId ||
+                            !messageInput.value.trim()
+                        ) {
+                            return;
+                        }
+
+                        socket.emit('chat:typing-start', {
+                            conversationId: activeTypingConversationId,
+                        });
+                    }, 2000);
+                }
+            }
+
+            function scheduleTypingStop() {
+                if (typingStopTimeout) {
+                    clearTimeout(typingStopTimeout);
+                }
+
+                typingStopTimeout = setTimeout(() => {
+                    if (!messageInput.value.trim()) {
+                        stopCurrentTyping();
+                    } else if (activeTypingConversationId) {
+                        socket?.emit('chat:typing-stop', {
+                            conversationId: activeTypingConversationId,
+                        });
+                        activeTypingConversationId = '';
+                        clearTypingTimers();
+                    }
+                }, 1200);
+            }
+
+            function stopCurrentTyping(options = {}) {
+                const { silent = false } = options;
+                const conversationId = activeTypingConversationId;
+
+                clearTypingTimers();
+                activeTypingConversationId = '';
+
+                if (
+                    silent ||
+                    !socket ||
+                    !socket.connected ||
+                    !conversationId
+                ) {
+                    return;
+                }
+
+                socket.emit('chat:typing-stop', {
+                    conversationId,
                 });
             }
 
@@ -1320,6 +1502,13 @@
                                 return;
                             }
 
+                            if (
+                                selectedConversationId &&
+                                selectedConversationId !== id
+                            ) {
+                                stopCurrentTyping();
+                            }
+
                             socket.emit(
                                 'chat:join-conversation',
                                 { conversationId: id },
@@ -1341,6 +1530,7 @@
                                         renderConversations();
                                         renderPresenceUI();
                                         updatePageTitle(id);
+                                        renderTypingIndicator();
                                         loadMessages(id);
                                     } else if (response?.error) {
                                         console.error(
@@ -1381,12 +1571,14 @@
             }
 
             function resetConversationUI() {
+                stopCurrentTyping({ silent: true });
                 conversations = [];
                 currentMessages = [];
                 selectedConversationId = null;
                 setSelectedConversationPresence([]);
                 sidebarPresenceMap = new Map();
                 unseenConversationIds = new Set();
+                typingUsersByConversation = new Map();
                 updatePageTitle(null);
                 conversationList.innerHTML = `
                     <div class="empty">
@@ -1399,6 +1591,8 @@
                 reloadMessagesBtn.classList.add('hidden');
                 viewMembersBtn.classList.add('hidden');
                 messageComposer.classList.add('hidden');
+                typingIndicator.textContent = '';
+                typingIndicator.classList.add('hidden');
                 closeMemberPresenceModal();
                 renderPresenceUI();
                 renderEmptyMessages('No conversation selected.');
@@ -1567,6 +1761,7 @@
                         renderConversations();
                     }
                     renderPresenceUI();
+                    renderTypingIndicator();
                     messageList.scrollTop = messageList.scrollHeight;
                     log(
                         `Loaded messages for conversation ${conversationId}`,
@@ -1637,6 +1832,7 @@
                 });
 
                 socket.on('disconnect', (reason) => {
+                    stopCurrentTyping({ silent: true });
                     setStatus(`Socket: disconnected (${reason})`);
                     log('Socket disconnected', { reason });
                     if (heartbeatInterval) {
@@ -1736,6 +1932,29 @@
                     setConversationUnseen(conversationId, true);
                     renderConversations();
                 });
+
+                socket.on('user:typing-update', (payload) => {
+                    const conversationId = normalizeId(payload?.conversationId);
+                    const userId = normalizeId(payload?.userId);
+                    const typing = Boolean(payload?.typing);
+                    const currentUserId = normalizeId(currentUser?._id);
+
+                    if (
+                        !conversationId ||
+                        !userId ||
+                        (currentUserId && currentUserId === userId)
+                    ) {
+                        return;
+                    }
+
+                    setTypingUser(conversationId, userId, typing);
+
+                    if (conversationId === selectedConversationId) {
+                        renderTypingIndicator();
+                    }
+
+                    log('Received user:typing-update', payload);
+                });
             }
 
             connectBtn.addEventListener('click', connectSocket);
@@ -1776,6 +1995,7 @@
                 const content = messageInput.value.trim();
 
                 if (socket && selectedConversationId && content) {
+                    stopCurrentTyping();
                     socket.emit(
                         'chat:create-message',
                         {
@@ -1800,6 +2020,25 @@
             }
 
             sendMessageBtn.addEventListener('click', sendCurrentMessage);
+
+            messageInput.addEventListener('input', () => {
+                if (!socket || !socket.connected || !selectedConversationId) {
+                    return;
+                }
+
+                const content = messageInput.value.trim();
+                if (!content) {
+                    stopCurrentTyping();
+                    return;
+                }
+
+                emitTypingStart(selectedConversationId);
+                scheduleTypingStop();
+            });
+
+            messageInput.addEventListener('blur', () => {
+                stopCurrentTyping();
+            });
 
             messageInput.addEventListener('keydown', (event) => {
                 if (event.key !== 'Enter') {

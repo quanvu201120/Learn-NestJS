@@ -8,6 +8,23 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     constructor(private configService: ConfigService) {}
 
     public readonly userOffline$ = new Subject<string>();
+    public readonly userTypingStop$ = new Subject<{
+        userId: string;
+        conversationId: string;
+        socketId: string;
+    }>();
+
+    private getTypingKey(
+        conversationId: string,
+        userId: string,
+        socketId: string,
+    ) {
+        return `typing:conversation:${conversationId}:user:${userId}:socket:${socketId}`;
+    }
+
+    private getTypingPattern(conversationId: string, userId: string) {
+        return `typing:conversation:${conversationId}:user:${userId}:socket:*`;
+    }
 
     private readonly redis = new Redis({
         host: this.configService.get('REDIS_HOST') || '127.0.0.1',
@@ -30,6 +47,13 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
             if (key.startsWith('presence:user:')) {
                 const userId = key.replace('presence:user:', '');
                 this.userOffline$.next(userId);
+            }
+            if (key.startsWith('typing:conversation:')) {
+                const parts = key.split(':');
+                const conversationId = parts[2];
+                const userId = parts[4];
+                const socketId = parts[6];
+                this.userTypingStop$.next({ userId, conversationId, socketId });
             }
         });
     }
@@ -84,6 +108,82 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
             `unseen:conversations:${userId}`,
             conversationId,
         );
+    }
+
+    async setTypingConversation(
+        userId: string,
+        conversationId: string,
+        socketId: string,
+    ) {
+        const result = await this.redis.set(
+            this.getTypingKey(conversationId, userId, socketId),
+            'Typing',
+            'EX',
+            4,
+            'NX',
+        );
+        if (!result) {
+            await this.refreshTypingConversation(
+                userId,
+                conversationId,
+                socketId,
+            );
+            return 'refreshed';
+        }
+        return 'new';
+    }
+
+    async refreshTypingConversation(
+        userId: string,
+        conversationId: string,
+        socketId: string,
+    ) {
+        return await this.redis.set(
+            this.getTypingKey(conversationId, userId, socketId),
+            'Typing',
+            'EX',
+            4,
+            'XX',
+        );
+    }
+
+    async removeTypingConversation(
+        userId: string,
+        conversationId: string,
+        socketId: string,
+    ) {
+        const result = await this.redis.del(
+            this.getTypingKey(conversationId, userId, socketId),
+        );
+        return result > 0;
+    }
+
+    async countTypingConversations(userId: string, conversationId: string) {
+        let cursor = '0';
+        const pattern = this.getTypingPattern(conversationId, userId);
+        let count = 0;
+
+        do {
+            const [nextCursor, keys] = await this.redis.scan(
+                cursor,
+                'MATCH',
+                pattern,
+                'COUNT',
+                20,
+            );
+            count += keys.length;
+            cursor = nextCursor;
+        } while (cursor !== '0');
+
+        return count;
+    }
+
+    async hasTypingConversation(userId: string, conversationId: string) {
+        const count = await this.countTypingConversations(
+            userId,
+            conversationId,
+        );
+        return count > 0;
     }
 
     async getUserOnlineInListIds(members: (Types.ObjectId | string)[]) {

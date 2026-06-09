@@ -16,3 +16,9 @@ export type CreatedMessageEvent = {
     messageId: string;
     conversationId: string;
 };
+
+export type TypingUpdateEvent = {
+    conversationId: string;
+    userId: string;
+    typing: boolean;
+};
