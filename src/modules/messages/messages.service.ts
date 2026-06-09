@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
+import { MESSAGE_MESSAGES } from './constants/message.constant';
 import {
     BadRequestException,
     forwardRef,
@@ -17,7 +18,7 @@ import {
 import { Connection, Model, Types } from 'mongoose';
 import { parseDateOrThrow, toObjectId } from '@/utils/utils';
 import { ConversationsService } from '../conversations/conversations.service';
-import { LIMIT_MESSAGES_DEFAULT } from '@/utils/contans';
+import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
 import { serializeMessage } from './utils/message.serializer';
 
 @Injectable()
@@ -40,7 +41,7 @@ export class MessagesService {
             .lean();
 
         if (!message) {
-            throw new BadRequestException('Message not found');
+            throw new BadRequestException(MESSAGE_MESSAGES.MESSAGE_NOT_FOUND);
         }
 
         return serializeMessage(message);
@@ -84,10 +85,10 @@ export class MessagesService {
                 conversationId,
             );
             if (!replyMessage) {
-                throw new BadRequestException('Reply message not found');
+                throw new BadRequestException(MESSAGE_MESSAGES.REPLY_NOT_FOUND);
             }
             if (replyMessage.isDeleted) {
-                throw new BadRequestException('Reply message is deleted');
+                throw new BadRequestException(MESSAGE_MESSAGES.REPLY_DELETED);
             }
             objectReplyTo = replyMessage._id;
         }
@@ -120,7 +121,9 @@ export class MessagesService {
                 );
             });
             if (!newMessage) {
-                throw new InternalServerErrorException('Message not created');
+                throw new InternalServerErrorException(
+                    MESSAGE_MESSAGES.MESSAGE_NOT_CREATED,
+                );
             }
             // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
             const { __v, ...result } = (
@@ -139,7 +142,9 @@ export class MessagesService {
             );
 
         if (!conversation.lastMessageId) {
-            throw new BadRequestException('Conversation has no messages');
+            throw new BadRequestException(
+                MESSAGE_MESSAGES.CONVERSATION_NO_MESSAGES,
+            );
         }
         const lastMessage = await this.messageModel
             .findById(conversation.lastMessageId)
@@ -147,7 +152,7 @@ export class MessagesService {
             .populate('replyTo', '-__v')
             .lean();
         if (!lastMessage) {
-            throw new BadRequestException('Message not found');
+            throw new BadRequestException(MESSAGE_MESSAGES.MESSAGE_NOT_FOUND);
         }
         return serializeMessage(lastMessage);
     }
@@ -188,7 +193,7 @@ export class MessagesService {
             .populate('senderId', '-password -__v')
             .populate('replyTo', '-__v')
             .sort({ createdAt: -1 })
-            .limit(LIMIT_MESSAGES_DEFAULT)
+            .limit(GLOBAL_CONSTANTS.LIMIT_MESSAGES_DEFAULT)
             .lean();
         return result.map((message) => serializeMessage(message));
     }
@@ -211,7 +216,7 @@ export class MessagesService {
         );
         if (userHidden) {
             throw new BadRequestException(
-                'User has deleted conversation, can not delete message',
+                MESSAGE_MESSAGES.CANNOT_DELETE_USER_HIDDEN,
             );
         }
         const checkMessage = await this.checkMessageExistInConversation(
@@ -220,14 +225,14 @@ export class MessagesService {
         );
         if (!checkMessage) {
             throw new BadRequestException(
-                'Message not found or message not belong to this conversation',
+                MESSAGE_MESSAGES.NOT_BELONG_TO_CONVERSATION,
             );
         }
         if (checkMessage.senderId.toString() !== userId) {
-            throw new BadRequestException('User is not owner of this message');
+            throw new BadRequestException(MESSAGE_MESSAGES.NOT_MESSAGE_OWNER);
         }
         if (checkMessage.isDeleted) {
-            throw new BadRequestException('Message is already deleted');
+            throw new BadRequestException(MESSAGE_MESSAGES.ALREADY_DELETED);
         }
         const objectMessageId = toObjectId(messageId, 'message id');
         await this.messageModel
@@ -243,6 +248,6 @@ export class MessagesService {
                 { new: true },
             )
             .lean();
-        return 'Deleted message successfully';
+        return MESSAGE_MESSAGES.DELETE_SUCCESS;
     }
 }

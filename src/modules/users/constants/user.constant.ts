@@ -1,0 +1,16 @@
+export const USER_MESSAGES = {
+    EMAIL_EXISTED: 'Email already existed',
+    NOT_AUTHORIZED_UPDATE: 'You are not authorized to update this user',
+    USER_NOT_FOUND: 'User not found',
+    DELETE_SUCCESS: 'Deleted user successfully',
+    DELETE_FAILED: 'Delete user failed',
+    USER_ALREADY_ACTIVE: 'User is already active',
+    ACTIVE_SUCCESS: 'Active user successfully',
+    CODE_EXPIRED: 'Code has expired',
+    INVALID_CODE: 'Invalid code',
+    INVALID_PASSWORD: 'Invalid password',
+    CHANGE_PASSWORD_SUCCESS: 'Change password successfully',
+    EMAIL_NOT_FOUND: 'Email not found',
+    RESET_PASSWORD_SUCCESS: 'Reset password successfully',
+    PLEASE_WAIT_COOLDOWN: (waitTime: number) => `Please wait ${waitTime} seconds before requesting a new code.`,
+} as const;

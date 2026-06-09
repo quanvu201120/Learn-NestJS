@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
+import { USER_MESSAGES } from './constants/user.constant';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { User } from './schemas/user.schema';
@@ -18,7 +19,10 @@ import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcrypt';
 import { ChangePasswordAuthDto } from '@/auth/dto/password-auth.dto';
 import { RedisService } from '@/redis/redis.service';
-import { ActionRedis, COOLDOWN_SECONDS } from '@/utils/contans';
+import {
+    ActionRedis,
+    GLOBAL_CONSTANTS,
+} from '@/common/constants/global.constant';
 import * as fs from 'fs';
 import * as path from 'path';
 import handlebars from 'handlebars';
@@ -38,7 +42,7 @@ export class UsersService {
         });
 
         if (isEmailExisted) {
-            throw new BadRequestException('Email already existed');
+            throw new BadRequestException(USER_MESSAGES.EMAIL_EXISTED);
         }
 
         const passwordHash = await hashPassword(createUserDto.password);
@@ -117,9 +121,7 @@ export class UsersService {
         role: string,
     ) {
         if (role !== 'ADMIN' && updateUserDto._id !== currentUser) {
-            throw new BadRequestException(
-                'You are not authorized to update this user',
-            );
+            throw new BadRequestException(USER_MESSAGES.NOT_AUTHORIZED_UPDATE);
         }
         if (updateUserDto.email) {
             const isEmailExisted = await this.userModel.exists({
@@ -128,7 +130,7 @@ export class UsersService {
             });
 
             if (isEmailExisted) {
-                throw new BadRequestException('Email already existed');
+                throw new BadRequestException(USER_MESSAGES.EMAIL_EXISTED);
             }
         }
 
@@ -140,7 +142,7 @@ export class UsersService {
             .lean()) as UserResponse;
 
         if (!user) {
-            throw new BadRequestException('User not found');
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
         }
 
         return user;
@@ -152,7 +154,7 @@ export class UsersService {
         if (result.deletedCount > 0) {
             return `Deleted user successfully`;
         }
-        throw new BadRequestException('Delete user failed');
+        throw new BadRequestException(USER_MESSAGES.DELETE_FAILED);
     }
 
     async sendEmailActive(email: string, code: string) {
@@ -180,10 +182,10 @@ export class UsersService {
             .findOne({ email })
             .select('_id isActive email');
         if (!user) {
-            throw new BadRequestException('User not found');
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
         }
         if (user.isActive) {
-            throw new BadRequestException('User is already active');
+            throw new BadRequestException(USER_MESSAGES.USER_ALREADY_ACTIVE);
         }
 
         await this.verifyCodeWithRedis(
@@ -193,14 +195,14 @@ export class UsersService {
 
         user.isActive = true;
         await user.save();
-        return 'Active user successfully';
+        return USER_MESSAGES.ACTIVE_SUCCESS;
     }
 
     private async verifyCodeWithRedis(keyRedis: string, code: string) {
         const redisCodeActive = await this.redisService.get(keyRedis);
 
         if (!redisCodeActive) {
-            throw new BadRequestException('Code has expired');
+            throw new BadRequestException(USER_MESSAGES.CODE_EXPIRED);
         }
 
         const hashCode = hashCodeVerifyEmail(
@@ -209,7 +211,7 @@ export class UsersService {
         );
 
         if (hashCode !== redisCodeActive) {
-            throw new BadRequestException('Invalid code');
+            throw new BadRequestException(USER_MESSAGES.INVALID_CODE);
         }
 
         await this.redisService.del(keyRedis);
@@ -221,10 +223,10 @@ export class UsersService {
             .select('_id isActive email')
             .lean();
         if (!user) {
-            throw new BadRequestException('User not found');
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
         }
         if (user.isActive === true) {
-            throw new BadRequestException('User is already active');
+            throw new BadRequestException(USER_MESSAGES.USER_ALREADY_ACTIVE);
         }
 
         const codeActive = uuidv4();
@@ -247,21 +249,21 @@ export class UsersService {
         const { passwordOld, passwordNew } = changePasswordAuthDto;
         const user = await this.userModel.findById(id);
         if (!user) {
-            throw new BadRequestException('User not found');
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
         }
         const isPasswordMatched = await bcrypt.compare(
             passwordOld,
             user.password,
         );
         if (!isPasswordMatched) {
-            throw new BadRequestException('Invalid password');
+            throw new BadRequestException(USER_MESSAGES.INVALID_PASSWORD);
         }
 
         const passwordNewHash = await hashPassword(passwordNew);
 
         user.password = passwordNewHash;
         await user.save();
-        return 'Change password successfully';
+        return USER_MESSAGES.CHANGE_PASSWORD_SUCCESS;
     }
 
     async sendMailForgotPassword(email: string) {
@@ -270,13 +272,13 @@ export class UsersService {
             .select('_id')
             .lean();
         if (!user) {
-            throw new BadRequestException('Email not found');
+            throw new BadRequestException(USER_MESSAGES.EMAIL_NOT_FOUND);
         }
 
         await this.checkMailCooldownRedis(
             this.redisForgotKey(user._id.toString()),
             this.configService.get<string>('MAIL_CODE_FORGOT_EXPIRE')!,
-            COOLDOWN_SECONDS,
+            GLOBAL_CONSTANTS.COOLDOWN_SECONDS,
         );
 
         const codeForgotId = uuidv4();
@@ -306,7 +308,7 @@ export class UsersService {
             .findOne({ email })
             .select('_id password');
         if (!user) {
-            throw new BadRequestException('Email not found');
+            throw new BadRequestException(USER_MESSAGES.EMAIL_NOT_FOUND);
         }
 
         await this.verifyCodeWithRedis(
@@ -318,7 +320,7 @@ export class UsersService {
         user.password = passwordHash;
 
         await user.save();
-        return 'Reset password successfully';
+        return USER_MESSAGES.RESET_PASSWORD_SUCCESS;
     }
 
     private redisActiveKey(userId: string) {
@@ -343,7 +345,7 @@ export class UsersService {
         if (timeElapsed < cooldownSeconds) {
             const waitTime = Math.ceil(cooldownSeconds - timeElapsed);
             throw new BadRequestException(
-                `Vui lòng đợi ${waitTime} giây trước khi yêu cầu gửi lại mã mới.`,
+                USER_MESSAGES.PLEASE_WAIT_COOLDOWN(waitTime),
             );
         }
     }
@@ -366,7 +368,7 @@ export class UsersService {
             await this.checkMailCooldownRedis(
                 keyRedis,
                 expireTime,
-                COOLDOWN_SECONDS,
+                GLOBAL_CONSTANTS.COOLDOWN_SECONDS,
             );
         }
         const expireTimeSeconds = ms(expireTime as StringValue) / 1000;

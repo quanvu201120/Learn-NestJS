@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-misused-promises */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
+import { REALTIME_MESSAGES } from './constants/realtime.constant';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -51,7 +52,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             const token = client.handshake.auth?.token as string | undefined;
 
             if (!token) {
-                throw new UnauthorizedException('Missing token');
+                throw new UnauthorizedException(
+                    REALTIME_MESSAGES.MISSING_TOKEN,
+                );
             }
 
             const payload: PayloadJWT = await this.jwtService.verifyAsync(
@@ -390,7 +393,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private validateUse(client: Socket) {
         const payload = client.data.user as PayloadJWT | undefined;
         if (!payload?._id) {
-            throw new UnauthorizedException('Missing token');
+            throw new UnauthorizedException(REALTIME_MESSAGES.MISSING_TOKEN);
         }
 
         return payload;

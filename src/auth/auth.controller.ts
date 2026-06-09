@@ -1,7 +1,8 @@
-﻿/* eslint-disable @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
+import { AUTH_MESSAGES } from './constants/auth.constant';
 import {
     Controller,
     Post,
@@ -125,7 +126,7 @@ export class AuthController {
             maxAge: 0,
         });
 
-        return 'Đăng xuất thành công';
+        return AUTH_MESSAGES.LOGOUT_SUCCESS;
     }
 
     @Post('logoutAll')
@@ -144,10 +145,10 @@ export class AuthController {
                 sameSite: 'lax',
                 maxAge: 0,
             });
-            return 'Đăng xuất tất cả các thiết bị thành công';
+            return AUTH_MESSAGES.LOGOUT_ALL_SUCCESS;
         } catch (error) {
             throw new InternalServerErrorException(
-                'Đăng xuất tất cả các thiết bị thất bại!',
+                AUTH_MESSAGES.LOGOUT_ALL_FAILED,
             );
         }
     }

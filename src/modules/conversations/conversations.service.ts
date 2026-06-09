@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
+import { CONVERSATION_MESSAGES } from './constants/conversation.constant';
 import {
     BadRequestException,
     Inject,
@@ -59,18 +60,20 @@ export class ConversationsService {
         if (!isGroup) {
             if (normalizedUsers.length !== 2) {
                 throw new BadRequestException(
-                    'Direct conversation must have exactly 2 users',
+                    CONVERSATION_MESSAGES.DIRECT_MUST_BE_2_USERS,
                 );
             }
         }
         if (isGroup) {
             if (!name?.trim()) {
-                throw new BadRequestException('Group name is required');
+                throw new BadRequestException(
+                    CONVERSATION_MESSAGES.GROUP_NAME_REQUIRED,
+                );
             }
 
             if (normalizedUsers.length < 3) {
                 throw new BadRequestException(
-                    'Group conversation must have at least 3 users including creator',
+                    CONVERSATION_MESSAGES.GROUP_MIN_3_USERS,
                 );
             }
         }
@@ -82,7 +85,9 @@ export class ConversationsService {
             await this.userService.countUserIdsExist(listMember);
 
         if (existingUsersCount !== listMember.length) {
-            throw new BadRequestException('One or more users do not exist');
+            throw new BadRequestException(
+                CONVERSATION_MESSAGES.USERS_NOT_EXIST,
+            );
         }
 
         // 1. Nếu là chat 1-1, kiểm tra xem đã tồn tại cuộc trò chuyện nào chưa
@@ -164,7 +169,7 @@ export class ConversationsService {
         const objectUserId = toObjectId(userId, 'user id');
         const user = await this.userService.findOne(userId);
         if (!user) {
-            throw new BadRequestException('User not found');
+            throw new BadRequestException(CONVERSATION_MESSAGES.USER_NOT_FOUND);
         }
         const res = await this.conversationModel
             .find({
@@ -250,7 +255,7 @@ export class ConversationsService {
         this.ensureGroupAdmin(conversation, currentUserId);
 
         if (!name.trim()) {
-            throw new BadRequestException('Name is required');
+            throw new BadRequestException(CONVERSATION_MESSAGES.NAME_REQUIRED);
         }
         const result = await this.conversationModel
             .findByIdAndUpdate(
@@ -278,7 +283,9 @@ export class ConversationsService {
         const checkuser =
             await this.userService.countUserIdsExist(objectMemberIds);
         if (checkuser !== objectMemberIds.length) {
-            throw new BadRequestException('One or more users do not exist');
+            throw new BadRequestException(
+                CONVERSATION_MESSAGES.USERS_NOT_EXIST,
+            );
         }
         const result = await this.conversationModel
             .findByIdAndUpdate(
@@ -309,7 +316,7 @@ export class ConversationsService {
 
         if (currentUserId === memberId) {
             throw new BadRequestException(
-                'Cannot remove yourself from conversation',
+                CONVERSATION_MESSAGES.CANNOT_REMOVE_SELF,
             );
         }
 
@@ -349,18 +356,14 @@ export class ConversationsService {
             (user) => user.toString() === userId,
         );
         if (!isExistUser) {
-            throw new BadRequestException(
-                'User is not a member of conversation',
-            );
+            throw new BadRequestException(CONVERSATION_MESSAGES.NOT_A_MEMBER);
         }
         const userhiddenHistory = conversation.hiddenHistory?.find(
             (item) => item.userId.toString() === userId,
         );
 
         if (userhiddenHistory?.isHidden) {
-            throw new BadRequestException(
-                'Conversation already hidden for this user',
-            );
+            throw new BadRequestException(CONVERSATION_MESSAGES.ALREADY_HIDDEN);
         }
         let result: any = null;
         if (userhiddenHistory) {
@@ -406,9 +409,9 @@ export class ConversationsService {
         }
 
         if (result) {
-            return 'Delete conversation successfully';
+            return CONVERSATION_MESSAGES.DELETE_SUCCESS;
         }
-        throw new BadRequestException('Cannot delete conversation');
+        throw new BadRequestException(CONVERSATION_MESSAGES.DELETE_FAILED);
     }
 
     async markAsRead(
@@ -430,7 +433,7 @@ export class ConversationsService {
             this.isObjectIdAfter(lastReadMessageId, objectMessageId)
         ) {
             throw new BadRequestException(
-                'Cannot mark as read to an older message',
+                CONVERSATION_MESSAGES.CANNOT_READ_OLDER,
             );
         }
         return await this.conversationModel.findByIdAndUpdate(
@@ -464,7 +467,9 @@ export class ConversationsService {
                 conversationId,
             );
         if (!message) {
-            throw new BadRequestException('Message not found');
+            throw new BadRequestException(
+                CONVERSATION_MESSAGES.MESSAGE_NOT_FOUND,
+            );
         }
         const objectMessageId = toObjectId(messageId, 'message id');
         return { message, objectMessageId };
@@ -479,7 +484,9 @@ export class ConversationsService {
             await this.conversationModel.findById(objectConversationId);
 
         if (!conversation) {
-            throw new BadRequestException('Conversation not found');
+            throw new BadRequestException(
+                CONVERSATION_MESSAGES.CONVERSATION_NOT_FOUND,
+            );
         }
 
         return { conversation, objectConversationId };
@@ -488,7 +495,7 @@ export class ConversationsService {
     ensureGroupConversation(conversation: ConversationDocument) {
         if (!conversation.isGroup) {
             throw new BadRequestException(
-                'Cannot perform this action on direct conversation',
+                CONVERSATION_MESSAGES.DIRECT_ACTION_NOT_ALLOWED,
             );
         }
     }
@@ -500,7 +507,9 @@ export class ConversationsService {
         const objectCurrentUserId = toObjectId(currentUserId, 'user id');
 
         if (!conversation.adminGroupId?.equals(objectCurrentUserId)) {
-            throw new BadRequestException('You are not admin of this group');
+            throw new BadRequestException(
+                CONVERSATION_MESSAGES.NOT_GROUP_ADMIN,
+            );
         }
 
         return objectCurrentUserId;
@@ -516,7 +525,9 @@ export class ConversationsService {
         );
 
         if (!isMember) {
-            throw new BadRequestException('User is not in conversation');
+            throw new BadRequestException(
+                CONVERSATION_MESSAGES.USER_NOT_IN_CONVERSATION,
+            );
         }
 
         return objectMemberId;

@@ -266,7 +266,7 @@ describe('UsersService', () => {
             expect(chain.limit).toHaveBeenCalledWith(10);
             expect(chain.select).toHaveBeenCalledWith('-password');
             expect(result.totalPages).toBe(1);
-            expect(result.userList).toBe(users);
+            expect(result.users).toBe(users);
         });
     });
 
@@ -305,7 +305,7 @@ describe('UsersService', () => {
                 select: jest.fn().mockResolvedValue(updatedUser),
             });
 
-            const result = await service.update(updateDto);
+            const result = await service.update(updateDto, userId, 'ADMIN');
 
             expect(userModel.exists).toHaveBeenCalledWith({
                 email: updateDto.email,
@@ -321,7 +321,7 @@ describe('UsersService', () => {
             };
             userModel.exists.mockResolvedValue(true);
 
-            await expect(service.update(updateDto)).rejects.toThrow(
+            await expect(service.update(updateDto, userId, 'ADMIN')).rejects.toThrow(
                 new BadRequestException('Email already existed'),
             );
         });

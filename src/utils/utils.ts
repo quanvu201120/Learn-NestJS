@@ -1,4 +1,8 @@
 /* eslint-disable no-useless-catch */
+import {
+    GLOBAL_MESSAGES,
+    GLOBAL_CONSTANTS,
+} from '@/common/constants/global.constant';
 import { PayloadJWT } from '@/modules/users/schemas/user.schema';
 import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -8,10 +12,8 @@ import { createHash } from 'crypto';
 import { Types } from 'mongoose';
 import ms, { StringValue } from 'ms';
 
-const saltBcypt = 10;
-
 export const hashPassword = async (password: string): Promise<string> => {
-    return await bcrypt.hash(password, saltBcypt);
+    return await bcrypt.hash(password, GLOBAL_CONSTANTS.SALT_BCRYPT);
 };
 
 const hashValue = (value: string, pepper: string) =>
@@ -25,7 +27,7 @@ export const hashCodeVerifyEmail = (code: string, pepper: string) =>
 
 export const validateObjectId = (id: string, fieldName: string): void => {
     if (!Types.ObjectId.isValid(id)) {
-        throw new BadRequestException(`Invalid ${fieldName}`);
+        throw new BadRequestException(GLOBAL_MESSAGES.INVALID_FIELD(fieldName));
     }
 };
 
@@ -38,7 +40,7 @@ export const parseDateOrThrow = (value: string, fieldName: string): Date => {
     const date = new Date(value);
 
     if (Number.isNaN(date.getTime())) {
-        throw new BadRequestException(`Invalid ${fieldName}`);
+        throw new BadRequestException(GLOBAL_MESSAGES.INVALID_FIELD(fieldName));
     }
 
     return date;
@@ -105,7 +107,7 @@ export const formatExpireTime = (expireTime: string): string => {
 
 export function buildDeviceNameFromUA(userAgent?: string): string {
     if (!userAgent || userAgent.trim().length === 0) {
-        return 'Thiết bị không xác định';
+        return GLOBAL_MESSAGES.UNKNOWN_DEVICE;
     }
 
     const ua = userAgent.toLowerCase();
@@ -126,9 +128,9 @@ export function buildDeviceNameFromUA(userAgent?: string): string {
     else if (ua.includes('mac os x') || ua.includes('macintosh')) os = 'macOS';
     else if (ua.includes('linux')) os = 'Linux';
 
-    if (!browser && !os) return 'Thiết bị không xác định';
+    if (!browser && !os) return GLOBAL_MESSAGES.UNKNOWN_DEVICE;
     if (browser && os) return `${browser} trên ${os}`;
-    return browser || os || 'Thiết bị không xác định';
+    return browser || os || GLOBAL_MESSAGES.UNKNOWN_DEVICE;
 }
 
 export const getRoomNameConversation = (conversationId: string) => {

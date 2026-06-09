@@ -1,0 +1,14 @@
+export const AUTH_MESSAGES = {
+    LOGIN_FAILED: 'Login failed!',
+    REFRESH_TOKEN_NOT_FOUND: 'Refresh Token not found',
+    USER_NOT_FOUND: 'User not found',
+    INVALID_TOKEN: 'Invalid token',
+    SESSION_NOT_FOUND: 'Session not found',
+    SESSION_REVOKED: 'Session revoked',
+    SESSION_EXPIRED: 'Session expired',
+    INVALID_REFRESH_TOKEN: 'Invalid or used Refresh Token',
+    EXPIRED_REFRESH_TOKEN: 'Invalid or expired Refresh Token',
+    LOGOUT_SUCCESS: 'Logout successfully',
+    LOGOUT_ALL_SUCCESS: 'Logout all devices successfully',
+    LOGOUT_ALL_FAILED: 'Logout all devices failed!',
+} as const;

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-
+import { AUTH_MESSAGES } from './constants/auth.constant';
 import { PayloadJWT, User } from '@/modules/users/schemas/user.schema';
 import { UsersService } from '@/modules/users/users.service';
 import { generateJWT, hashRefreshToken } from '@/utils/utils';
@@ -91,7 +91,7 @@ export class AuthService {
             }
             console.log(error);
 
-            throw new InternalServerErrorException('Đăng nhập thất bại!');
+            throw new InternalServerErrorException(AUTH_MESSAGES.LOGIN_FAILED);
         }
     }
 
@@ -102,7 +102,9 @@ export class AuthService {
 
     async refreshToken(refreshTokenOld: string) {
         if (!refreshTokenOld) {
-            throw new UnauthorizedException('Không tìm thấy Refresh Token');
+            throw new UnauthorizedException(
+                AUTH_MESSAGES.REFRESH_TOKEN_NOT_FOUND,
+            );
         }
 
         try {
@@ -116,12 +118,12 @@ export class AuthService {
             );
             const user = await this.usersService.findOne(payload._id);
             if (!user) {
-                throw new UnauthorizedException('Không tìm thấy người dùng');
+                throw new UnauthorizedException(AUTH_MESSAGES.USER_NOT_FOUND);
             }
 
             if (payload.tokenVersion !== user.tokenVersion) {
                 await this.sessionService.revokeAllByUserId(payload._id);
-                throw new UnauthorizedException('Token không hợp lệ');
+                throw new UnauthorizedException(AUTH_MESSAGES.INVALID_TOKEN);
             }
 
             const session = await this.sessionService.findSessionById(
@@ -129,11 +131,13 @@ export class AuthService {
             );
 
             if (!session) {
-                throw new UnauthorizedException('Session không tồn tại');
+                throw new UnauthorizedException(
+                    AUTH_MESSAGES.SESSION_NOT_FOUND,
+                );
             }
 
             if (session.isRevoked === true) {
-                throw new UnauthorizedException('Session đã bị thu hồi');
+                throw new UnauthorizedException(AUTH_MESSAGES.SESSION_REVOKED);
             }
 
             if (session.expiresAt && session.expiresAt < new Date()) {
@@ -141,11 +145,11 @@ export class AuthService {
                     session._id.toString(),
                     payload._id,
                 );
-                throw new UnauthorizedException('Session đã hết hạn');
+                throw new UnauthorizedException(AUTH_MESSAGES.SESSION_EXPIRED);
             }
 
             if (session.userId.toString() !== payload._id) {
-                throw new UnauthorizedException('Token không hợp lệ');
+                throw new UnauthorizedException(AUTH_MESSAGES.INVALID_TOKEN);
             }
             const hashJwt = hashRefreshToken(
                 refreshTokenOld,
@@ -154,7 +158,7 @@ export class AuthService {
 
             if (hashJwt !== session.refreshTokenHash) {
                 throw new UnauthorizedException(
-                    'Refresh Token không hợp lệ hoặc đã được sử dụng',
+                    AUTH_MESSAGES.INVALID_REFRESH_TOKEN,
                 );
             }
 
@@ -196,7 +200,7 @@ export class AuthService {
             }
             console.error('Error during token refresh:', error);
             throw new UnauthorizedException(
-                'Refresh Token không hợp lệ hoặc đã hết hạn',
+                AUTH_MESSAGES.EXPIRED_REFRESH_TOKEN,
             );
         }
     }
@@ -217,7 +221,7 @@ export class AuthService {
             );
 
             if (payload._id !== userId) {
-                throw new UnauthorizedException('Token không hợp lệ');
+                throw new UnauthorizedException(AUTH_MESSAGES.INVALID_TOKEN);
             }
 
             await this.sessionService.revoke(payload.sessionId, userId);
@@ -232,13 +236,13 @@ export class AuthService {
         try {
             const user = await this.usersService.findOne(userId);
             if (!user) {
-                throw new UnauthorizedException('Không tìm thấy người dùng');
+                throw new UnauthorizedException(AUTH_MESSAGES.USER_NOT_FOUND);
             }
             user.tokenVersion += 1;
             await user.save();
             await this.sessionService.revokeAllByUserId(userId);
             return {
-                message: 'Đăng xuất tất cả các thiết bị thành công',
+                message: AUTH_MESSAGES.LOGOUT_ALL_SUCCESS,
             };
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (error) {
