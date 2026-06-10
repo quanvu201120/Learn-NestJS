@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
@@ -8,11 +9,12 @@ import {
     Inject,
     Injectable,
     forwardRef,
+    InternalServerErrorException,
 } from '@nestjs/common';
 import { toObjectId } from '@/utils/utils';
 import { CreateConversationDto } from './dto/create-conversation.dto';
-import { InjectModel } from '@nestjs/mongoose';
-import { ClientSession, Model, Types } from 'mongoose';
+import { InjectModel, InjectConnection } from '@nestjs/mongoose';
+import { ClientSession, Model, Types, Connection } from 'mongoose';
 import {
     Conversation,
     ConversationDocument,
@@ -21,6 +23,7 @@ import { serializeMessage } from '../messages/utils/message.serializer';
 import { MessagesService } from '../messages/messages.service';
 import { UsersService } from '../users/users.service';
 import { ConversationResponse } from './types/conversation';
+import { RedisService } from '@/redis/redis.service';
 
 @Injectable()
 export class ConversationsService {
@@ -33,8 +36,18 @@ export class ConversationsService {
 
         @Inject(forwardRef(() => UsersService))
         private readonly userService: UsersService,
+
+        @InjectConnection()
+        private readonly connection: Connection,
+
+        @Inject(forwardRef(() => RedisService))
+        private readonly redisService: RedisService,
     ) {}
 
+    /**
+     * Helper nội bộ: Format dữ liệu conversation trước khi trả về client.
+     * Chuyển đổi ID của lastMessage thành object nếu đã được populate.
+     */
     private serializeConversation(conversation: any): ConversationResponse {
         const { lastMessageId, ...rest } = conversation;
 
@@ -48,6 +61,10 @@ export class ConversationsService {
         };
     }
 
+    /**
+     * Tạo một cuộc trò chuyện (Conversation) mới.
+     * Hỗ trợ cả tạo Group chat và tạo chat 1-1. Nếu chat 1-1 đã tồn tại sẽ trả về luôn thay vì tạo mới.
+     */
     async createConversation(
         createConversationDto: CreateConversationDto,
         currentUserId: string,
@@ -165,6 +182,10 @@ export class ConversationsService {
         return this.serializeConversation(result);
     }
 
+    /**
+     * Lấy toàn bộ danh sách phòng chat mà user hiện tại tham gia,
+     * bỏ qua các phòng chat đã bị user ẩn đi (hiddenHistory).
+     */
     async findAllByUser(userId: string) {
         const objectUserId = toObjectId(userId, 'user id');
         const user = await this.userService.findOne(userId);
@@ -193,6 +214,9 @@ export class ConversationsService {
         );
     }
 
+    /**
+     * Lấy chi tiết một phòng chat theo ID (dành cho user hiện tại).
+     */
     async findOne(conversationId: string, userId: string) {
         const objectConversationId = toObjectId(
             conversationId,
@@ -219,6 +243,11 @@ export class ConversationsService {
         return res ? this.serializeConversation(res) : null;
     }
 
+    /**
+     * Cập nhật tin nhắn cuối cùng (lastMessageId) cho phòng chat.
+     * Đồng thời bỏ ẩn (restore) phòng chat này nếu trước đó có user nào lỡ ẩn nó đi.
+     * Đồng thời đánh dấu người gửi đã đọc tin nhắn này.
+     */
     async updateLastMessageAndRestoreConversation(
         id: string,
         messageId: string,
@@ -243,6 +272,9 @@ export class ConversationsService {
         return result;
     }
 
+    /**
+     * Đổi tên Group Chat (chỉ dành cho Admin của Group).
+     */
     async updateNameConversation(
         id: string,
         currentUserId: string,
@@ -270,6 +302,9 @@ export class ConversationsService {
         return result ? this.serializeConversation(result) : null;
     }
 
+    /**
+     * Thêm thành viên mới vào Group Chat (chỉ dành cho Admin).
+     */
     async addMembers(id: string, currentUserId: string, memberIds: string[]) {
         const { conversation, objectConversationId } =
             await this.getConversationOrThrow(id);
@@ -307,16 +342,24 @@ export class ConversationsService {
         return result ? this.serializeConversation(result) : null;
     }
 
+    /**
+     * Xóa một thành viên khỏi Group Chat (chỉ dành cho Admin).
+     */
     async removeMember(id: string, currentUserId: string, memberId: string) {
         const { conversation, objectConversationId } =
             await this.getConversationOrThrow(id);
 
         this.ensureGroupConversation(conversation);
-        this.ensureGroupAdmin(conversation, currentUserId);
+        if (currentUserId !== memberId) {
+            this.ensureGroupAdmin(conversation, currentUserId);
+        }
 
-        if (currentUserId === memberId) {
+        if (
+            currentUserId === memberId &&
+            currentUserId === conversation.adminGroupId?.toString()
+        ) {
             throw new BadRequestException(
-                CONVERSATION_MESSAGES.CANNOT_REMOVE_SELF,
+                CONVERSATION_MESSAGES.CANNOT_REMOVE_ADMIN,
             );
         }
 
@@ -344,9 +387,94 @@ export class ConversationsService {
             .populate('lastMessageId', '-__v')
             .lean();
 
-        return result ? this.serializeConversation(result) : null;
+        return { remove: result ? true : false };
     }
 
+    /**
+     * Giải tán nhóm (chỉ dành cho Admin).
+     * Xóa hoàn toàn cuộc trò chuyện khỏi cơ sở dữ liệu.
+     */
+    async disbandGroup(id: string, currentUserId: string) {
+        const { conversation, objectConversationId } =
+            await this.getConversationOrThrow(id);
+
+        this.ensureGroupConversation(conversation);
+        this.ensureGroupAdmin(conversation, currentUserId);
+
+        const session = await this.connection.startSession();
+
+        try {
+            await session.withTransaction(async () => {
+                // Xóa toàn bộ tin nhắn của nhóm trước
+                await this.messageService.deleteMessagesByConversationId(
+                    id,
+                    session,
+                );
+
+                // Sau đó xóa nhóm
+                await this.conversationModel.findByIdAndDelete(
+                    objectConversationId,
+                    { session },
+                );
+            });
+        } catch (error) {
+            throw new InternalServerErrorException(
+                CONVERSATION_MESSAGES.DELETE_FAILED,
+            );
+        } finally {
+            await session.endSession();
+        }
+        const removeAllUnseenConversation =
+            await this.redisService.removeAllUnseenConversation(
+                conversation.users,
+                id,
+            );
+
+        if (removeAllUnseenConversation.ok === false) {
+            console.error(
+                'Remove all unseen conversation failed',
+                removeAllUnseenConversation,
+            );
+        }
+
+        return { message: CONVERSATION_MESSAGES.DELETE_SUCCESS };
+    }
+
+    /**
+     * Thay đổi trưởng nhóm (chỉ dành cho Admin của Group).
+     */
+    async changeAdminGroup(
+        currentUserId: string,
+        newAdminId: string,
+        conversationId: string,
+    ) {
+        const { conversation, objectConversationId } =
+            await this.getConversationOrThrow(conversationId);
+
+        this.ensureGroupConversation(conversation);
+        this.ensureGroupAdmin(conversation, currentUserId);
+        this.ensureMemberInConversation(conversation, newAdminId);
+
+        const objectNewAdminId = toObjectId(newAdminId, 'new admin id');
+
+        const result = await this.conversationModel
+            .findByIdAndUpdate(
+                objectConversationId,
+                { $set: { adminGroupId: objectNewAdminId } },
+                { new: true },
+            )
+            .select('-__v')
+            .populate('users', '-password -__v')
+            .populate('lastMessageId', '-__v')
+            .lean();
+
+        return this.serializeConversation(result);
+    }
+
+    /**
+     * Ẩn phòng chat khỏi danh sách của một user.
+     * Phòng chat sẽ bị ẩn cho tới khi có tin nhắn mới tới, nó sẽ được restore.
+     */
     async hiddenHistory(conversationId: string, userId: string) {
         const { conversation, objectConversationId } =
             await this.getConversationOrThrow(conversationId);
@@ -414,6 +542,10 @@ export class ConversationsService {
         throw new BadRequestException(CONVERSATION_MESSAGES.DELETE_FAILED);
     }
 
+    /**
+     * Đánh dấu người dùng đã đọc đến một tin nhắn cụ thể trong phòng chat.
+     * Lưu vào thuộc tính `readReceipts`.
+     */
     async markAsRead(
         conversationId: string,
         userId: string,
@@ -447,6 +579,9 @@ export class ConversationsService {
         );
     }
 
+    /**
+     * Lấy mảng tất cả các Conversation ID mà user đang tham gia (Dùng để khởi tạo Socket Join).
+     */
     async getAllConversationIdsByUser(userId: string): Promise<string[]> {
         const objectUserId = toObjectId(userId, 'user id');
 
@@ -460,6 +595,9 @@ export class ConversationsService {
         return res.map((conv) => conv._id.toString());
     }
 
+    /**
+     * Kiểm tra tin nhắn có thuộc về cuộc trò chuyện này hay không, nếu không ném lỗi.
+     */
     async getMessageInConverOrThrow(messageId: string, conversationId: string) {
         const message =
             await this.messageService.checkMessageExistInConversation(
@@ -475,6 +613,9 @@ export class ConversationsService {
         return { message, objectMessageId };
     }
 
+    /**
+     * Helper: Tìm Conversation, nếu không tồn tại thì ném lỗi.
+     */
     async getConversationOrThrow(conversationId: string) {
         const objectConversationId = toObjectId(
             conversationId,
@@ -492,6 +633,9 @@ export class ConversationsService {
         return { conversation, objectConversationId };
     }
 
+    /**
+     * Helper: Kiểm tra xem conversation có phải là nhóm hay không.
+     */
     ensureGroupConversation(conversation: ConversationDocument) {
         if (!conversation.isGroup) {
             throw new BadRequestException(
@@ -500,6 +644,9 @@ export class ConversationsService {
         }
     }
 
+    /**
+     * Helper: Kiểm tra user có phải là admin của group chat hay không.
+     */
     ensureGroupAdmin(
         conversation: ConversationDocument,
         currentUserId: string,
@@ -515,6 +662,9 @@ export class ConversationsService {
         return objectCurrentUserId;
     }
 
+    /**
+     * Helper: Đảm bảo một user ID đang là thành viên của cuộc trò chuyện.
+     */
     ensureMemberInConversation(
         conversation: ConversationDocument,
         memberId: string,
@@ -533,6 +683,10 @@ export class ConversationsService {
         return objectMemberId;
     }
 
+    /**
+     * Helper: Kiểm tra xem MongoDB ObjectId hiện tại có lớn hơn (tức là được sinh ra sau) ObjectId kia không.
+     * Dùng để check logic xem tin nhắn nào cũ hơn/mới hơn dựa vào ID sinh theo timestamp.
+     */
     isObjectIdAfter(currentId: Types.ObjectId, nextId: Types.ObjectId) {
         if (currentId.equals(nextId)) {
             return false;

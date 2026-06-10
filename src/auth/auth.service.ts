@@ -29,6 +29,10 @@ export class AuthService {
         private readonly sessionService: SessionService,
     ) {}
 
+    /**
+     * Xác thực thông tin đăng nhập của user (email và password).
+     * Trả về thông tin user (đã loại bỏ password) nếu hợp lệ, ngược lại trả về null.
+     */
     async validateUser(email: string, pass: string) {
         const user = await this.usersService.findByEmail(email);
         if (!user) {
@@ -44,6 +48,10 @@ export class AuthService {
 
         return result;
     }
+    /**
+     * Xử lý đăng nhập: Tạo phiên (Session), sinh JWT (Access Token & Refresh Token),
+     * băm (hash) Refresh Token để lưu vào DB và trả về kết quả cho client.
+     */
     async login(
         user: User & { _id: string },
         userAgent?: string,
@@ -95,11 +103,18 @@ export class AuthService {
         }
     }
 
+    /**
+     * Chuyển tiếp logic đăng ký tài khoản sang UsersService.
+     */
     async register(registerAuthDto: RegisterAuthDto) {
         const { email, password } = registerAuthDto;
         return await this.usersService.register(email, password);
     }
 
+    /**
+     * Cấp mới Access Token bằng Refresh Token (Token Rotation).
+     * Kiểm tra tính hợp lệ của Refresh Token, Session, và Token Version để đảm bảo bảo mật.
+     */
     async refreshToken(refreshTokenOld: string) {
         if (!refreshTokenOld) {
             throw new UnauthorizedException(
@@ -205,6 +220,9 @@ export class AuthService {
         }
     }
 
+    /**
+     * Đăng xuất trên thiết bị hiện tại (hủy Session tương ứng).
+     */
     async logout(refreshToken: string, userId: string) {
         if (!refreshToken) {
             return null;
@@ -232,6 +250,9 @@ export class AuthService {
         }
     }
 
+    /**
+     * Đăng xuất khỏi toàn bộ các thiết bị (Tăng tokenVersion và hủy toàn bộ Session của user).
+     */
     async logoutAllDevices(userId: string) {
         try {
             const user = await this.usersService.findOne(userId);
@@ -252,14 +273,23 @@ export class AuthService {
         }
     }
 
+    /**
+     * Kích hoạt tài khoản người dùng bằng mã OTP.
+     */
     async activateUser(email: string, code: string) {
         return await this.usersService.activateUser(email, code);
     }
 
+    /**
+     * Gửi lại mã OTP kích hoạt tài khoản.
+     */
     async reSendCodeActive(email: string) {
         return await this.usersService.reSendCodeActive(email);
     }
 
+    /**
+     * Thay đổi mật khẩu khi người dùng đã đăng nhập (cần mật khẩu cũ).
+     */
     async changePassword(
         id: string,
         changePasswordAuthDto: ChangePasswordAuthDto,
@@ -270,9 +300,16 @@ export class AuthService {
         );
     }
 
+    /**
+     * Gửi mã OTP khôi phục mật khẩu vào email.
+     */
     async forgotPassword(email: string) {
         return await this.usersService.sendMailForgotPassword(email);
     }
+
+    /**
+     * Đặt lại mật khẩu mới thông qua mã OTP khôi phục.
+     */
     async resetPassword(resetPasswordAuthDto: ResetPasswordAuthDto) {
         const { email, code, password } = resetPasswordAuthDto;
 

@@ -27,3 +27,7 @@ export class ReadMessageDto {
     @IsMongoId()
     messageId: string;
 }
+export class ChangeAdminGroupDto {
+    @IsMongoId()
+    newAdminId: string;
+}

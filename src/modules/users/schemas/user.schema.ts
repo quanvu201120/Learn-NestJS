@@ -34,6 +34,9 @@ export class User {
 
     @Prop({ default: 0 })
     tokenVersion: number;
+
+    @Prop()
+    lastOnlineAt?: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

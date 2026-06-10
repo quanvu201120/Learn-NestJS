@@ -49,6 +49,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         private readonly redisService: RedisService,
     ) {}
 
+    /**
+     * Xử lý sự kiện khi một client kết nối tới Socket server.
+     * Xác thực JWT token, lấy thông tin user, join vào room cá nhân và các room group đang tham gia.
+     * Cập nhật trạng thái Online lên Redis và broadcast cho người khác biết.
+     */
     async handleConnection(client: Socket) {
         try {
             const token = client.handshake.auth?.token as string | undefined;
@@ -87,8 +92,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         }
     }
 
+    /**
+     * Xử lý sự kiện khi client ngắt kết nối.
+     * Hiện tại không cần logic phức tạp vì trạng thái online quản lý bằng TTL của Redis Heartbeat.
+     */
     handleDisconnect(client: Socket) {}
 
+    /**
+     * Đăng ký lắng nghe sự kiện từ Redis Sub/Pub:
+     * - `userOffline$`: Phát broadcast cho các phòng chat khi một user offline (TTL hết hạn).
+     * - `userTypingStop$`: Phát broadcast khi một user ngừng gõ phím.
+     */
     onModuleInit() {
         this.redisService.userOffline$.subscribe(async (userId) => {
             try {
@@ -137,6 +151,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         );
     }
 
+    /**
+     * Lắng nghe sự kiện `chat:join-conversation`.
+     * Khi user click mở một khung chat, hệ thống cho user join vào room Socket.IO của phòng đó.
+     * Trả về danh sách user đang online trong phòng chat.
+     */
     @SubscribeMessage('chat:join-conversation')
     async handleJoinConversation(
         @ConnectedSocket() client: Socket,
@@ -185,6 +204,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         }
     }
 
+    /**
+     * Lắng nghe sự kiện gửi tin nhắn mới `chat:create-message`.
+     * Lưu tin vào DB, sau đó broadcast sự kiện `chat:new-message` cho mọi người trong room.
+     * Kích hoạt cờ "Unseen message" qua Redis cho những user đang online ở các tab khác.
+     */
     @SubscribeMessage('chat:create-message')
     async handleCreateMessage(
         @ConnectedSocket() client: Socket,
@@ -254,6 +278,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         }
     }
 
+    /**
+     * Lắng nghe sự kiện Heartbeat (ping) từ client.
+     * Gia hạn thời gian sống (TTL) của trạng thái Online trên Redis.
+     */
     @SubscribeMessage('user:heartbeat')
     async handleUserHeartbeat(
         @ConnectedSocket() client: Socket,
@@ -278,6 +306,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         }
     }
 
+    /**
+     * Bắt đầu gõ phím.
+     * Update trạng thái Typing lên Redis và phát broadcast `user:typing-update` cho phòng.
+     */
     @SubscribeMessage('chat:typing-start')
     async handleTypingStart(
         @ConnectedSocket() client: Socket,
@@ -335,6 +367,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         }
     }
 
+    /**
+     * Ngừng gõ phím.
+     * Xóa trạng thái Typing trên Redis và phát broadcast hủy Typing cho phòng.
+     */
     @SubscribeMessage('chat:typing-stop')
     async handleTypingStop(
         @ConnectedSocket() client: Socket,
@@ -392,6 +428,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         }
     }
 
+    /**
+     * Sự kiện "Đã xem" tin nhắn.
+     * Cập nhật `readReceipts` trong Database và broadcast cho các thành viên khác biết.
+     */
     @SubscribeMessage('chat:mark-read')
     async handleMarkRead(
         @ConnectedSocket() client: Socket,
@@ -412,7 +452,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 userId: payload._id,
                 messageId: body.messageId,
             };
-            
+
             client.to(roomName).emit('user:mark-read', eventData);
 
             const res: SocketResponse = {
@@ -433,6 +473,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         }
     }
 
+    /**
+     * Helper: Xác thực và lấy payload JWT từ Socket.
+     */
     private validateUse(client: Socket) {
         const payload = client.data.user as PayloadJWT | undefined;
         if (!payload?._id) {

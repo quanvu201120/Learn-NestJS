@@ -18,7 +18,8 @@ API xây dựng bằng **NestJS**, dùng **MongoDB** để lưu dữ liệu nghi
 - Gửi, nhận tin nhắn realtime qua sự kiện (`chat:new-message`).
 - Trạng thái hoạt động (Presence): Hiện trạng online/offline (`user:online`, `user:offline`).
 - Typing indicators (Đang gõ...): Quản lý người dùng gõ trên đa thiết bị (`chat:typing-start`, `chat:typing-stop`).
-- Thông báo tin nhắn chưa đọc (`user:unseen-message`) thông qua Redis.
+- Tính năng Read Receipts: Cập nhật trạng thái "Đang gửi", "Đã gửi", "Đã xem" và tự động cascade trạng thái `seen` cho các tin nhắn cũ (`chat:mark-read`).
+- Quản lý "Unseen messages": Đánh dấu conversation có tin mới thông qua Redis Sets, tối ưu hóa để tránh spam sự kiện (`user:unseen-message`).
 - Heartbeat để duy trì phiên kết nối mạng.
 
 ### 2. Authentication & Security

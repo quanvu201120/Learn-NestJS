@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
@@ -39,6 +40,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         enableReadyCheck: false,
     });
 
+    /**
+     * Khởi tạo: Cấu hình Redis nhận sự kiện hết hạn key (Keyspace Notifications)
+     * và lắng nghe các key hết hạn để trigger sự kiện Offline hoặc Ngừng gõ phím.
+     */
     async onModuleInit() {
         await this.redis.config('SET', 'notify-keyspace-events', 'Ex');
         await this.subscriber.subscribe('__keyevent@0__:expired');
@@ -58,35 +63,61 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         });
     }
 
+    /**
+     * Dọn dẹp kết nối Redis khi module bị hủy (App tắt).
+     */
     async onModuleDestroy() {
         await this.redis.quit();
         await this.subscriber.quit();
     }
 
+    /**
+     * Lưu một cặp Key-Value vào Redis với thời gian sống (TTL) tính bằng giây.
+     */
     async setWithTTL(key: string, value: string, ttlSeconds: number) {
         await this.redis.set(key, value, 'EX', ttlSeconds);
     }
 
+    /**
+     * Lấy giá trị của một Key từ Redis.
+     */
     async get(key: string) {
         return this.redis.get(key);
     }
 
+    /**
+     * Xóa một Key khỏi Redis.
+     */
     async del(key: string) {
         return this.redis.del(key);
     }
 
+    /**
+     * Lấy thời gian sống còn lại (TTL) của một Key (tính bằng giây).
+     */
     async ttl(key: string) {
         return this.redis.ttl(key);
     }
 
+    /**
+     * Set trạng thái Online cho user bằng cách gán key `presence:user:{id}` với TTL = 120s.
+     * Cần được gọi lại liên tục (Heartbeat) để duy trì online.
+     */
     setPresence(userId: string) {
         return this.setWithTTL(`presence:user:${userId}`, 'online', 120);
     }
 
+    /**
+     * Kiểm tra xem user có đang Online hay không.
+     */
     getPresence(userId: string) {
         return this.redis.get(`presence:user:${userId}`);
     }
 
+    /**
+     * Đánh dấu có tin nhắn mới (Unseen) cho danh sách user đang online.
+     * Thêm conversationId vào Set `unseen:conversations:{userId}` của từng user.
+     */
     async setUnseenMessage(
         membersOnline: (Types.ObjectId | string)[],
         conversationId: string,
@@ -103,6 +134,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         return await pipeline.exec();
     }
 
+    /**
+     * Gỡ bỏ cờ Unseen của một conversation cho một user (khi user đã đọc tin nhắn).
+     */
     async removeUnseenConversation(userId: string, conversationId: string) {
         return await this.redis.srem(
             `unseen:conversations:${userId}`,
@@ -110,6 +144,44 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         );
     }
 
+    /**
+     * Xóa toàn bộ cờ Unseen của một conversation cho tất cả user (khi user đã đọc tin nhắn).
+     */
+    async removeAllUnseenConversation(
+        userIds: (string | Types.ObjectId)[],
+        conversationId: string,
+    ) {
+        const pipeline = this.redis.pipeline();
+        userIds.forEach((userId) => {
+            pipeline.srem(
+                `unseen:conversations:${userId.toString()}`,
+                conversationId,
+            );
+        });
+        const result = await pipeline.exec();
+        if (!result) {
+            return {
+                ok: false,
+                failedCount: userIds.length,
+            };
+        }
+        const failed = result
+            .map(([error, _], index) => ({
+                error,
+                userId: userIds[index]?.toString(),
+            }))
+            .filter((item) => item.error);
+
+        return {
+            ok: failed.length === 0,
+            failedCount: failed.length,
+        };
+    }
+
+    /**
+     * Set cờ đang gõ phím (Typing) cho một user trong conversation với TTL = 4s.
+     * Sử dụng NX để chỉ set nếu key chưa tồn tại. Trả về 'new' nếu mới set, 'refreshed' nếu gia hạn.
+     */
     async setTypingConversation(
         userId: string,
         conversationId: string,
@@ -133,6 +205,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         return 'new';
     }
 
+    /**
+     * Gia hạn cờ Typing. Sử dụng XX để chỉ set nếu key đã tồn tại.
+     */
     async refreshTypingConversation(
         userId: string,
         conversationId: string,
@@ -147,6 +222,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         );
     }
 
+    /**
+     * Gỡ bỏ cờ Typing ngay lập tức (khi user ngưng gõ hoặc xóa sạch textbox).
+     */
     async removeTypingConversation(
         userId: string,
         conversationId: string,
@@ -158,6 +236,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         return result > 0;
     }
 
+    /**
+     * Đếm số lượng thiết bị (socket) mà user đang gõ phím trong cùng 1 conversation.
+     * Sử dụng SCAN để đếm tất cả key match pattern.
+     */
     async countTypingConversations(userId: string, conversationId: string) {
         let cursor = '0';
         const pattern = this.getTypingPattern(conversationId, userId);
@@ -178,6 +260,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         return count;
     }
 
+    /**
+     * Kiểm tra xem user có đang gõ phím trên bất kỳ thiết bị nào trong conversation không.
+     */
     async hasTypingConversation(userId: string, conversationId: string) {
         const count = await this.countTypingConversations(
             userId,
@@ -186,6 +271,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         return count > 0;
     }
 
+    /**
+     * Lọc ra danh sách các userId đang Online từ mảng các userId truyền vào.
+     * Chạy mget một lần cho hiệu suất cao.
+     */
     async getUserOnlineInListIds(members: (Types.ObjectId | string)[]) {
         if (!members || members.length === 0) {
             return [];

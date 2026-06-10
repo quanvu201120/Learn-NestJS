@@ -15,7 +15,7 @@ import {
     MessageDocument,
     MessageEnumType,
 } from './schemas/message.schema';
-import { Connection, Model, Types } from 'mongoose';
+import { Connection, Model, Types, ClientSession } from 'mongoose';
 import { parseDateOrThrow, toObjectId } from '@/utils/utils';
 import { ConversationsService } from '../conversations/conversations.service';
 import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
@@ -32,6 +32,9 @@ export class MessagesService {
         private readonly connection: Connection,
     ) {}
 
+    /**
+     * Lấy chi tiết một tin nhắn theo ID, kèm theo thông tin người gửi và tin nhắn được reply.
+     */
     async getMessageById(messageId: string) {
         const objectMessageId = toObjectId(messageId, 'message id');
         const message = await this.messageModel
@@ -47,6 +50,9 @@ export class MessagesService {
         return serializeMessage(message);
     }
 
+    /**
+     * Kiểm tra xem một tin nhắn có tồn tại và thuộc về một cuộc trò chuyện cụ thể hay không.
+     */
     async checkMessageExistInConversation(
         messageId: string,
         conversationId: string,
@@ -62,6 +68,12 @@ export class MessagesService {
         });
     }
 
+    /**
+     * Gửi tin nhắn mới vào phòng chat.
+     * Xử lý Transaction (ACID) để đảm bảo:
+     * 1. Lưu tin nhắn vào collection Messages.
+     * 2. Cập nhật `lastMessageId` cho Conversation tương ứng.
+     */
     async createMessage(
         senderId: string,
         conversationId: string,
@@ -135,6 +147,9 @@ export class MessagesService {
         }
     }
 
+    /**
+     * Lấy tin nhắn mới nhất của một cuộc trò chuyện dựa trên lastMessageId.
+     */
     async getLatestMessageOfConversation(conversationId: string) {
         const { conversation, objectConversationId } =
             await this.conversationService.getConversationOrThrow(
@@ -157,6 +172,10 @@ export class MessagesService {
         return serializeMessage(lastMessage);
     }
 
+    /**
+     * Lấy danh sách tin nhắn của phòng chat (có phân trang bằng cursor).
+     * Bỏ qua các tin nhắn cũ nếu người dùng đã từng Ẩn phòng chat (hiddenHistory).
+     */
     async getMessagesByConversation(
         conversationId: string,
         userId: string,
@@ -198,6 +217,9 @@ export class MessagesService {
         return result.map((message) => serializeMessage(message));
     }
 
+    /**
+     * Thu hồi (xóa mềm) tin nhắn của người gửi.
+     */
     async softDeleteMessage(
         messageId: string,
         conversationId: string,
@@ -249,5 +271,25 @@ export class MessagesService {
             )
             .lean();
         return MESSAGE_MESSAGES.DELETE_SUCCESS;
+    }
+
+    /**
+     * Xóa vĩnh viễn toàn bộ tin nhắn của một cuộc trò chuyện.
+     * Được gọi khi giải tán nhóm.
+     */
+    async deleteMessagesByConversationId(
+        conversationId: string,
+        session?: ClientSession,
+    ) {
+        const objectConversationId = toObjectId(
+            conversationId,
+            'conversation id',
+        );
+        await this.messageModel.deleteMany(
+            {
+                conversationId: objectConversationId,
+            },
+            { session },
+        );
     }
 }

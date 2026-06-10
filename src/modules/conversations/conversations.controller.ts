@@ -14,6 +14,7 @@ import { ConversationsService } from './conversations.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import {
     AddMembersConversationDto,
+    ChangeAdminGroupDto,
     ReadMessageDto,
     RemoveMemberConversationDto,
     UpdateNameConversationDto,
@@ -84,6 +85,19 @@ export class ConversationsController {
             removeMemberConversationDto.memberId,
         );
     }
+    @Delete(':id/leave-group')
+    leaveGroup(@Param('id') id: string, @Request() req: any) {
+        return this.conversationsService.removeMember(
+            id,
+            req.user._id,
+            req.user._id,
+        );
+    }
+
+    @Delete(':id/disband-group')
+    disbandGroup(@Param('id') id: string, @Request() req: any) {
+        return this.conversationsService.disbandGroup(id, req.user._id);
+    }
 
     @Patch(':id/read')
     async markAsRead(
@@ -98,6 +112,19 @@ export class ConversationsController {
         );
         await this.redisService.removeUnseenConversation(req.user._id, id);
         return result;
+    }
+
+    @Patch(':conversationId/change-admin')
+    async changeAdmin(
+        @Param('conversationId') conversationId: string,
+        @Body() changeAdminGroupDto: ChangeAdminGroupDto,
+        @Request() req: any,
+    ) {
+        return await this.conversationsService.changeAdminGroup(
+            req.user._id,
+            changeAdminGroupDto.newAdminId,
+            conversationId,
+        );
     }
 
     @Delete(':id')

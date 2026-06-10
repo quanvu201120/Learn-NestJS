@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 import { USER_MESSAGES } from './constants/user.constant';
 import { BadRequestException, Injectable } from '@nestjs/common';
@@ -36,6 +38,10 @@ export class UsersService {
         private readonly redisService: RedisService,
     ) {}
 
+    /**
+     * Tạo tài khoản mới, sinh mã OTP lưu vào Redis và gửi email kích hoạt.
+     * Mặc định tài khoản tạo ra sẽ ở trạng thái isActive = false.
+     */
     async create(createUserDto: CreateUserDto) {
         const isEmailExisted = await this.userModel.exists({
             email: createUserDto.email,
@@ -65,6 +71,9 @@ export class UsersService {
         return user as UserResponse;
     }
 
+    /**
+     * Helper đăng ký nhanh chỉ với email và password.
+     */
     async register(email: string, pass: string) {
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
         return this.create({
@@ -76,6 +85,9 @@ export class UsersService {
         } as CreateUserDto);
     }
 
+    /**
+     * Lấy danh sách user có hỗ trợ phân trang và filter (thường dùng cho Admin dashboard).
+     */
     async findAll(query: string, current: number, pageSize: number) {
         const { filter, sort } = aqp(query);
         if (filter.current) delete filter.current;
@@ -99,6 +111,9 @@ export class UsersService {
         return { totalPages, users };
     }
 
+    /**
+     * Lấy thông tin user an toàn (không chứa password), trả về plain object (lean) để API response.
+     */
     async findOneForApi(id: string) {
         validateObjectId(id, 'user id');
         return (await this.userModel
@@ -106,15 +121,25 @@ export class UsersService {
             .select('-password -__v')
             .lean()) as UserResponse;
     }
+
+    /**
+     * Lấy Mongoose Document của user theo ID (dùng cho logic nội bộ cần gọi .save()).
+     */
     async findOne(id: string) {
         validateObjectId(id, 'user id');
         return await this.userModel.findById(id);
     }
 
+    /**
+     * Tìm user bằng email (thường dùng trong xác thực Login).
+     */
     async findByEmail(email: string) {
         return await this.userModel.findOne({ email });
     }
 
+    /**
+     * Cập nhật thông tin user. Chỉ user chính chủ hoặc Admin mới được phép update.
+     */
     async update(
         updateUserDto: UpdateUserDto,
         currentUser: string,
@@ -148,6 +173,9 @@ export class UsersService {
         return user;
     }
 
+    /**
+     * Xóa hoàn toàn một user khỏi Database.
+     */
     async deleteUser(id: string) {
         validateObjectId(id, 'user id');
         const result = await this.userModel.deleteOne({ _id: id });
@@ -157,6 +185,9 @@ export class UsersService {
         throw new BadRequestException(USER_MESSAGES.DELETE_FAILED);
     }
 
+    /**
+     * Gửi email chứa mã OTP để kích hoạt tài khoản.
+     */
     async sendEmailActive(email: string, code: string) {
         const rawExpire = this.configService.get<string>(
             'MAIL_CODE_ACTIVE_EXPIRE',
@@ -177,6 +208,9 @@ export class UsersService {
         );
     }
 
+    /**
+     * Kích hoạt tài khoản bằng mã OTP do người dùng nhập vào.
+     */
     async activateUser(email: string, code: string) {
         const user = await this.userModel
             .findOne({ email })
@@ -198,6 +232,9 @@ export class UsersService {
         return USER_MESSAGES.ACTIVE_SUCCESS;
     }
 
+    /**
+     * Hàm helper: Kiểm tra mã OTP gửi lên so với mã OTP đã hash lưu trong Redis.
+     */
     private async verifyCodeWithRedis(keyRedis: string, code: string) {
         const redisCodeActive = await this.redisService.get(keyRedis);
 
@@ -217,6 +254,9 @@ export class UsersService {
         await this.redisService.del(keyRedis);
     }
 
+    /**
+     * Gửi lại mã OTP kích hoạt tài khoản, có check chống spam (cooldown).
+     */
     async reSendCodeActive(email: string) {
         const user = await this.userModel
             .findOne({ email })
@@ -241,6 +281,9 @@ export class UsersService {
         return 'OK';
     }
 
+    /**
+     * Đổi mật khẩu dựa vào mật khẩu cũ (khi user đã login).
+     */
     async updatePassword(
         id: string,
         changePasswordAuthDto: ChangePasswordAuthDto,
@@ -266,6 +309,9 @@ export class UsersService {
         return USER_MESSAGES.CHANGE_PASSWORD_SUCCESS;
     }
 
+    /**
+     * Gửi mail cấp mã OTP khôi phục mật khẩu.
+     */
     async sendMailForgotPassword(email: string) {
         const user = await this.userModel
             .findOne({ email })
@@ -303,6 +349,9 @@ export class UsersService {
         return 'OK';
     }
 
+    /**
+     * Đặt lại mật khẩu mới thông qua mã OTP từ mail.
+     */
     async resetPassword(email: string, code: string, password: string) {
         const user = await this.userModel
             .findOne({ email })
@@ -323,14 +372,23 @@ export class UsersService {
         return USER_MESSAGES.RESET_PASSWORD_SUCCESS;
     }
 
+    /**
+     * Helper: Format Redis key cho OTP Active.
+     */
     private redisActiveKey(userId: string) {
         return `auth:active:${userId}`;
     }
 
+    /**
+     * Helper: Format Redis key cho OTP Forgot Password.
+     */
     private redisForgotKey(userId: string) {
         return `auth:forgot:${userId}`;
     }
 
+    /**
+     * Hàm helper: Check cooldown để tránh spam gửi mail (giới hạn 1 email / X giây).
+     */
     private async checkMailCooldownRedis(
         key: string,
         expireDurationStr: string,
@@ -350,6 +408,9 @@ export class UsersService {
         }
     }
 
+    /**
+     * Hàm helper: Sinh OTP, hash rồi lưu xuống Redis kèm theo thời hạn sống (TTL).
+     */
     private async saveCodeRedis(
         id: string,
         codeActive: string,
@@ -383,6 +444,9 @@ export class UsersService {
         );
     }
 
+    /**
+     * Hàm helper: Render template HTML (Handlebars) và gửi email qua Resend HTTP API.
+     */
     private async sendEmailViaResend(
         to: string,
         subject: string,
@@ -437,6 +501,9 @@ export class UsersService {
         }
     }
 
+    /**
+     * Đếm số lượng user ID thực sự tồn tại trong DB, dùng khi tạo group chat kiểm tra mảng ID truyền vào có hợp lệ không.
+     */
     async countUserIdsExist(objectUserIds: Types.ObjectId[]) {
         return await this.userModel.countDocuments({
             _id: { $in: objectUserIds },
