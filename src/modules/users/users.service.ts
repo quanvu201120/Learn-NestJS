@@ -509,4 +509,11 @@ export class UsersService {
             _id: { $in: objectUserIds },
         });
     }
+
+    async setLastOnline(userId: string) {
+        return await this.userModel.updateOne(
+            { _id: userId },
+            { $set: { lastOnlineAt: new Date() } },
+        );
+    }
 }

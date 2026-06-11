@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-misused-promises */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
@@ -25,13 +26,20 @@ import { CreateMessageSocketDto } from '../messages/dto/create-message.dto';
 import { MarkReadSocketDto, TypingSocketDto } from './dto/chat-socket.dto';
 import { RedisService } from '@/redis/redis.service';
 import {
-    CreatedMessageEvent,
-    JoinConversationEvent,
+    CreateMessageResult,
+    JoinConversationResult,
     SocketResponse,
-    TypingUpdateEvent,
-    MarkReadEvent,
+    TypingEventPayload,
+    MarkReadEventPayload,
+    UserOfflinePayload,
+    UserOnlinePayload,
+    HeartbeatResult,
+    TypingResult,
+    MarkReadResult,
+    SoftDeleteMessageResult,
+    SoftDeleteMessagePayload,
 } from './types/responseSocket';
-
+import { UsersService } from '../users/users.service';
 @WebSocketGateway({
     cors: { origin: '*' },
     transports: ['websocket'],
@@ -47,12 +55,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         private readonly messageService: MessagesService,
         private readonly conversationService: ConversationsService,
         private readonly redisService: RedisService,
+        private readonly usersService: UsersService,
     ) {}
 
     /**
-     * Xử lý sự kiện khi một client kết nối tới Socket server.
-     * Xác thực JWT token, lấy thông tin user, join vào room cá nhân và các room group đang tham gia.
-     * Cập nhật trạng thái Online lên Redis và broadcast cho người khác biết.
+     * Xử lý một kết nối Socket mới.
+     * Sau khi xác thực JWT, socket được gắn payload user, join vào room cá nhân,
+     * cập nhật presence trong Redis và broadcast `user:online` tới các conversation
+     * mà user hiện đang tham gia để các client khác đồng bộ trạng thái online.
      */
     async handleConnection(client: Socket) {
         try {
@@ -81,9 +91,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 );
             if (listConver.length > 0) {
                 listConver.forEach((conversationId) => {
+                    const userOnline: UserOnlinePayload = {
+                        userId: payload._id,
+                    };
                     this.server
                         .to(getRoomNameConversation(conversationId))
-                        .emit('user:online', { userId: payload._id });
+                        .emit('user:online', userOnline);
                 });
             }
         } catch (error) {
@@ -99,9 +112,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     handleDisconnect(client: Socket) {}
 
     /**
-     * Đăng ký lắng nghe sự kiện từ Redis Sub/Pub:
-     * - `userOffline$`: Phát broadcast cho các phòng chat khi một user offline (TTL hết hạn).
-     * - `userTypingStop$`: Phát broadcast khi một user ngừng gõ phím.
+     * Đăng ký toàn bộ realtime bridge giữa domain service/Redis và Socket.IO.
+     * Bao gồm:
+     * - Presence và typing từ Redis.
+     * - Sự kiện conversation như tạo group, thêm/xóa thành viên, giải tán nhóm.
+     * - Sự kiện khôi phục conversation đã bị ẩn khi có tin nhắn mới đầu tiên.
      */
     onModuleInit() {
         this.redisService.userOffline$.subscribe(async (userId) => {
@@ -110,15 +125,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                     await this.conversationService.getAllConversationIdsByUser(
                         userId,
                     );
+                const lastOnlineAt = new Date();
                 if (listConver.length > 0) {
                     listConver.forEach((conversationId) => {
                         const roomName =
                             getRoomNameConversation(conversationId);
+                        const userOffline: UserOfflinePayload = {
+                            userId,
+                            lastOnlineAt,
+                        };
                         this.server
                             .to(roomName)
-                            .emit('user:offline', { userId });
+                            .emit('user:offline', userOffline);
                     });
                 }
+                await this.usersService.setLastOnline(userId);
             } catch (error) {
                 console.log('Error user offline:', error);
             }
@@ -136,7 +157,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                         return;
                     }
                     const roomName = getRoomNameConversation(conversationId);
-                    const typingData: TypingUpdateEvent = {
+                    const typingData: TypingEventPayload = {
                         conversationId,
                         userId,
                         typing: false,
@@ -149,6 +170,78 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 }
             },
         );
+
+        this.conversationService.conversationDisbanded$.subscribe(
+            ({ conversationId, memberIds }) => {
+                memberIds.forEach((memberId) => {
+                    this.server
+                        .to(getRoomNameUser(memberId))
+                        .emit('conversation:disbanded', { conversationId });
+                });
+            },
+        );
+
+        this.conversationService.memberAdded$.subscribe(
+            ({ conversationId, addedMemberIds, adderId }) => {
+                const roomName = getRoomNameConversation(conversationId);
+                this.server.to(roomName).emit('conversation:member-added', {
+                    conversationId,
+                    addedMemberIds,
+                    adderId,
+                });
+                addedMemberIds.forEach((memberId) => {
+                    this.server
+                        .to(getRoomNameUser(memberId))
+                        .emit('conversation:member-added', {
+                            conversationId,
+                            addedMemberIds,
+                            adderId,
+                        });
+                });
+            },
+        );
+
+        this.conversationService.memberRemoved$.subscribe(
+            ({ conversationId, removedMemberId, removerId }) => {
+                const roomName = getRoomNameConversation(conversationId);
+                const userRoom = getRoomNameUser(removedMemberId);
+                this.server.in(userRoom).socketsLeave(roomName);
+                this.server.to(roomName).emit('conversation:member-removed', {
+                    conversationId,
+                    removedMemberId,
+                    removerId,
+                });
+                this.server.to(userRoom).emit('conversation:member-removed', {
+                    conversationId,
+                    removedMemberId,
+                    removerId,
+                });
+            },
+        );
+
+        this.conversationService.conversationGroupCreated$.subscribe(
+            ({ conversationId, memberIds }) => {
+                memberIds.forEach((memberId) => {
+                    this.server
+                        .to(getRoomNameUser(memberId))
+                        .emit('conversation:group-created', {
+                            conversationId,
+                        });
+                });
+            },
+        );
+
+        this.messageService.restoredConversation$.subscribe({
+            next: ({ conversationId, members }) => {
+                members.forEach((memberId) => {
+                    this.server
+                        .to(getRoomNameUser(memberId))
+                        .emit('conversation:restored', {
+                            conversationId,
+                        });
+                });
+            },
+        });
     }
 
     /**
@@ -183,7 +276,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             );
             const membersOnline = countOnline.map((id) => id.toString());
 
-            const res: SocketResponse<JoinConversationEvent> = {
+            const res: SocketResponse<JoinConversationResult> = {
                 ok: true,
                 data: {
                     conversationId,
@@ -258,7 +351,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 }
             }
 
-            const res: SocketResponse<CreatedMessageEvent> = {
+            const res: SocketResponse<CreateMessageResult> = {
                 ok: true,
                 data: {
                     created: true,
@@ -290,19 +383,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         try {
             const payload = this.validateUse(client);
             await this.redisService.setPresence(payload._id);
-            ack?.({
+            const res: SocketResponse<HeartbeatResult> = {
                 ok: true,
                 data: {
                     setPresence: true,
                 },
-            });
+            };
+            ack?.(res);
         } catch (error) {
             console.log('Error user heartbeat:', error);
-            ack?.({
+            const res: SocketResponse = {
                 ok: false,
                 message:
                     error instanceof Error ? error.message : 'Unknown error',
-            });
+            };
+            ack?.(res);
         }
     }
 
@@ -341,7 +436,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                     const roomName = getRoomNameConversation(
                         body.conversationId,
                     );
-                    const typingData: TypingUpdateEvent = {
+                    const typingData: TypingEventPayload = {
                         conversationId: body.conversationId,
                         userId: payload._id,
                         typing: true,
@@ -349,7 +444,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                     client.to(roomName).emit('user:typing-update', typingData);
                 }
             }
-            const res: SocketResponse = {
+            const res: SocketResponse<TypingResult> = {
                 ok: true,
                 data: {
                     setTyping: true,
@@ -402,7 +497,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                     const roomName = getRoomNameConversation(
                         body.conversationId,
                     );
-                    const typingData: TypingUpdateEvent = {
+                    const typingData: TypingEventPayload = {
                         conversationId: body.conversationId,
                         userId: payload._id,
                         typing: false,
@@ -410,7 +505,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                     client.to(roomName).emit('user:typing-update', typingData);
                 }
             }
-            const res: SocketResponse = {
+            const res: SocketResponse<TypingResult> = {
                 ok: true,
                 data: {
                     setTyping: false,
@@ -445,17 +540,27 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 payload._id,
                 body.messageId,
             );
-
-            const roomName = getRoomNameConversation(body.conversationId);
-            const eventData: MarkReadEvent = {
+            await this.redisService.removeUnseenConversation(
+                payload._id,
+                body.conversationId,
+            );
+            const roomNameConversation = getRoomNameConversation(
+                body.conversationId,
+            );
+            const roomNameUser = getRoomNameUser(payload._id);
+            const eventData: MarkReadEventPayload = {
                 conversationId: body.conversationId,
                 userId: payload._id,
                 messageId: body.messageId,
             };
 
-            client.to(roomName).emit('user:mark-read', eventData);
+            client.to(roomNameConversation).emit('user:mark-read', eventData);
 
-            const res: SocketResponse = {
+            this.server.to(roomNameUser).emit('user:unseen-cleared', {
+                conversationId: body.conversationId,
+            });
+
+            const res: SocketResponse<MarkReadResult> = {
                 ok: true,
                 data: {
                     markRead: true,
@@ -464,6 +569,48 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             ack?.(res);
         } catch (error) {
             console.log('Error marking as read:', error);
+            const res: SocketResponse = {
+                ok: false,
+                message:
+                    error instanceof Error ? error.message : 'Unknown error',
+            };
+            ack?.(res);
+        }
+    }
+
+    /**
+     * Thu hồi tin nhắn
+     */
+    @SubscribeMessage('chat:delete-message')
+    async handleDeleteMessage(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() body: { conversationId: string; messageId: string },
+        @Ack() ack: (response: any) => void,
+    ) {
+        try {
+            const payload = this.validateUse(client);
+
+            await this.messageService.softDeleteMessage(
+                body.messageId,
+                body.conversationId,
+                payload._id,
+            );
+
+            const roomName = getRoomNameConversation(body.conversationId);
+            const eventPayload: SoftDeleteMessagePayload = {
+                conversationId: body.conversationId,
+                messageId: body.messageId,
+                deletedBy: payload._id,
+            };
+            this.server.to(roomName).emit('chat:message-deleted', eventPayload);
+
+            const res: SocketResponse<SoftDeleteMessageResult> = {
+                ok: true,
+                data: { deleted: true },
+            };
+            ack?.(res);
+        } catch (error) {
+            console.log('Error deleting message:', error);
             const res: SocketResponse = {
                 ok: false,
                 message:

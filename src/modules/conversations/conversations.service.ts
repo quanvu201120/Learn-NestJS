@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable prettier/prettier */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
@@ -24,9 +26,31 @@ import { MessagesService } from '../messages/messages.service';
 import { UsersService } from '../users/users.service';
 import { ConversationResponse } from './types/conversation';
 import { RedisService } from '@/redis/redis.service';
+import { Subject } from 'rxjs';
+import { MessageEnumType } from '../messages/schemas/message.schema';
 
 @Injectable()
 export class ConversationsService {
+    public readonly conversationDisbanded$ = new Subject<{
+        conversationId: string;
+        memberIds: string[];
+    }>();
+    public readonly conversationGroupCreated$ = new Subject<{
+        conversationId: string;
+        memberIds: string[];
+    }>();
+
+    public readonly memberAdded$ = new Subject<{
+        conversationId: string;
+        addedMemberIds: string[];
+        adderId: string;
+    }>();
+
+    public readonly memberRemoved$ = new Subject<{
+        conversationId: string;
+        removedMemberId: string;
+        removerId: string;
+    }>();
     constructor(
         @InjectModel(Conversation.name)
         private readonly conversationModel: Model<ConversationDocument>,
@@ -62,8 +86,9 @@ export class ConversationsService {
     }
 
     /**
-     * Tạo một cuộc trò chuyện (Conversation) mới.
-     * Hỗ trợ cả tạo Group chat và tạo chat 1-1. Nếu chat 1-1 đã tồn tại sẽ trả về luôn thay vì tạo mới.
+     * Tạo một conversation mới hoặc khôi phục conversation 1-1 đã tồn tại.
+     * - Chat 1-1: nếu đã có sẵn thì trả lại conversation cũ; nếu người tạo từng ẩn nó thì mở lại `hiddenHistory`.
+     * - Group chat: tạo conversation mới, gán admin là người tạo và phát sự kiện realtime để các thành viên refresh sidebar.
      */
     async createConversation(
         createConversationDto: CreateConversationDto,
@@ -179,7 +204,14 @@ export class ConversationsService {
         const { __v, ...result } = (
             createConversation as ConversationDocument
         ).toObject();
-        return this.serializeConversation(result);
+        const res = this.serializeConversation(result);
+        if (isGroup) {
+            this.conversationGroupCreated$.next({
+                conversationId: res._id.toString(),
+                memberIds: normalizedUsers,
+            });
+        }
+        return res;
     }
 
     /**
@@ -303,7 +335,10 @@ export class ConversationsService {
     }
 
     /**
-     * Thêm thành viên mới vào Group Chat (chỉ dành cho Admin).
+     * Thêm thành viên mới vào group chat.
+     * Chỉ admin được phép thực hiện; member mới được thêm vào danh sách `users`,
+     * được tạo record `hiddenHistory` mặc định không ẩn, sau đó hệ thống gửi
+     * system message và phát sự kiện realtime để client cập nhật sidebar/phòng chat.
      */
     async addMembers(id: string, currentUserId: string, memberIds: string[]) {
         const { conversation, objectConversationId } =
@@ -322,6 +357,7 @@ export class ConversationsService {
                 CONVERSATION_MESSAGES.USERS_NOT_EXIST,
             );
         }
+
         const result = await this.conversationModel
             .findByIdAndUpdate(
                 objectConversationId,
@@ -329,6 +365,15 @@ export class ConversationsService {
                     $addToSet: {
                         users: {
                             $each: objectMemberIds,
+                        },
+                    },
+                    $push: {
+                        hiddenHistory: {
+                            $each: objectMemberIds.map((memberId) => ({
+                                userId: memberId,
+                                isHidden: false,
+                                hiddenAt: new Date(),
+                            })),
                         },
                     },
                 },
@@ -339,11 +384,34 @@ export class ConversationsService {
             .populate('lastMessageId', '-__v')
             .lean();
 
-        return result ? this.serializeConversation(result) : null;
+        if (result) {
+            const addedUsers = result.users as any[];
+            const addedNames = addedUsers
+                .filter((u) => memberIds.includes(u._id.toString()))
+                .map((u) => u.name || u.email || 'Một thành viên')
+                .join(', ');
+
+            await this.messageService.createMessage(
+                currentUserId,
+                id,
+                MessageEnumType.SYSTEM,
+                `Đã thêm ${addedNames} vào nhóm`,
+            );
+
+            this.memberAdded$.next({
+                conversationId: id,
+                addedMemberIds: memberIds,
+                adderId: currentUserId,
+            });
+            return this.serializeConversation(result);
+        }
+        return null;
     }
 
     /**
-     * Xóa một thành viên khỏi Group Chat (chỉ dành cho Admin).
+     * Xóa một thành viên khỏi group chat hoặc để chính thành viên tự rời nhóm.
+     * Hàm đồng thời dọn `hiddenHistory`, `readReceipts`, xóa cờ unseen của người bị remove,
+     * gửi system message tương ứng và phát sự kiện realtime để các client cập nhật trạng thái.
      */
     async removeMember(id: string, currentUserId: string, memberId: string) {
         const { conversation, objectConversationId } =
@@ -387,12 +455,44 @@ export class ConversationsService {
             .populate('lastMessageId', '-__v')
             .lean();
 
+        if (!result) {
+            throw new BadRequestException(
+                CONVERSATION_MESSAGES.CONVERSATION_NOT_FOUND,
+            );
+        }
+        const removedUser = await this.userService.findOneForApi(memberId);
+        const removedName = removedUser
+            ? removedUser.name || removedUser.email || 'Một thành viên'
+            : 'Một thành viên';
+
+        const messageContent =
+            currentUserId === memberId
+                ? `${removedName} đã rời khỏi nhóm`
+                : `Đã xóa ${removedName} khỏi nhóm`;
+
+        await this.messageService.createMessage(
+            currentUserId,
+            id,
+            MessageEnumType.SYSTEM,
+            messageContent,
+        );
+
+        await this.redisService.removeUnseenConversation(memberId, id);
+
+        this.memberRemoved$.next({
+            conversationId: id,
+            removedMemberId: memberId,
+            removerId: currentUserId,
+        });
+
         return { remove: result ? true : false };
     }
 
     /**
-     * Giải tán nhóm (chỉ dành cho Admin).
-     * Xóa hoàn toàn cuộc trò chuyện khỏi cơ sở dữ liệu.
+     * Giải tán group chat.
+     * Xóa conversation và toàn bộ message trong transaction; sau khi commit thành công
+     * thì dọn cờ unseen còn sót trong Redis và phát sự kiện realtime để các thành viên
+     * xóa group khỏi sidebar ngay lập tức.
      */
     async disbandGroup(id: string, currentUserId: string) {
         const { conversation, objectConversationId } =
@@ -424,18 +524,26 @@ export class ConversationsService {
         } finally {
             await session.endSession();
         }
-        const removeAllUnseenConversation =
-            await this.redisService.removeAllUnseenConversation(
-                conversation.users,
-                id,
-            );
+        try {
+            const removeAllUnseenConversation =
+                await this.redisService.removeAllUnseenConversation(
+                    conversation.users,
+                    id,
+                );
 
-        if (removeAllUnseenConversation.ok === false) {
-            console.error(
-                'Remove all unseen conversation failed',
-                removeAllUnseenConversation,
-            );
+            if (removeAllUnseenConversation.ok === false) {
+                console.error(
+                    'Remove all unseen conversation failed',
+                    removeAllUnseenConversation,
+                );
+            }
+        } catch (error) {
+            console.error('Remove all unseen conversation failed', error);
         }
+        this.conversationDisbanded$.next({
+            conversationId: id,
+            memberIds: conversation.users.map((user) => user.toString()),
+        });
 
         return { message: CONVERSATION_MESSAGES.DELETE_SUCCESS };
     }

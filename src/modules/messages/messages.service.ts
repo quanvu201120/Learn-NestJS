@@ -20,9 +20,14 @@ import { parseDateOrThrow, toObjectId } from '@/utils/utils';
 import { ConversationsService } from '../conversations/conversations.service';
 import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
 import { serializeMessage } from './utils/message.serializer';
+import { Subject } from 'rxjs';
 
 @Injectable()
 export class MessagesService {
+    public readonly restoredConversation$ = new Subject<{
+        conversationId: string;
+        members: string[];
+    }>();
     constructor(
         @InjectModel(Message.name)
         private readonly messageModel: Model<MessageDocument>,
@@ -69,10 +74,10 @@ export class MessagesService {
     }
 
     /**
-     * Gửi tin nhắn mới vào phòng chat.
-     * Xử lý Transaction (ACID) để đảm bảo:
-     * 1. Lưu tin nhắn vào collection Messages.
-     * 2. Cập nhật `lastMessageId` cho Conversation tương ứng.
+     * Tạo một tin nhắn mới trong conversation và commit toàn bộ thay đổi theo transaction.
+     * Sau khi lưu message thành công, hàm cập nhật `lastMessageId`, mở lại conversation
+     * cho các thành viên đang bị ẩn (`hiddenHistory.isHidden = true`), rồi phát sự kiện
+     * realtime để những client đó refresh sidebar khi tin nhắn đầu tiên xuất hiện.
      */
     async createMessage(
         senderId: string,
@@ -85,11 +90,16 @@ export class MessagesService {
             await this.conversationService.getConversationOrThrow(
                 conversationId,
             );
-        const objectSenderId =
-            this.conversationService.ensureMemberInConversation(
-                conversation,
-                senderId,
-            );
+        let objectSenderId: Types.ObjectId;
+        if (type === MessageEnumType.SYSTEM) {
+            objectSenderId = toObjectId(senderId, 'sender id');
+        } else {
+            objectSenderId =
+                this.conversationService.ensureMemberInConversation(
+                    conversation,
+                    senderId,
+                );
+        }
         let objectReplyTo: Types.ObjectId | undefined;
         if (replyTo) {
             const replyMessage = await this.checkMessageExistInConversation(
@@ -137,11 +147,19 @@ export class MessagesService {
                     MESSAGE_MESSAGES.MESSAGE_NOT_CREATED,
                 );
             }
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
-            const { __v, ...result } = (
-                newMessage as MessageDocument
-            ).toObject();
-            return { message: serializeMessage(result), conversation };
+            const userHiddenHistory = conversation.hiddenHistory
+                ?.filter((user) => user.isHidden)
+                ?.map((user) => user.userId.toString());
+
+            if (userHiddenHistory && userHiddenHistory.length > 0) {
+                this.restoredConversation$.next({
+                    conversationId: conversation._id.toString(),
+                    members: userHiddenHistory,
+                });
+            }
+            const newMessageId = (newMessage as MessageDocument)._id.toString();
+            const message = await this.getMessageById(newMessageId);
+            return { message, conversation };
         } finally {
             await session.endSession();
         }

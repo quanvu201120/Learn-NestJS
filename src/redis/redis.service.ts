@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
+import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
@@ -14,18 +15,6 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         conversationId: string;
         socketId: string;
     }>();
-
-    private getTypingKey(
-        conversationId: string,
-        userId: string,
-        socketId: string,
-    ) {
-        return `typing:conversation:${conversationId}:user:${userId}:socket:${socketId}`;
-    }
-
-    private getTypingPattern(conversationId: string, userId: string) {
-        return `typing:conversation:${conversationId}:user:${userId}:socket:*`;
-    }
 
     private readonly redis = new Redis({
         host: this.configService.get('REDIS_HOST') || '127.0.0.1',
@@ -103,15 +92,19 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
      * Set trạng thái Online cho user bằng cách gán key `presence:user:{id}` với TTL = 120s.
      * Cần được gọi lại liên tục (Heartbeat) để duy trì online.
      */
-    setPresence(userId: string) {
-        return this.setWithTTL(`presence:user:${userId}`, 'online', 120);
+    async setPresence(userId: string) {
+        return await this.setWithTTL(
+            `presence:user:${userId}`,
+            'online',
+            GLOBAL_CONSTANTS.HEARTBEAT_INTERVAL,
+        );
     }
 
     /**
      * Kiểm tra xem user có đang Online hay không.
      */
-    getPresence(userId: string) {
-        return this.redis.get(`presence:user:${userId}`);
+    async getPresence(userId: string) {
+        return await this.redis.get(`presence:user:${userId}`);
     }
 
     /**
@@ -151,6 +144,13 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         userIds: (string | Types.ObjectId)[],
         conversationId: string,
     ) {
+        if (userIds.length === 0) {
+            return {
+                ok: true,
+                failedCount: 0,
+                failedUserIds: [],
+            };
+        }
         const pipeline = this.redis.pipeline();
         userIds.forEach((userId) => {
             pipeline.srem(
@@ -285,5 +285,17 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         );
         const results = await this.redis.mget(keys);
         return members.filter((_, index) => results[index]);
+    }
+
+    private getTypingKey(
+        conversationId: string,
+        userId: string,
+        socketId: string,
+    ) {
+        return `typing:conversation:${conversationId}:user:${userId}:socket:${socketId}`;
+    }
+
+    private getTypingPattern(conversationId: string, userId: string) {
+        return `typing:conversation:${conversationId}:user:${userId}:socket:*`;
     }
 }

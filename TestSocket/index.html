@@ -380,6 +380,19 @@
                 background: rgba(255, 253, 249, 0.92);
             }
 
+            .panel-actions,
+            .toolbar-actions,
+            .message-actions {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+
+            .panel-actions {
+                margin-top: 14px;
+            }
+
             .message-list {
                 min-height: 0;
                 padding: 18px;
@@ -399,6 +412,41 @@
                 background: rgba(255, 253, 249, 0.92);
             }
 
+            .composer-wrap {
+                border-top: 1px solid rgba(217, 205, 189, 0.8);
+                background: rgba(255, 253, 249, 0.92);
+            }
+
+            .reply-preview {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 12px;
+                padding: 14px 20px 0;
+            }
+
+            .reply-preview-copy {
+                min-width: 0;
+            }
+
+            .reply-preview-label {
+                display: inline-block;
+                margin-bottom: 4px;
+                font-size: 11px;
+                font-weight: 700;
+                text-transform: uppercase;
+                color: var(--accent);
+            }
+
+            .reply-preview-text {
+                font-size: 13px;
+                color: var(--muted);
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 100%;
+            }
+
             .message-status {
                 font-size: 11px;
                 margin-top: 4px;
@@ -409,6 +457,10 @@
             }
 
             .message-card.show-status .message-status {
+                display: flex;
+            }
+
+            .message-card.show-status .message-actions {
                 display: flex;
             }
 
@@ -435,6 +487,48 @@
                 color: #ef4444;
             }
 
+            .message-actions {
+                display: none;
+                margin-top: 6px;
+            }
+
+            .message-action-btn {
+                border: 1px solid rgba(217, 205, 189, 0.95);
+                background: rgba(255, 253, 249, 0.95);
+                color: var(--muted);
+                padding: 6px 10px;
+                border-radius: 999px;
+                font-size: 11px;
+                font-weight: 700;
+            }
+
+            .message-reply-snippet {
+                margin-bottom: 8px;
+                padding: 8px 10px;
+                border-radius: 14px;
+                background: rgba(255, 255, 255, 0.18);
+                border-left: 3px solid rgba(255, 255, 255, 0.55);
+            }
+
+            .message-card.other .message-reply-snippet {
+                background: rgba(15, 118, 110, 0.06);
+                border-left-color: rgba(15, 118, 110, 0.4);
+            }
+
+            .message-reply-author {
+                display: block;
+                margin-bottom: 4px;
+                font-size: 11px;
+                font-weight: 700;
+                opacity: 0.8;
+            }
+
+            .message-reply-text {
+                font-size: 12px;
+                line-height: 1.4;
+                opacity: 0.9;
+            }
+
             /* Read Details Modal */
             .read-details-list {
                 display: flex;
@@ -454,6 +548,20 @@
                 gap: 8px;
                 font-size: 14px;
                 padding-left: 8px;
+            }
+
+            .fetch-loading {
+                text-align: center;
+                padding: 10px;
+                font-size: 13px;
+                color: #64748b;
+                animation: pulse 1.5s infinite ease-in-out;
+            }
+
+            @keyframes pulse {
+                0% { opacity: 0.6; }
+                50% { opacity: 1; }
+                100% { opacity: 0.6; }
             }
 
             .typing-indicator {
@@ -605,6 +713,67 @@
                 background: #fff;
             }
 
+            .selection-list {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                padding: 18px 20px;
+                overflow: auto;
+                max-height: calc(min(78vh, 640px) - 220px);
+            }
+
+            .selection-item {
+                border: 1px solid rgba(217, 205, 189, 0.85);
+                border-radius: 18px;
+                padding: 14px 16px;
+                background: #fff;
+                cursor: pointer;
+                transition:
+                    border-color 120ms ease,
+                    transform 120ms ease,
+                    background 120ms ease;
+            }
+
+            .selection-item:hover {
+                transform: translateY(-1px);
+                border-color: #c7b59f;
+            }
+
+            .selection-item.active {
+                background: var(--accent-soft);
+                border-color: rgba(15, 118, 110, 0.4);
+            }
+
+            .selection-item-title {
+                font-weight: 700;
+            }
+
+            .selection-item-meta {
+                margin-top: 4px;
+                font-size: 12px;
+                color: var(--muted);
+                word-break: break-all;
+            }
+
+            .modal-body {
+                padding: 18px 20px 0;
+            }
+
+            .modal-field {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                margin-bottom: 14px;
+            }
+
+            .modal-field label {
+                font-size: 12px;
+                font-weight: 700;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+                color: var(--muted);
+            }
+
             .member-presence-name {
                 font-weight: 700;
             }
@@ -662,6 +831,20 @@
                         <p class="panel-subtitle">
                             Danh sach cuoc tro chuyen cua user hien tai
                         </p>
+                        <div class="panel-actions">
+                            <button id="newDirectBtn" class="secondary-btn">
+                                New Direct
+                            </button>
+                            <button id="newGroupBtn" class="secondary-btn">
+                                New Group
+                            </button>
+                            <button
+                                id="refreshConversationsBtn"
+                                class="secondary-btn"
+                            >
+                                Refresh
+                            </button>
+                        </div>
                     </div>
                     <div id="conversationList" class="conversation-list">
                         <div class="empty">
@@ -691,23 +874,44 @@
                                 ></span>
                             </div>
                         </div>
-                        <div
-                            style="
-                                display: flex;
-                                align-items: center;
-                                gap: 10px;
-                            "
-                        >
+                        <div class="toolbar-actions">
                             <button
                                 id="viewMembersBtn"
                                 class="secondary-btn hidden"
                             >
                                 View Members
                             </button>
+                            <button
+                                id="hideConversationBtn"
+                                class="secondary-btn hidden"
+                            >
+                                Delete Chat
+                            </button>
+                            <button
+                                id="addMembersBtn"
+                                class="secondary-btn hidden"
+                            >
+                                Add Members
+                            </button>
+                            <button
+                                id="leaveGroupBtn"
+                                class="danger hidden"
+                            >
+                                Leave Group
+                            </button>
+                            <button
+                                id="disbandGroupBtn"
+                                class="danger hidden"
+                            >
+                                Disband Group
+                            </button>
                             <button id="reloadMessagesBtn" class="hidden">
                                 Reload Messages
                             </button>
                         </div>
+                    </div>
+                    <div id="fetchLoadingIndicator" class="fetch-loading hidden">
+                        Đang tải thêm tin nhắn cũ...
                     </div>
                     <div id="messageList" class="message-list">
                         <div class="empty">No conversation selected.</div>
@@ -716,14 +920,30 @@
                         id="typingIndicator"
                         class="typing-indicator hidden"
                     ></div>
-                    <div id="messageComposer" class="composer hidden">
-                        <input
-                            id="messageInput"
-                            placeholder="Nhap noi dung tin nhan..."
-                        />
-                        <button id="sendMessageBtn" class="primary">
-                            Send Message
-                        </button>
+                    <div id="composerWrap" class="composer-wrap hidden">
+                        <div id="replyPreview" class="reply-preview hidden">
+                            <div class="reply-preview-copy">
+                                <span class="reply-preview-label">
+                                    Dang reply
+                                </span>
+                                <div
+                                    id="replyPreviewText"
+                                    class="reply-preview-text"
+                                ></div>
+                            </div>
+                            <button id="clearReplyBtn" class="secondary-btn">
+                                Clear
+                            </button>
+                        </div>
+                        <div id="messageComposer" class="composer">
+                            <input
+                                id="messageInput"
+                                placeholder="Nhap noi dung tin nhan..."
+                            />
+                            <button id="sendMessageBtn" class="primary">
+                                Send Message
+                            </button>
+                        </div>
                     </div>
                 </section>
             </main>
@@ -748,6 +968,59 @@
             </div>
         </div>
 
+        <div id="createConversationModal" class="modal-backdrop hidden">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <div>
+                        <h3 id="createConversationTitle" class="modal-title">
+                            Tao conversation
+                        </h3>
+                        <p
+                            id="createConversationSubtitle"
+                            class="modal-subtitle"
+                        >
+                            Chon user bang cach click truc tiep
+                        </p>
+                    </div>
+                    <button
+                        id="closeCreateConversationBtn"
+                        class="secondary-btn"
+                    >
+                        Close
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div id="groupNameField" class="modal-field hidden">
+                        <label for="groupNameInput">Group Name</label>
+                        <input
+                            id="groupNameInput"
+                            placeholder="Nhap ten group"
+                        />
+                    </div>
+                </div>
+                <div
+                    id="createConversationUserList"
+                    class="selection-list"
+                >
+                    <div class="empty">Dang tai danh sach user...</div>
+                </div>
+                <div class="modal-footer">
+                    <span
+                        id="createConversationSelectionHint"
+                        class="status"
+                    >
+                        Chua chon user nao.
+                    </span>
+                    <button
+                        id="submitCreateConversationBtn"
+                        class="primary"
+                    >
+                        Create
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
         <script>
             let socket = null;
@@ -755,6 +1028,8 @@
             let selectedConversationId = null;
             let currentUser = null;
             let currentMessages = [];
+            let hasMoreMessages = true;
+            let isLoadingMoreMessages = false;
             let selectedConversationPresence = new Set();
             let sidebarPresenceMap = new Map();
             let unseenConversationIds = new Set();
@@ -762,20 +1037,42 @@
             let activeTypingConversationId = '';
             let typingStopTimeout = null;
             let typingRefreshInterval = null;
+            let lastOnlineMap = new Map();
+            let usersDirectoryCache = [];
+            let replyTargetMessageId = '';
+            let createConversationMode = 'direct';
+            let createConversationSelectedUserIds = new Set();
 
             const tokenInput = document.getElementById('tokenInput');
             const connectBtn = document.getElementById('connectBtn');
             const disconnectBtn = document.getElementById('disconnectBtn');
+            const newDirectBtn = document.getElementById('newDirectBtn');
+            const newGroupBtn = document.getElementById('newGroupBtn');
+            const refreshConversationsBtn = document.getElementById(
+                'refreshConversationsBtn',
+            );
             const reloadMessagesBtn =
                 document.getElementById('reloadMessagesBtn');
             const viewMembersBtn = document.getElementById('viewMembersBtn');
+            const hideConversationBtn =
+                document.getElementById('hideConversationBtn');
+            const addMembersBtn = document.getElementById('addMembersBtn');
+            const leaveGroupBtn = document.getElementById('leaveGroupBtn');
+            const disbandGroupBtn =
+                document.getElementById('disbandGroupBtn');
             const statusText = document.getElementById('statusText');
             const conversationList =
                 document.getElementById('conversationList');
             const messageList = document.getElementById('messageList');
+            const fetchLoadingIndicator = document.getElementById('fetchLoadingIndicator');
+            const composerWrap = document.getElementById('composerWrap');
             const messageComposer = document.getElementById('messageComposer');
             const messageInput = document.getElementById('messageInput');
             const sendMessageBtn = document.getElementById('sendMessageBtn');
+            const replyPreview = document.getElementById('replyPreview');
+            const replyPreviewText =
+                document.getElementById('replyPreviewText');
+            const clearReplyBtn = document.getElementById('clearReplyBtn');
             const typingIndicator = document.getElementById('typingIndicator');
             const messagesTitle = document.getElementById('messagesTitle');
             const messagesSubtitle =
@@ -797,6 +1094,29 @@
                 'memberPresenceSubtitle',
             );
             const closeMembersBtn = document.getElementById('closeMembersBtn');
+            const createConversationModal = document.getElementById(
+                'createConversationModal',
+            );
+            const createConversationTitle = document.getElementById(
+                'createConversationTitle',
+            );
+            const createConversationSubtitle = document.getElementById(
+                'createConversationSubtitle',
+            );
+            const closeCreateConversationBtn = document.getElementById(
+                'closeCreateConversationBtn',
+            );
+            const groupNameField = document.getElementById('groupNameField');
+            const groupNameInput = document.getElementById('groupNameInput');
+            const createConversationUserList = document.getElementById(
+                'createConversationUserList',
+            );
+            const createConversationSelectionHint = document.getElementById(
+                'createConversationSelectionHint',
+            );
+            const submitCreateConversationBtn = document.getElementById(
+                'submitCreateConversationBtn',
+            );
             const SOCKET_URL = window.location.origin;
             const API_BASE_URL = `${window.location.origin}/api/v1`;
             const DEFAULT_PAGE_TITLE = 'Chat Test Client';
@@ -846,6 +1166,25 @@
                 if (date.toDateString() === yesterday.toDateString()) return 'Hôm qua';
                 
                 return date.toLocaleDateString('vi-VN');
+            }
+
+            function formatTimeAgo(dateInput) {
+                if (!dateInput) return 'Offline';
+                const date = new Date(dateInput);
+                const now = new Date();
+                const diffMs = Math.max(0, now - date);
+                const diffMins = Math.floor(diffMs / 60000);
+                
+                if (diffMins < 1) return 'Vừa mới truy cập';
+                if (diffMins < 60) return `Hoạt động ${diffMins} phút trước`;
+                
+                const diffHours = Math.floor(diffMins / 60);
+                if (diffHours < 24) return `Hoạt động ${diffHours} giờ trước`;
+                
+                const diffDays = Math.floor(diffHours / 24);
+                if (diffDays < 7) return `Hoạt động ${diffDays} ngày trước`;
+                
+                return `Hoạt động từ ${formatDateOnly(date)}`;
             }
 
             function getUserLabel(user) {
@@ -1110,6 +1449,396 @@
                         ...user,
                         _id: normalizeId(user?._id || user),
                     };
+                });
+            }
+
+            function isCurrentUserGroupAdmin(conversation) {
+                return (
+                    Boolean(conversation?.isGroup) &&
+                    normalizeId(conversation?.adminGroupId) ===
+                        normalizeId(currentUser?._id)
+                );
+            }
+
+            function getReplyTargetMessage() {
+                return currentMessages.find(
+                    (message) =>
+                        normalizeId(message?._id) === replyTargetMessageId,
+                );
+            }
+
+            function clearReplyTarget() {
+                replyTargetMessageId = '';
+                renderReplyPreview();
+            }
+
+            function setReplyTarget(messageId) {
+                const normalizedMessageId = normalizeId(messageId);
+                const message = currentMessages.find(
+                    (item) => normalizeId(item?._id) === normalizedMessageId,
+                );
+                if (!normalizedMessageId || !message || message.isDeleted) {
+                    return;
+                }
+
+                replyTargetMessageId = normalizedMessageId;
+                renderReplyPreview();
+                messageInput.focus();
+            }
+
+            function renderReplyPreview() {
+                const targetMessage = getReplyTargetMessage();
+                if (!selectedConversationId || !targetMessage) {
+                    replyPreview.classList.add('hidden');
+                    replyPreviewText.textContent = '';
+                    return;
+                }
+
+                const authorName = getUserLabel(targetMessage.sender);
+                const previewText = targetMessage.isDeleted
+                    ? 'Tin nhắn đã bị thu hồi'
+                    : targetMessage.content || '[Empty message]';
+                replyPreviewText.textContent = `${authorName}: ${previewText}`;
+                replyPreview.classList.remove('hidden');
+            }
+
+            function renderConversationActionButtons() {
+                const conversation = getConversationById(selectedConversationId);
+                const isGroupAdmin = isCurrentUserGroupAdmin(conversation);
+
+                hideConversationBtn.classList.toggle(
+                    'hidden',
+                    !conversation,
+                );
+                addMembersBtn.classList.toggle(
+                    'hidden',
+                    !(conversation?.isGroup && isGroupAdmin),
+                );
+                leaveGroupBtn.classList.toggle(
+                    'hidden',
+                    !conversation?.isGroup,
+                );
+                disbandGroupBtn.classList.toggle(
+                    'hidden',
+                    !(conversation?.isGroup && isGroupAdmin),
+                );
+            }
+
+            function closeCreateConversationModal() {
+                createConversationModal.classList.add('hidden');
+                createConversationSelectedUserIds = new Set();
+                groupNameInput.value = '';
+            }
+
+            function updateCreateConversationSelectionHint() {
+                const selectedCount = createConversationSelectedUserIds.size;
+                if (createConversationMode === 'group') {
+                    createConversationSelectionHint.textContent =
+                        selectedCount > 0
+                            ? `Da chon ${selectedCount} thanh vien.`
+                            : 'Chon it nhat 2 user de tao group.';
+                    return;
+                }
+
+                createConversationSelectionHint.textContent =
+                    selectedCount === 1
+                        ? 'Da chon 1 user cho direct chat.'
+                        : 'Chon 1 user de tao direct chat.';
+            }
+
+            function renderCreateConversationUserList(users) {
+                if (!users.length) {
+                    createConversationUserList.innerHTML =
+                        '<div class="empty">Khong co user nao de chon.</div>';
+                    updateCreateConversationSelectionHint();
+                    return;
+                }
+
+                createConversationUserList.innerHTML = users
+                    .map((user) => {
+                        const userId = normalizeId(user?._id);
+                        const isActive =
+                            createConversationSelectedUserIds.has(userId);
+                        return `
+                            <article
+                                class="selection-item ${isActive ? 'active' : ''}"
+                                data-user-id="${escapeHtml(userId)}"
+                            >
+                                <div class="selection-item-title">${escapeHtml(
+                                    getUserLabel(user),
+                                )}</div>
+                                <div class="selection-item-meta">${escapeHtml(
+                                    user.email || userId,
+                                )}</div>
+                            </article>
+                        `;
+                    })
+                    .join('');
+
+                createConversationUserList
+                    .querySelectorAll('.selection-item')
+                    .forEach((item) => {
+                        item.addEventListener('click', () => {
+                            const userId = normalizeId(item.dataset.userId);
+                            if (!userId) {
+                                return;
+                            }
+
+                            if (createConversationMode === 'direct') {
+                                createConversationSelectedUserIds = new Set(
+                                    [userId],
+                                );
+                            } else if (
+                                createConversationSelectedUserIds.has(userId)
+                            ) {
+                                createConversationSelectedUserIds.delete(userId);
+                            } else {
+                                createConversationSelectedUserIds.add(userId);
+                            }
+
+                            renderCreateConversationUserList(users);
+                        });
+                    });
+
+                updateCreateConversationSelectionHint();
+            }
+
+            async function openCreateConversationModal(mode) {
+                createConversationMode = mode === true ? 'group' : (mode === false ? 'direct' : mode);
+                createConversationSelectedUserIds = new Set();
+                groupNameInput.value = '';
+                groupNameField.classList.toggle('hidden', createConversationMode !== 'group');
+
+                if (createConversationMode === 'addMember') {
+                    createConversationTitle.textContent = 'Thêm thành viên';
+                    createConversationSubtitle.textContent = 'Chọn user để thêm vào nhóm';
+                    submitCreateConversationBtn.textContent = 'Thêm';
+                } else if (createConversationMode === 'removeMember') {
+                    createConversationTitle.textContent = 'Xóa thành viên';
+                    createConversationSubtitle.textContent = 'Chọn một thành viên để xóa khỏi nhóm';
+                    submitCreateConversationBtn.textContent = 'Xóa';
+                } else if (createConversationMode === 'group') {
+                    createConversationTitle.textContent = 'Tạo Group Chat';
+                    createConversationSubtitle.textContent = 'Click để chọn thành viên cho group mới';
+                    submitCreateConversationBtn.textContent = 'Tạo';
+                } else {
+                    createConversationTitle.textContent = 'Tạo Direct Chat';
+                    createConversationSubtitle.textContent = 'Click vào user bạn muốn nhắn tin';
+                    submitCreateConversationBtn.textContent = 'Tạo';
+                }
+
+                createConversationUserList.innerHTML =
+                    '<div class="empty">Đang tải danh sách user...</div>';
+                updateCreateConversationSelectionHint();
+                createConversationModal.classList.remove('hidden');
+
+                try {
+                    const currentUserId = normalizeId(currentUser?._id);
+                    let users = (await loadUsersDirectory(true)).filter(
+                        (user) => normalizeId(user?._id) !== currentUserId,
+                    );
+
+                    if (createConversationMode === 'addMember') {
+                        const conversation = getConversationById(selectedConversationId);
+                        if (conversation) {
+                            const existingIds = new Set(getConversationMembers(conversation).map(m => normalizeId(m._id)));
+                            users = users.filter(user => !existingIds.has(normalizeId(user?._id)));
+                        }
+                    } else if (createConversationMode === 'removeMember') {
+                        const conversation = getConversationById(selectedConversationId);
+                        if (conversation) {
+                            users = getConversationMembers(conversation).filter(m => normalizeId(m._id) !== currentUserId);
+                        }
+                    }
+
+                    renderCreateConversationUserList(users);
+                } catch (error) {
+                    createConversationUserList.innerHTML =
+                        '<div class="empty">Khong tai duoc danh sach user.</div>';
+                    createConversationSelectionHint.textContent =
+                        error.message || 'Khong tai duoc user.';
+                }
+            }
+
+            function clearSelectedConversationView(
+                emptyMessage = 'No conversation selected.',
+            ) {
+                stopCurrentTyping({ silent: true });
+                selectedConversationId = null;
+                currentMessages = [];
+                setSelectedConversationPresence([]);
+                clearReplyTarget();
+                messageInput.value = '';
+                updatePageTitle(null);
+                messagesTitle.textContent = 'Messages';
+                messagesSubtitle.textContent =
+                    'Chon mot conversation de tai history message';
+                reloadMessagesBtn.classList.add('hidden');
+                viewMembersBtn.classList.add('hidden');
+                composerWrap.classList.add('hidden');
+                typingIndicator.textContent = '';
+                typingIndicator.classList.add('hidden');
+                closeMemberPresenceModal();
+                renderPresenceUI();
+                renderConversationActionButtons();
+                renderEmptyMessages(emptyMessage);
+            }
+
+            function removeConversationFromState(
+                conversationId,
+                emptyMessage = 'Conversation khong con ton tai.',
+            ) {
+                const normalizedConversationId = normalizeId(conversationId);
+                if (!normalizedConversationId) {
+                    return;
+                }
+
+                conversations = conversations.filter(
+                    (conversation) =>
+                        normalizeId(conversation?._id) !==
+                        normalizedConversationId,
+                );
+                unseenConversationIds.delete(normalizedConversationId);
+                typingUsersByConversation.delete(normalizedConversationId);
+
+                if (selectedConversationId === normalizedConversationId) {
+                    clearSelectedConversationView(emptyMessage);
+                }
+
+                renderConversations();
+                renderConversationActionButtons();
+            }
+
+            async function loadUsersDirectory(force = false) {
+                if (!force && usersDirectoryCache.length > 0) {
+                    return usersDirectoryCache;
+                }
+
+                const data = await fetchJson('/users?current=1&pageSize=100');
+                const userList = Array.isArray(data)
+                    ? data
+                    : Array.isArray(data?.users)
+                      ? data.users
+                      : Array.isArray(data?.userList)
+                        ? data.userList
+                        : [];
+
+                usersDirectoryCache = userList.map((user) => ({
+                    ...user,
+                    _id: normalizeId(user?._id || user),
+                }));
+                return usersDirectoryCache;
+            }
+
+            async function promptUserIds({
+                title,
+                excludeIds = [],
+                allowMultiple = true,
+            }) {
+                const users = await loadUsersDirectory(true);
+                const excludeIdSet = new Set(excludeIds.map(normalizeId));
+                const currentUserId = normalizeId(currentUser?._id);
+                const candidates = users.filter((user) => {
+                    const userId = normalizeId(user?._id);
+                    return userId && !excludeIdSet.has(userId);
+                });
+
+                if (!candidates.length) {
+                    alert('Khong con user phu hop de chon.');
+                    return [];
+                }
+
+                const promptText = [
+                    title,
+                    '',
+                    ...candidates.map(
+                        (user) =>
+                            `- ${getUserLabel(user)} | ${normalizeId(user._id)}`,
+                    ),
+                    '',
+                    allowMultiple
+                        ? 'Nhap userId, cach nhau boi dau phay'
+                        : 'Nhap 1 userId',
+                    currentUserId
+                        ? `Current user: ${currentUserId}`
+                        : '',
+                ]
+                    .filter(Boolean)
+                    .join('\n');
+
+                const rawValue = window.prompt(promptText, '');
+                if (!rawValue) {
+                    return [];
+                }
+
+                const selectedIds = rawValue
+                    .split(',')
+                    .map((value) => normalizeId(value.trim()))
+                    .filter(Boolean);
+
+                const uniqueIds = [...new Set(selectedIds)];
+                const allowedIdSet = new Set(
+                    candidates.map((user) => normalizeId(user._id)),
+                );
+                const validIds = uniqueIds.filter((userId) =>
+                    allowedIdSet.has(userId),
+                );
+
+                if (!allowMultiple && validIds.length > 1) {
+                    alert('Chi duoc chon 1 user.');
+                    return [];
+                }
+
+                if (!validIds.length) {
+                    alert('Khong co userId hop le nao duoc chon.');
+                }
+
+                return validIds;
+            }
+
+            async function joinConversation(conversationId) {
+                const normalizedConversationId = normalizeId(conversationId);
+                if (!normalizedConversationId || !socket) {
+                    return null;
+                }
+
+                return new Promise((resolve) => {
+                    socket.emit(
+                        'chat:join-conversation',
+                        { conversationId: normalizedConversationId },
+                        (response) => {
+                            console.log(
+                                'join conversation response',
+                                response,
+                            );
+
+                            if (response?.data?.joined) {
+                                selectedConversationId =
+                                    normalizedConversationId;
+                                setSelectedConversationPresence(
+                                    response.data.membersOnline,
+                                );
+                                syncSidebarPresenceFromConversation(
+                                    normalizedConversationId,
+                                    response.data.membersOnline,
+                                );
+                                clearReplyTarget();
+                                renderConversations();
+                                renderPresenceUI();
+                                renderConversationActionButtons();
+                                updatePageTitle(normalizedConversationId);
+                                renderTypingIndicator();
+                                loadMessages(normalizedConversationId);
+                            } else if (response?.error) {
+                                console.error(
+                                    'Join conversation failed',
+                                    response.error,
+                                );
+                            }
+
+                            resolve(response);
+                        },
+                    );
                 });
             }
 
@@ -1411,6 +2140,9 @@
                     return;
                 }
 
+                const isAdmin = isCurrentUserGroupAdmin(conversation);
+                const currentUserId = normalizeId(currentUser?._id);
+
                 memberPresenceSubtitle.textContent = `Group ${getConversationName(conversation)} co ${members.length} thanh vien`;
                 memberPresenceList.innerHTML = members
                     .map((member) => {
@@ -1418,16 +2150,23 @@
                         const online =
                             selectedConversationPresence.has(memberId);
 
+                        const removeBtn = isAdmin && memberId !== currentUserId
+                            ? `<button class="message-action-btn danger" style="margin-left: 12px; color: #b42318; border-color: #fbe7e5; background: #fbe7e5; cursor: pointer;" onclick="removeMemberFlow('${memberId}')">Xóa</button>`
+                            : '';
+
                         return `
                             <article class="member-presence-item">
                                 <div>
                                     <div class="member-presence-name">${escapeHtml(getUserLabel(member))}</div>
                                     <div class="member-presence-meta">ID: ${escapeHtml(memberId)}</div>
                                 </div>
-                                <span
-                                    class="presence-badge dot-only ${online ? 'online' : 'offline'}"
-                                    title="${online ? 'Online' : 'Offline'}"
-                                ></span>
+                                <div style="display: flex; align-items: center;">
+                                    <span
+                                        class="presence-badge dot-only ${online ? 'online' : 'offline'}"
+                                        title="${online ? 'Online' : 'Offline'}"
+                                    ></span>
+                                    ${removeBtn}
+                                </div>
                             </article>
                         `;
                     })
@@ -1453,10 +2192,12 @@
                     directPresenceBadge.classList.add('hidden');
                     groupPresenceSummary.classList.add('hidden');
                     viewMembersBtn.classList.add('hidden');
+                    renderConversationActionButtons();
                     return;
                 }
 
                 presenceRow.classList.remove('hidden');
+                renderConversationActionButtons();
 
                 if (conversation.isGroup) {
                     const members = getConversationMembers(conversation);
@@ -1490,10 +2231,31 @@
                     'offline',
                     !Boolean(isOnline),
                 );
-                directPresenceBadge.title = isOnline ? 'Online' : 'Offline';
+                
+                if (isOnline) {
+                    directPresenceBadge.classList.add('dot-only');
+                    directPresenceBadge.textContent = '';
+                    directPresenceBadge.title = 'Online';
+                } else {
+                    directPresenceBadge.classList.remove('dot-only');
+                    const lastOnlineTime = lastOnlineMap.get(otherMemberId) || otherMember?.lastOnlineAt;
+                    directPresenceBadge.textContent = formatTimeAgo(lastOnlineTime);
+                    directPresenceBadge.title = 'Offline';
+                }
             }
 
             function createMessageMarkup(message, isLatest = false) {
+                if (message.type === 'system' || message.type === 'SYSTEM') {
+                    const content = message.isDeleted
+                        ? 'Tin nhắn đã bị thu hồi'
+                        : message.content || '';
+                    return `
+                        <div class="date-divider">
+                            <span>${escapeHtml(content)}</span>
+                        </div>
+                    `;
+                }
+
                 const senderId = normalizeId(
                     message.sender?._id || message.sender,
                 );
@@ -1503,8 +2265,36 @@
                 const messageClass = isOwnMessage ? 'own' : 'other';
                 const deletedClass = message.isDeleted ? 'deleted' : '';
                 const content = message.isDeleted
-                    ? 'Tin nhan da bi xoa'
+                    ? 'Tin nhắn đã bị thu hồi'
                     : message.content || '';
+                const replySource =
+                    message.replyTo && typeof message.replyTo === 'object'
+                        ? message.replyTo
+                        : message.replyTo
+                            ? currentMessages.find(
+                                  (m) =>
+                                      normalizeId(m._id) ===
+                                      normalizeId(message.replyTo),
+                              ) || null
+                            : null;
+                const replyPreviewHtml = (!message.isDeleted && replySource)
+                    ? `
+                        <div class="message-reply-snippet">
+                            <span class="message-reply-author">${escapeHtml(
+                                getUserLabel(
+                                    replySource.sender ||
+                                        replySource.senderId ||
+                                        'Reply',
+                                ),
+                            )}</span>
+                            <div class="message-reply-text">${escapeHtml(
+                                replySource.isDeleted
+                                    ? 'Tin nhắn đã bị thu hồi'
+                                    : replySource.content || '[Empty message]',
+                            )}</div>
+                        </div>
+                    `
+                    : '';
 
                 let statusHtml = '';
                 if (isOwnMessage) {
@@ -1540,14 +2330,42 @@
 
                 let timeStr = message.createdAt ? escapeHtml(formatTime(message.createdAt)) : '';
                 const showStatusClass = isLatest && isOwnMessage ? 'show-status' : '';
+                const messageActionsHtml = message.status === 'sending'
+                    ? ''
+                    : `
+                        <div class="message-actions">
+                            <button
+                                class="message-action-btn"
+                                data-action="reply"
+                                data-message-id="${escapeHtml(message._id)}"
+                            >
+                                Reply
+                            </button>
+                            ${
+                                isOwnMessage && !message.isDeleted
+                                    ? `
+                                        <button
+                                            class="message-action-btn"
+                                            data-action="delete-message"
+                                            data-message-id="${escapeHtml(message._id)}"
+                                        >
+                                            Delete
+                                        </button>
+                                    `
+                                    : ''
+                            }
+                        </div>
+                    `;
 
                 return `
                     <article class="message-card ${messageClass} ${deletedClass} ${showStatusClass}">
                         <div class="message-bubble">
+                            ${replyPreviewHtml}
                             <div class="message-content">${escapeHtml(content)}</div>
                             <div class="message-time">${timeStr}</div>
                         </div>
                         ${statusHtml}
+                        ${messageActionsHtml}
                     </article>
                 `;
             }
@@ -1569,6 +2387,37 @@
                         e.stopPropagation();
                         const msgId = btn.dataset.msgId;
                         showReadDetails(msgId);
+                    });
+                });
+
+                document.querySelectorAll('.message-action-btn').forEach((btn) => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const messageId = btn.dataset.messageId;
+                        if (!messageId) {
+                            return;
+                        }
+
+                        if (btn.dataset.action === 'reply') {
+                            setReplyTarget(messageId);
+                            return;
+                        }
+
+                        if (btn.dataset.action === 'delete-message') {
+                            if (!window.confirm('Bạn có chắc chắn muốn thu hồi tin nhắn này không? Hành động này không thể hoàn tác.')) {
+                                return;
+                            }
+                            if (socket && selectedConversationId) {
+                                socket.emit('chat:delete-message', {
+                                    conversationId: selectedConversationId,
+                                    messageId: messageId,
+                                }, (response) => {
+                                    if (!response?.ok) {
+                                        alert('Lỗi thu hồi tin nhắn: ' + (response?.message || 'Unknown'));
+                                    }
+                                });
+                            }
+                        }
                     });
                 });
             }
@@ -1626,6 +2475,7 @@
                 if (!conversations.length) {
                     conversationList.innerHTML =
                         '<div class="empty">Khong co conversation nao.</div>';
+                    renderConversationActionButtons();
                     return;
                 }
 
@@ -1705,38 +2555,12 @@
                             ) {
                                 stopCurrentTyping();
                             }
-
-                            socket.emit(
-                                'chat:join-conversation',
-                                { conversationId: id },
-                                (response) => {
-                                    console.log(
-                                        'join conversation response',
-                                        response,
-                                    );
-
-                                    if (response?.data?.joined) {
-                                        selectedConversationId = id;
-                                        setSelectedConversationPresence(
-                                            response.data.membersOnline,
-                                        );
-                                        syncSidebarPresenceFromConversation(
-                                            id,
-                                            response.data.membersOnline,
-                                        );
-                                        renderConversations();
-                                        renderPresenceUI();
-                                        updatePageTitle(id);
-                                        renderTypingIndicator();
-                                        loadMessages(id);
-                                    } else if (response?.error) {
-                                        console.error(
-                                            'Join conversation failed',
-                                            response.error,
-                                        );
-                                    }
-                                },
-                            );
+                            joinConversation(id).catch((error) => {
+                                console.error(
+                                    'Join conversation failed',
+                                    error,
+                                );
+                            });
                         });
                     });
             }
@@ -1797,6 +2621,8 @@
                 sidebarPresenceMap = new Map();
                 unseenConversationIds = new Set();
                 typingUsersByConversation = new Map();
+                usersDirectoryCache = [];
+                clearReplyTarget();
                 updatePageTitle(null);
                 conversationList.innerHTML = `
                     <div class="empty">
@@ -1808,11 +2634,12 @@
                     'Chon mot conversation de tai history message';
                 reloadMessagesBtn.classList.add('hidden');
                 viewMembersBtn.classList.add('hidden');
-                messageComposer.classList.add('hidden');
+                composerWrap.classList.add('hidden');
                 typingIndicator.textContent = '';
                 typingIndicator.classList.add('hidden');
                 closeMemberPresenceModal();
                 renderPresenceUI();
+                renderConversationActionButtons();
                 renderEmptyMessages('No conversation selected.');
             }
 
@@ -1865,6 +2692,139 @@
                 return data.data;
             }
 
+            async function createConversationFlow(isGroup) {
+                try {
+                    await openCreateConversationModal(isGroup);
+                } catch (error) {
+                    alert(error.message || 'Tao conversation that bai.');
+                }
+            }
+
+            async function addMembersFlow() {
+                const conversation = getConversationById(selectedConversationId);
+                if (!conversation?.isGroup || !isCurrentUserGroupAdmin(conversation)) {
+                    alert('Chi admin group moi duoc them thanh vien.');
+                    return;
+                }
+
+                await openCreateConversationModal('addMember');
+            }
+
+            async function removeMemberFlow(targetMemberId) {
+                const conversation = getConversationById(selectedConversationId);
+                if (!conversation?.isGroup || !isCurrentUserGroupAdmin(conversation)) {
+                    alert('Chi admin group moi duoc xoa thanh vien.');
+                    return;
+                }
+
+                if (!targetMemberId) {
+                    await openCreateConversationModal('removeMember');
+                    return;
+                }
+
+                const memberId = targetMemberId;
+
+                if (!window.confirm(`Ban co chac muon xoa thanh vien nay khong?`)) {
+                    return;
+                }
+
+                try {
+                    await fetchJson(
+                        `/conversations/${selectedConversationId}/remove-member`,
+                        {
+                            method: 'PATCH',
+                            body: {
+                                memberId,
+                            },
+                        },
+                    );
+                    await loadConversations();
+                    await joinConversation(selectedConversationId);
+                } catch (error) {
+                    alert(error.message || 'Xoa thanh vien that bai.');
+                }
+            }
+
+            async function leaveGroupFlow() {
+                const conversation = getConversationById(selectedConversationId);
+                if (!conversation?.isGroup) {
+                    return;
+                }
+
+                if (!window.confirm(`Ban co chac muon roi khoi nhom nay khong?`)) {
+                    return;
+                }
+
+                try {
+                    await fetchJson(
+                        `/conversations/${selectedConversationId}/leave-group`,
+                        {
+                            method: 'DELETE',
+                        },
+                    );
+                    await loadConversations();
+                    clearSelectedConversationView('Ban da roi khoi nhom.');
+                } catch (error) {
+                    alert(error.message || 'Roi nhom that bai.');
+                }
+            }
+
+            async function hideConversationFlow() {
+                const conversation = getConversationById(selectedConversationId);
+                if (!conversation || !selectedConversationId) {
+                    return;
+                }
+
+                const confirmed = window.confirm(
+                    `Xoa conversation "${getConversationName(conversation)}" khoi danh sach?`,
+                );
+                if (!confirmed) {
+                    return;
+                }
+
+                try {
+                    await fetchJson(`/conversations/${selectedConversationId}`, {
+                        method: 'DELETE',
+                    });
+                    removeConversationFromState(
+                        selectedConversationId,
+                        'Conversation da duoc xoa khoi danh sach cua ban.',
+                    );
+                } catch (error) {
+                    alert(error.message || 'Xoa conversation that bai.');
+                }
+            }
+
+            async function disbandGroupFlow() {
+                const conversation = getConversationById(selectedConversationId);
+                if (!conversation?.isGroup || !isCurrentUserGroupAdmin(conversation)) {
+                    alert('Chi admin group moi duoc giai tan.');
+                    return;
+                }
+
+                const confirmed = window.confirm(
+                    `Giai tan vinh vien group "${getConversationName(conversation)}"?`,
+                );
+                if (!confirmed) {
+                    return;
+                }
+
+                try {
+                    await fetchJson(
+                        `/conversations/${selectedConversationId}/disband-group`,
+                        {
+                            method: 'DELETE',
+                        },
+                    );
+                    removeConversationFromState(
+                        selectedConversationId,
+                        'Group da bi giai tan.',
+                    );
+                } catch (error) {
+                    alert(error.message || 'Giai tan group that bai.');
+                }
+            }
+
             async function markConversationAsRead(
                 conversationId,
                 messageId,
@@ -1915,6 +2875,7 @@
                     syncUnseenConversationsFromConversationList();
                     await refreshSidebarPresence();
                     renderConversations();
+                    renderConversationActionButtons();
 
                     if (selectedConversationId) {
                         const stillExists = conversations.some(
@@ -1923,16 +2884,10 @@
                                 selectedConversationId,
                         );
                         if (!stillExists) {
-                            selectedConversationId = null;
-                            updatePageTitle(null);
-                            messagesTitle.textContent = 'Messages';
-                            messagesSubtitle.textContent =
-                                'Chon mot conversation de tai history message';
-                            reloadMessagesBtn.classList.add('hidden');
-                            viewMembersBtn.classList.add('hidden');
-                            setSelectedConversationPresence([]);
+                            clearSelectedConversationView();
+                        } else {
                             renderPresenceUI();
-                            renderEmptyMessages('No conversation selected.');
+                            renderReplyPreview();
                         }
                     }
                 } catch (error) {
@@ -1944,8 +2899,57 @@
                 }
             }
 
+            async function fetchMoreMessages() {
+                if (!selectedConversationId || !currentMessages.length || isLoadingMoreMessages || !hasMoreMessages) return;
+                
+                isLoadingMoreMessages = true;
+                fetchLoadingIndicator.classList.remove('hidden');
+                const oldestMessage = currentMessages[0];
+                const cursor = oldestMessage?.createdAt;
+                
+                try {
+                    const params = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
+                    const data = await fetchJson(
+                        `/conversations/${selectedConversationId}/message${params}`,
+                    );
+                    
+                    if (!Array.isArray(data) || data.length === 0) {
+                        hasMoreMessages = false;
+                        isLoadingMoreMessages = false;
+                        fetchLoadingIndicator.classList.add('hidden');
+                        return;
+                    }
+                    
+                    const oldScrollHeight = messageList.scrollHeight;
+                    
+                    const olderMessages = data.reverse();
+                    currentMessages = [...olderMessages, ...currentMessages];
+                    renderMessages(currentMessages);
+                    renderReplyPreview();
+                    renderPresenceUI();
+                    renderTypingIndicator();
+                    
+                    const newScrollHeight = messageList.scrollHeight;
+                    messageList.scrollTop = newScrollHeight - oldScrollHeight;
+                    
+                    if (data.length < 20) {
+                        hasMoreMessages = false;
+                    }
+                } catch (error) {
+                    log('Load more messages failed', {
+                        conversationId: selectedConversationId,
+                        message: error.message,
+                    });
+                } finally {
+                    isLoadingMoreMessages = false;
+                    fetchLoadingIndicator.classList.add('hidden');
+                }
+            }
+
             async function loadMessages(conversationId) {
                 try {
+                    hasMoreMessages = true;
+                    isLoadingMoreMessages = false;
                     const data = await fetchJson(
                         `/conversations/${conversationId}/message`,
                     );
@@ -1960,9 +2964,10 @@
                     );
                     messagesSubtitle.textContent = `Conversation ID: ${conversationId}`;
                     reloadMessagesBtn.classList.remove('hidden');
-                    messageComposer.classList.remove('hidden');
+                    composerWrap.classList.remove('hidden');
                     currentMessages = Array.isArray(data) ? data.reverse() : [];
                     renderMessages(currentMessages);
+                    renderReplyPreview();
                     const latestMessage = getLatestMessage(currentMessages);
                     if (latestMessage) {
                         await markConversationAsRead(
@@ -2070,6 +3075,10 @@
                         return;
                     }
 
+                    if (payload?.lastOnlineAt) {
+                        lastOnlineMap.set(offlineUserId, payload.lastOnlineAt);
+                    }
+
                     selectedConversationPresence.delete(offlineUserId);
                     setSidebarPresence(offlineUserId, false);
                     renderConversations();
@@ -2112,7 +3121,92 @@
                     renderConversations();
 
                     if (conversationId === selectedConversationId) {
-                        const existingIdx = currentMessages.findIndex(m => m.status === 'sending' && m.content === message.content && normalizeId(m.sender?._id || m.sender) === normalizeId(message.sender?._id || message.sender));
+                        const incomingMessageId = normalizeId(message._id);
+                        const incomingSenderId = normalizeId(
+                            message.sender?._id || message.sender,
+                        );
+                        const incomingReplyId = normalizeId(
+                            message.replyTo?._id || message.replyTo,
+                        );
+
+                        console.log('=== DEDUP DEBUG ===');
+                        console.log('Incoming message:', JSON.stringify({
+                            _id: message._id,
+                            content: message.content,
+                            sender: message.sender,
+                            replyTo: message.replyTo,
+                            type: typeof message.replyTo,
+                        }));
+                        console.log('incomingMessageId:', incomingMessageId);
+                        console.log('incomingSenderId:', incomingSenderId);
+                        console.log('incomingReplyId:', incomingReplyId);
+                        console.log('currentMessages count:', currentMessages.length);
+
+                        currentMessages.forEach((m, i) => {
+                            const mId = normalizeId(m._id);
+                            const mServerId = m.serverMessageId ? normalizeId(m.serverMessageId) : '';
+                            const mSenderId = normalizeId(m.sender?._id || m.sender);
+                            const mReplyId = normalizeId(m.replyTo?._id || m.replyTo);
+                            const isOpt = (m.status === 'sending' || m.isOptimistic === true);
+                            
+                            if (m.status === 'sending' || m.isOptimistic || mId === incomingMessageId) {
+                                console.log(`  msg[${i}]:`, JSON.stringify({
+                                    _id: mId,
+                                    serverMessageId: mServerId,
+                                    content: m.content,
+                                    status: m.status,
+                                    isOptimistic: m.isOptimistic,
+                                    senderId: mSenderId,
+                                    replyToId: mReplyId,
+                                    case1: mId === incomingMessageId,
+                                    case2: mServerId && mServerId === incomingMessageId,
+                                    case3_isOpt: isOpt,
+                                    case3_content: m.content === message.content,
+                                    case3_sender: mSenderId === incomingSenderId,
+                                }));
+                            }
+                        });
+
+                        const existingIdx = currentMessages.findIndex((m) => {
+                            // Case 1: _id đã match (ack chạy trước, cập nhật _id rồi)
+                            if (
+                                incomingMessageId &&
+                                normalizeId(m._id) === incomingMessageId
+                            ) {
+                                console.log('DEDUP: matched Case 1 (id match)');
+                                return true;
+                            }
+
+                            // Case 2: serverMessageId match (ack gán rồi)
+                            if (
+                                incomingMessageId &&
+                                m.serverMessageId &&
+                                normalizeId(m.serverMessageId) ===
+                                    incomingMessageId
+                            ) {
+                                console.log('DEDUP: matched Case 2 (serverMessageId)');
+                                return true;
+                            }
+
+                            // Case 3: optimistic message (status sending hoặc vừa sent)
+                            const isOptimistic =
+                                (m.status === 'sending' ||
+                                    m.isOptimistic === true) &&
+                                m.createdAt &&
+                                Date.now() -
+                                    new Date(m.createdAt).getTime() <
+                                    30000;
+
+                            if (isOptimistic && m.content === message.content && normalizeId(m.sender?._id || m.sender) === incomingSenderId) {
+                                console.log('DEDUP: matched Case 3 (optimistic)');
+                                return true;
+                            }
+
+                            return false;
+                        });
+
+                        console.log('DEDUP result: existingIdx =', existingIdx);
+                        console.log('=== END DEDUP DEBUG ===');
                         
                         if (existingIdx !== -1) {
                             currentMessages[existingIdx] = message;
@@ -2138,6 +3232,134 @@
                             });
                         }
                     }
+                });
+
+                socket.on('chat:message-deleted', (payload) => {
+                    const { conversationId, messageId } = payload;
+                    if (conversationId === selectedConversationId) {
+                        let needsRender = false;
+                        
+                        const msg = currentMessages.find(m => m._id === messageId);
+                        if (msg) {
+                            msg.isDeleted = true;
+                            needsRender = true;
+                        }
+
+                        currentMessages.forEach(m => {
+                            if (m.replyTo) {
+                                const replyId = typeof m.replyTo === 'object' ? m.replyTo._id : m.replyTo;
+                                if (replyId === messageId) {
+                                    if (typeof m.replyTo === 'object') {
+                                        m.replyTo.isDeleted = true;
+                                    }
+                                    needsRender = true;
+                                }
+                            }
+                        });
+
+                        if (needsRender) {
+                            renderMessages(currentMessages);
+                        }
+                        
+                        if (replyTargetMessageId === messageId) {
+                            clearReplyTarget();
+                        } else {
+                            renderReplyPreview();
+                        }
+                    }
+                    loadConversations();
+                });
+
+                socket.on('conversation:disbanded', (payload) => {
+                    const conversationId = normalizeId(payload?.conversationId);
+                    if (!conversationId) {
+                        return;
+                    }
+
+                    log('Received conversation:disbanded', payload);
+                    removeConversationFromState(
+                        conversationId,
+                        'Group da bi giai tan.',
+                    );
+                });
+
+                socket.on('conversation:member-added', (payload) => {
+                    const conversationId = normalizeId(payload?.conversationId);
+                    if (!conversationId) {
+                        return;
+                    }
+
+                    log('Received conversation:member-added', payload);
+                    if (selectedConversationId === conversationId) {
+                        loadConversations().then(() => {
+                            if (!memberPresenceModal.classList.contains('hidden')) {
+                                renderMemberPresenceModal();
+                            }
+                            renderPresenceUI();
+                            loadMessages(conversationId);
+                        });
+                    } else {
+                        loadConversations();
+                    }
+                });
+
+                socket.on('conversation:member-removed', (payload) => {
+                    const conversationId = normalizeId(payload?.conversationId);
+                    const removedMemberId = normalizeId(payload?.removedMemberId);
+                    if (!conversationId || !removedMemberId) {
+                        return;
+                    }
+
+                    log('Received conversation:member-removed', payload);
+                    const currentUserId = normalizeId(currentUser?._id);
+
+                    if (removedMemberId === currentUserId) {
+                        removeConversationFromState(
+                            conversationId,
+                            'Ban da bi xoa khoi group nay.',
+                        );
+                    } else if (selectedConversationId === conversationId) {
+                        loadConversations().then(() => {
+                            if (!memberPresenceModal.classList.contains('hidden')) {
+                                renderMemberPresenceModal();
+                            }
+                            renderPresenceUI();
+                            loadMessages(conversationId);
+                        });
+                    } else {
+                        loadConversations();
+                    }
+                });
+
+                socket.on('conversation:group-created', (payload) => {
+                    const conversationId = normalizeId(payload?.conversationId);
+                    if (!conversationId) {
+                        return;
+                    }
+
+                    log('Received conversation:group-created', payload);
+                    loadConversations().then(() => {
+                        if (selectedConversationId === conversationId) {
+                            renderPresenceUI();
+                            renderConversationActionButtons();
+                        }
+                    });
+                });
+
+                socket.on('conversation:restored', (payload) => {
+                    const conversationId = normalizeId(payload?.conversationId);
+                    if (!conversationId) {
+                        return;
+                    }
+
+                    log('Received conversation:restored', payload);
+                    loadConversations().then(() => {
+                        const exists = getConversationById(conversationId);
+                        if (exists) {
+                            setConversationUnseen(conversationId, true);
+                            renderConversations();
+                        }
+                    });
                 });
 
                 socket.on('user:mark-read', (payload) => {
@@ -2179,6 +3401,17 @@
                     renderConversations();
                 });
 
+                socket.on('user:unseen-cleared', (payload) => {
+                    const conversationId = normalizeId(payload?.conversationId);
+                    if (!conversationId) {
+                        return;
+                    }
+
+                    log('Received user:unseen-cleared', payload);
+                    setConversationUnseen(conversationId, false);
+                    renderConversations();
+                });
+
                 socket.on('user:typing-update', (payload) => {
                     const conversationId = normalizeId(payload?.conversationId);
                     const userId = normalizeId(payload?.userId);
@@ -2214,6 +3447,18 @@
                 resetAppState();
             });
 
+            newDirectBtn.addEventListener('click', () => {
+                createConversationFlow(false);
+            });
+
+            newGroupBtn.addEventListener('click', () => {
+                createConversationFlow(true);
+            });
+
+            refreshConversationsBtn.addEventListener('click', () => {
+                loadConversations();
+            });
+
             reloadMessagesBtn.addEventListener('click', () => {
                 if (selectedConversationId) {
                     loadMessages(selectedConversationId);
@@ -2229,7 +3474,142 @@
                 }
             });
 
+            hideConversationBtn.addEventListener('click', () => {
+                hideConversationFlow();
+            });
+
+            addMembersBtn.addEventListener('click', () => {
+                addMembersFlow();
+            });
+
+            leaveGroupBtn.addEventListener('click', () => {
+                leaveGroupFlow();
+            });
+
+            disbandGroupBtn.addEventListener('click', () => {
+                disbandGroupFlow();
+            });
+
             closeMembersBtn.addEventListener('click', closeMemberPresenceModal);
+
+            clearReplyBtn.addEventListener('click', () => {
+                clearReplyTarget();
+            });
+
+            closeCreateConversationBtn.addEventListener('click', () => {
+                closeCreateConversationModal();
+            });
+
+            createConversationModal.addEventListener('click', (event) => {
+                if (event.target === createConversationModal) {
+                    closeCreateConversationModal();
+                }
+            });
+
+            submitCreateConversationBtn.addEventListener('click', async () => {
+                const selectedUserIds = [
+                    ...createConversationSelectedUserIds,
+                ].filter(Boolean);
+                const isGroup = createConversationMode === 'group';
+                const isAddMember = createConversationMode === 'addMember';
+                const isRemoveMember = createConversationMode === 'removeMember';
+
+                if (!selectedUserIds.length) {
+                    alert('Hay chon it nhat 1 user.');
+                    return;
+                }
+
+                if ((createConversationMode === 'direct' || isRemoveMember) && selectedUserIds.length !== 1) {
+                    alert('Chỉ được chọn 1 user.');
+                    return;
+                }
+
+                if (isGroup && selectedUserIds.length < 2) {
+                    alert('Group can it nhat 2 user khac.');
+                    return;
+                }
+
+                submitCreateConversationBtn.disabled = true;
+
+                if (isAddMember) {
+                    try {
+                        await fetchJson(
+                            `/conversations/${selectedConversationId}/add-members`,
+                            {
+                                method: 'PATCH',
+                                body: {
+                                    members: selectedUserIds,
+                                },
+                            },
+                        );
+                        closeCreateConversationModal();
+                        await loadConversations();
+                        await joinConversation(selectedConversationId);
+                    } catch (error) {
+                        alert(error.message || 'Them thanh vien that bai.');
+                    } finally {
+                        submitCreateConversationBtn.disabled = false;
+                    }
+                    return;
+                }
+
+                if (isRemoveMember) {
+                    try {
+                        await fetchJson(
+                            `/conversations/${selectedConversationId}/remove-member`,
+                            {
+                                method: 'PATCH',
+                                body: {
+                                    memberId: selectedUserIds[0],
+                                },
+                            },
+                        );
+                        closeCreateConversationModal();
+                        await loadConversations();
+                        await joinConversation(selectedConversationId);
+                    } catch (error) {
+                        alert(error.message || 'Xóa thành viên thất bại.');
+                    } finally {
+                        submitCreateConversationBtn.disabled = false;
+                    }
+                    return;
+                }
+
+                const payload = {
+                    users: selectedUserIds,
+                    isGroup,
+                };
+
+                if (isGroup) {
+                    const groupName = groupNameInput.value.trim();
+                    if (!groupName) {
+                        alert('Nhap ten group truoc khi tao.');
+                        groupNameInput.focus();
+                        submitCreateConversationBtn.disabled = false;
+                        return;
+                    }
+
+                    payload.name = groupName;
+                }
+
+                try {
+                    const conversation = await fetchJson('/conversations', {
+                        method: 'POST',
+                        body: payload,
+                    });
+                    closeCreateConversationModal();
+                    await loadConversations();
+
+                    const conversationId = normalizeId(conversation?._id);
+                    if (conversationId && socket?.connected) {
+                        await joinConversation(conversationId);
+                    }
+                } catch (error) {
+                    alert(error.message || 'Tao conversation that bai.');
+                } finally {
+                    submitCreateConversationBtn.disabled = false;
+                }
+            });
 
             memberPresenceModal.addEventListener('click', (event) => {
                 if (event.target === memberPresenceModal) {
@@ -2244,13 +3624,17 @@
                     stopCurrentTyping();
                     
                     const tempId = 'temp-' + Date.now();
+                    const replyTargetMessage = getReplyTargetMessage();
                     const tempMessage = {
                         _id: tempId,
                         content,
                         type: 'text',
                         sender: currentUser,
                         createdAt: new Date().toISOString(),
-                        status: 'sending'
+                        status: 'sending',
+                        replyTo: replyTargetMessage || undefined,
+                        isOptimistic: true,
+                        serverMessageId: '',
                     };
                     appendMessage(tempMessage);
 
@@ -2260,7 +3644,7 @@
                             conversationId: selectedConversationId,
                             content,
                             type: 'text',
-                            replyTo: undefined,
+                            replyTo: replyTargetMessageId || undefined,
                         },
                         (response) => {
                             console.log('Message send response:', response);
@@ -2268,6 +3652,8 @@
                                 const msg = currentMessages.find(m => m._id === tempId);
                                 if (msg) {
                                     msg._id = response.data.messageId;
+                                    msg.serverMessageId =
+                                        response.data.messageId;
                                     msg.status = 'sent';
                                     renderMessages(currentMessages);
                                 }
@@ -2285,6 +3671,7 @@
                         },
                     );
                     messageInput.value = '';
+                    clearReplyTarget();
                 }
             }
 
@@ -2316,6 +3703,11 @@
 
                 event.preventDefault();
                 sendCurrentMessage();
+            });
+            messageList.addEventListener('scroll', () => {
+                if (messageList.scrollTop === 0) {
+                    fetchMoreMessages();
+                }
             });
         </script>
     </body>
