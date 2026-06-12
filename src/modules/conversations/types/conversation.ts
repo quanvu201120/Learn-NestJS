@@ -13,3 +13,10 @@ export type ConversationResponse = Omit<
     users: UserResponse[] | Types.ObjectId[] | string[];
     lastMessage?: MessageResponse | Types.ObjectId | string;
 };
+
+export type UpdateNameConversationResponse = {
+    updated: boolean;
+};
+export type UpdateAdminConversationResponse = {
+    updated: boolean;
+};

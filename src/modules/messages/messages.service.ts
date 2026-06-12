@@ -21,6 +21,8 @@ import { ConversationsService } from '../conversations/conversations.service';
 import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
 import { serializeMessage } from './utils/message.serializer';
 import { Subject } from 'rxjs';
+import { UserResponse } from '../users/types/user';
+import { MessageResponse } from './types/message';
 
 @Injectable()
 export class MessagesService {
@@ -28,6 +30,10 @@ export class MessagesService {
         conversationId: string;
         members: string[];
     }>();
+
+    public readonly updatedMessage$ = new Subject<MessageResponse>();
+    public readonly createdMessage$ = new Subject<MessageResponse>();
+
     constructor(
         @InjectModel(Message.name)
         private readonly messageModel: Model<MessageDocument>,
@@ -159,6 +165,7 @@ export class MessagesService {
             }
             const newMessageId = (newMessage as MessageDocument)._id.toString();
             const message = await this.getMessageById(newMessageId);
+            this.createdMessage$.next(message);
             return { message, conversation };
         } finally {
             await session.endSession();
@@ -309,5 +316,60 @@ export class MessagesService {
             },
             { session },
         );
+    }
+
+    async updateMessageContent(
+        userId: string,
+        messageId: string,
+        content: string,
+        conversationId: string,
+    ) {
+        const objectUserId = toObjectId(userId, 'user id');
+        const objectMessageId = toObjectId(messageId, 'message id');
+        const objectConversationId = toObjectId(
+            conversationId,
+            'conversation id',
+        );
+        const message = await this.messageModel
+            .findOne({
+                _id: objectMessageId,
+                conversationId: objectConversationId,
+                senderId: objectUserId,
+                isDeleted: false,
+            })
+            .populate('senderId', '-password -__v')
+            .populate('replyTo', '-__v')
+            .lean();
+
+        if (!message) {
+            throw new BadRequestException(MESSAGE_MESSAGES.MESSAGE_NOT_FOUND);
+        }
+        const serializedMessage = serializeMessage(message);
+
+        if (serializedMessage.content === content) {
+            return serializedMessage;
+        }
+        const updatedMessage = await this.messageModel
+            .findOneAndUpdate(
+                {
+                    _id: objectMessageId,
+                    conversationId: objectConversationId,
+                    senderId: objectUserId,
+                    isDeleted: false,
+                },
+                {
+                    $set: { content },
+                },
+                { new: true },
+            )
+            .populate('senderId', '-password -__v')
+            .populate('replyTo', '-__v')
+            .lean();
+        if (!updatedMessage) {
+            throw new BadRequestException(MESSAGE_MESSAGES.MESSAGE_NOT_UPDATED);
+        }
+        const res = serializeMessage(updatedMessage);
+        this.updatedMessage$.next(res);
+        return res;
     }
 }

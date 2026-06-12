@@ -888,6 +888,18 @@
                                 Delete Chat
                             </button>
                             <button
+                                id="updateGroupNameBtn"
+                                class="secondary-btn hidden"
+                            >
+                                Edit Name
+                            </button>
+                            <button
+                                id="changeAdminBtn"
+                                class="secondary-btn hidden"
+                            >
+                                Change Admin
+                            </button>
+                            <button
                                 id="addMembersBtn"
                                 class="secondary-btn hidden"
                             >
@@ -1040,6 +1052,7 @@
             let lastOnlineMap = new Map();
             let usersDirectoryCache = [];
             let replyTargetMessageId = '';
+            let editTargetMessageId = '';
             let createConversationMode = 'direct';
             let createConversationSelectedUserIds = new Set();
 
@@ -1056,6 +1069,8 @@
             const viewMembersBtn = document.getElementById('viewMembersBtn');
             const hideConversationBtn =
                 document.getElementById('hideConversationBtn');
+            const updateGroupNameBtn = document.getElementById('updateGroupNameBtn');
+            const changeAdminBtn = document.getElementById('changeAdminBtn');
             const addMembersBtn = document.getElementById('addMembersBtn');
             const leaveGroupBtn = document.getElementById('leaveGroupBtn');
             const disbandGroupBtn =
@@ -1487,6 +1502,7 @@
             }
 
             function renderReplyPreview() {
+                if (editTargetMessageId) return;
                 const targetMessage = getReplyTargetMessage();
                 if (!selectedConversationId || !targetMessage) {
                     replyPreview.classList.add('hidden');
@@ -1502,6 +1518,33 @@
                 replyPreview.classList.remove('hidden');
             }
 
+            function clearEditTarget() {
+                editTargetMessageId = '';
+                sendMessageBtn.textContent = 'Send Message';
+                messageInput.value = '';
+                renderReplyPreview();
+            }
+
+            function setEditTarget(messageId) {
+                const normalizedMessageId = normalizeId(messageId);
+                const message = currentMessages.find(
+                    (item) => normalizeId(item?._id) === normalizedMessageId,
+                );
+                if (!normalizedMessageId || !message || message.isDeleted) {
+                    return;
+                }
+
+                editTargetMessageId = normalizedMessageId;
+                replyTargetMessageId = '';
+                
+                replyPreviewText.textContent = `Đang sửa tin nhắn...`;
+                replyPreview.classList.remove('hidden');
+                
+                messageInput.value = message.content || '';
+                sendMessageBtn.textContent = 'Lưu';
+                messageInput.focus();
+            }
+
             function renderConversationActionButtons() {
                 const conversation = getConversationById(selectedConversationId);
                 const isGroupAdmin = isCurrentUserGroupAdmin(conversation);
@@ -1509,6 +1552,14 @@
                 hideConversationBtn.classList.toggle(
                     'hidden',
                     !conversation,
+                );
+                updateGroupNameBtn.classList.toggle(
+                    'hidden',
+                    !(conversation?.isGroup && isGroupAdmin),
+                );
+                changeAdminBtn.classList.toggle(
+                    'hidden',
+                    !(conversation?.isGroup && isGroupAdmin),
                 );
                 addMembersBtn.classList.toggle(
                     'hidden',
@@ -1617,6 +1668,10 @@
                     createConversationTitle.textContent = 'Xóa thành viên';
                     createConversationSubtitle.textContent = 'Chọn một thành viên để xóa khỏi nhóm';
                     submitCreateConversationBtn.textContent = 'Xóa';
+                } else if (createConversationMode === 'changeAdmin') {
+                    createConversationTitle.textContent = 'Chuyển Admin';
+                    createConversationSubtitle.textContent = 'Chọn một thành viên để chuyển quyền Admin';
+                    submitCreateConversationBtn.textContent = 'Chuyển';
                 } else if (createConversationMode === 'group') {
                     createConversationTitle.textContent = 'Tạo Group Chat';
                     createConversationSubtitle.textContent = 'Click để chọn thành viên cho group mới';
@@ -1644,7 +1699,7 @@
                             const existingIds = new Set(getConversationMembers(conversation).map(m => normalizeId(m._id)));
                             users = users.filter(user => !existingIds.has(normalizeId(user?._id)));
                         }
-                    } else if (createConversationMode === 'removeMember') {
+                    } else if (createConversationMode === 'removeMember' || createConversationMode === 'changeAdmin') {
                         const conversation = getConversationById(selectedConversationId);
                         if (conversation) {
                             users = getConversationMembers(conversation).filter(m => normalizeId(m._id) !== currentUserId);
@@ -1668,6 +1723,7 @@
                 currentMessages = [];
                 setSelectedConversationPresence([]);
                 clearReplyTarget();
+                clearEditTarget();
                 messageInput.value = '';
                 updatePageTitle(null);
                 messagesTitle.textContent = 'Messages';
@@ -2346,6 +2402,13 @@
                                     ? `
                                         <button
                                             class="message-action-btn"
+                                            data-action="edit-message"
+                                            data-message-id="${escapeHtml(message._id)}"
+                                        >
+                                            Edit
+                                        </button>
+                                        <button
+                                            class="message-action-btn"
                                             data-action="delete-message"
                                             data-message-id="${escapeHtml(message._id)}"
                                         >
@@ -2400,6 +2463,11 @@
 
                         if (btn.dataset.action === 'reply') {
                             setReplyTarget(messageId);
+                            return;
+                        }
+
+                        if (btn.dataset.action === 'edit-message') {
+                            setEditTarget(messageId);
                             return;
                         }
 
@@ -2795,6 +2863,29 @@
                 }
             }
 
+            async function updateGroupNameFlow() {
+                const conversation = getConversationById(selectedConversationId);
+                if (!conversation?.isGroup || !isCurrentUserGroupAdmin(conversation)) {
+                    alert('Chi admin group moi duoc sua ten.');
+                    return;
+                }
+
+                const newName = window.prompt('Nhập tên group mới:', conversation.name || '');
+                if (newName === null || newName.trim() === '') return;
+                
+                try {
+                    await fetchJson(
+                        `/conversations/${selectedConversationId}/update-name`,
+                        {
+                            method: 'PATCH',
+                            body: { name: newName.trim() }
+                        }
+                    );
+                } catch (error) {
+                    alert(error.message || 'Lỗi cập nhật tên.');
+                }
+            }
+
             async function disbandGroupFlow() {
                 const conversation = getConversationById(selectedConversationId);
                 if (!conversation?.isGroup || !isCurrentUserGroupAdmin(conversation)) {
@@ -3109,14 +3200,13 @@
                     log('User online client', { userId: onlineUserId });
                 });
 
-                socket.on('chat:new-message', (payload) => {
-                    const conversationId = normalizeId(payload?.conversationId);
-                    const message = payload?.message;
+                socket.on('chat:new-message', (message) => {
+                    const conversationId = normalizeId(message?.conversationId);
 
                     if (!conversationId || !message) {
                         return;
                     }
-                    log('Received chat:new-message', payload);
+                    log('Received chat:new-message', message);
                     updateConversationWithMessage(conversationId, message);
                     renderConversations();
 
@@ -3270,6 +3360,27 @@
                     loadConversations();
                 });
 
+                socket.on('message:updated', (updatedMessage) => {
+                    const messageId = normalizeId(updatedMessage?._id);
+                    const conversationId = normalizeId(updatedMessage?.conversationId);
+                    if (!messageId || !conversationId) return;
+
+                    if (conversationId === selectedConversationId) {
+                        const existingIdx = currentMessages.findIndex(m => normalizeId(m._id) === messageId);
+                        if (existingIdx !== -1) {
+                            currentMessages[existingIdx].content = updatedMessage.content;
+                            currentMessages[existingIdx].updatedAt = updatedMessage.updatedAt;
+                            renderMessages(currentMessages);
+                        }
+                    }
+                    
+                    const conversation = getConversationById(conversationId);
+                    if (conversation && normalizeId(conversation.lastMessage?._id) === messageId) {
+                        conversation.lastMessage.content = updatedMessage.content;
+                        renderConversations();
+                    }
+                });
+
                 socket.on('conversation:disbanded', (payload) => {
                     const conversationId = normalizeId(payload?.conversationId);
                     if (!conversationId) {
@@ -3281,6 +3392,38 @@
                         conversationId,
                         'Group da bi giai tan.',
                     );
+                });
+
+                socket.on('conversation:name-changed', (payload) => {
+                    const conversationId = normalizeId(payload?.conversationId);
+                    const newName = payload?.name;
+                    if (!conversationId || !newName) return;
+
+                    log('Received conversation:name-changed', payload);
+                    const conversation = getConversationById(conversationId);
+                    if (conversation) {
+                        conversation.name = newName;
+                        renderConversations();
+                        if (conversationId === selectedConversationId) {
+                            messagesTitle.textContent = getConversationName(conversation);
+                        }
+                    }
+                });
+
+                socket.on('conversation:admin-changed', (payload) => {
+                    const conversationId = normalizeId(payload?.conversationId);
+                    const newAdminId = normalizeId(payload?.newAdminId);
+                    if (!conversationId || !newAdminId) return;
+
+                    log('Received conversation:admin-changed', payload);
+                    const conversation = getConversationById(conversationId);
+                    if (conversation) {
+                        conversation.adminGroupId = newAdminId;
+                        renderConversations();
+                        if (conversationId === selectedConversationId) {
+                            renderConversationActionButtons();
+                        }
+                    }
                 });
 
                 socket.on('conversation:member-added', (payload) => {
@@ -3478,6 +3621,19 @@
                 hideConversationFlow();
             });
 
+            updateGroupNameBtn.addEventListener('click', () => {
+                updateGroupNameFlow();
+            });
+
+            changeAdminBtn.addEventListener('click', () => {
+                const conversation = getConversationById(selectedConversationId);
+                if (!conversation?.isGroup || !isCurrentUserGroupAdmin(conversation)) {
+                    alert('Chi admin group moi duoc chuyển quyền.');
+                    return;
+                }
+                openCreateConversationModal('changeAdmin');
+            });
+
             addMembersBtn.addEventListener('click', () => {
                 addMembersFlow();
             });
@@ -3494,6 +3650,7 @@
 
             clearReplyBtn.addEventListener('click', () => {
                 clearReplyTarget();
+                clearEditTarget();
             });
 
             closeCreateConversationBtn.addEventListener('click', () => {
@@ -3513,13 +3670,14 @@
                 const isGroup = createConversationMode === 'group';
                 const isAddMember = createConversationMode === 'addMember';
                 const isRemoveMember = createConversationMode === 'removeMember';
+                const isChangeAdmin = createConversationMode === 'changeAdmin';
 
                 if (!selectedUserIds.length) {
                     alert('Hay chon it nhat 1 user.');
                     return;
                 }
 
-                if ((createConversationMode === 'direct' || isRemoveMember) && selectedUserIds.length !== 1) {
+                if ((createConversationMode === 'direct' || isRemoveMember || isChangeAdmin) && selectedUserIds.length !== 1) {
                     alert('Chỉ được chọn 1 user.');
                     return;
                 }
@@ -3546,7 +3704,29 @@
                         await loadConversations();
                         await joinConversation(selectedConversationId);
                     } catch (error) {
-                        alert(error.message || 'Them thanh vien that bai.');
+                        alert(error.message || 'Them user vao group that bai.');
+                    } finally {
+                        submitCreateConversationBtn.disabled = false;
+                    }
+                    return;
+                }
+
+                if (isChangeAdmin) {
+                    try {
+                        await fetchJson(
+                            `/conversations/${selectedConversationId}/change-admin`,
+                            {
+                                method: 'PATCH',
+                                body: {
+                                    newAdminId: selectedUserIds[0],
+                                },
+                            },
+                        );
+                        closeCreateConversationModal();
+                        await loadConversations();
+                        await joinConversation(selectedConversationId);
+                    } catch (error) {
+                        alert(error.message || 'Chuyển Admin thất bại.');
                     } finally {
                         submitCreateConversationBtn.disabled = false;
                     }
@@ -3623,6 +3803,18 @@
                 if (socket && selectedConversationId && content) {
                     stopCurrentTyping();
                     
+                    if (editTargetMessageId) {
+                        socket.emit('chat:update-message', {
+                            conversationId: selectedConversationId,
+                            messageId: editTargetMessageId,
+                            content
+                        }, (response) => {
+                            if (!response?.ok) alert('Lỗi sửa tin nhắn: ' + (response?.message || ''));
+                        });
+                        clearEditTarget();
+                        return;
+                    }
+
                     const tempId = 'temp-' + Date.now();
                     const replyTargetMessage = getReplyTargetMessage();
                     const tempMessage = {
@@ -3648,12 +3840,15 @@
                         },
                         (response) => {
                             console.log('Message send response:', response);
-                            if (response?.data?.created) {
+                            if (response?.data?.created && response?.data?.message) {
+                                const createdMessage = response.data.message;
+                                const createdMessageId = normalizeId(createdMessage._id);
                                 const msg = currentMessages.find(m => m._id === tempId);
-                                if (msg) {
-                                    msg._id = response.data.messageId;
-                                    msg.serverMessageId =
-                                        response.data.messageId;
+                                if (msg && createdMessageId) {
+                                    msg._id = createdMessageId;
+                                    msg.serverMessageId = createdMessageId;
+                                    msg.createdAt = createdMessage.createdAt || msg.createdAt;
+                                    msg.replyTo = createdMessage.replyTo || msg.replyTo;
                                     msg.status = 'sent';
                                     renderMessages(currentMessages);
                                 }

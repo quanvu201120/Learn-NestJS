@@ -1,3 +1,5 @@
+import { MessageResponse } from '@/modules/messages/types/message';
+
 export type SocketResponse<T = any> = {
     ok: boolean;
     message?: string;
@@ -14,8 +16,7 @@ export type JoinConversationResult = {
 
 export type CreateMessageResult = {
     created: boolean;
-    messageId: string;
-    conversationId: string;
+    message: MessageResponse;
 };
 
 export type HeartbeatResult = {
@@ -34,6 +35,10 @@ export type SoftDeleteMessageResult = {
     deleted: boolean;
 };
 
+export type UpdateMessageResult = {
+    updated: boolean;
+    messageId: string;
+};
 // --- BROADCAST EVENT PAYLOADS ---
 export type TypingEventPayload = {
     conversationId: string;

@@ -23,7 +23,11 @@ import { ConversationsService } from '../conversations/conversations.service';
 import { PayloadJWT } from '../users/schemas/user.schema';
 import { getRoomNameConversation, getRoomNameUser } from '@/utils/utils';
 import { CreateMessageSocketDto } from '../messages/dto/create-message.dto';
-import { MarkReadSocketDto, TypingSocketDto } from './dto/chat-socket.dto';
+import {
+    MarkReadSocketDto,
+    TypingSocketDto,
+    UpdateMessageSocketDto,
+} from './dto/chat-socket.dto';
 import { RedisService } from '@/redis/redis.service';
 import {
     CreateMessageResult,
@@ -38,6 +42,7 @@ import {
     MarkReadResult,
     SoftDeleteMessageResult,
     SoftDeleteMessagePayload,
+    UpdateMessageResult,
 } from './types/responseSocket';
 import { UsersService } from '../users/users.service';
 @WebSocketGateway({
@@ -242,6 +247,50 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 });
             },
         });
+
+        this.messageService.updatedMessage$.subscribe({
+            next: (message) => {
+                this.server
+                    .to(
+                        getRoomNameConversation(
+                            message.conversationId.toString(),
+                        ),
+                    )
+                    .emit('message:updated', message);
+            },
+        });
+
+        this.conversationService.conversationNameChanged$.subscribe(
+            ({ conversationId, name }) => {
+                const roomName = getRoomNameConversation(conversationId);
+                this.server.to(roomName).emit('conversation:name-changed', {
+                    conversationId,
+                    name,
+                });
+            },
+        );
+
+        this.conversationService.conversationAdminChanged$.subscribe(
+            ({ conversationId, newAdminId, membersOnline }) => {
+                membersOnline.forEach((memberId) => {
+                    this.server
+                        .to(getRoomNameUser(memberId))
+                        .emit('conversation:admin-changed', {
+                            conversationId,
+                            newAdminId,
+                        });
+                });
+            },
+        );
+
+        this.messageService.createdMessage$.subscribe({
+            next: (message) => {
+                const roomName = getRoomNameConversation(
+                    message.conversationId.toString(),
+                );
+                this.server.to(roomName).emit('chat:new-message', message);
+            },
+        });
     }
 
     /**
@@ -319,10 +368,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                     content,
                     replyTo,
                 );
-            const roomName = getRoomNameConversation(conversationId);
-            this.server
-                .to(roomName)
-                .emit('chat:new-message', { conversationId, message });
 
             const membersOnline = (
                 await this.redisService.getUserOnlineInListIds(
@@ -355,8 +400,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 ok: true,
                 data: {
                     created: true,
-                    messageId: message._id.toString(),
-                    conversationId,
+                    message,
                 },
             };
             ack?.(res);
@@ -611,6 +655,41 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             ack?.(res);
         } catch (error) {
             console.log('Error deleting message:', error);
+            const res: SocketResponse = {
+                ok: false,
+                message:
+                    error instanceof Error ? error.message : 'Unknown error',
+            };
+            ack?.(res);
+        }
+    }
+
+    /**
+     * Chỉnh sửa nội dung tin nhắn
+     */
+    @SubscribeMessage('chat:update-message')
+    async handleUpdateMessage(
+        @ConnectedSocket() client: Socket,
+        @MessageBody()
+        body: UpdateMessageSocketDto,
+        @Ack() ack: (response: any) => void,
+    ) {
+        try {
+            const payload = this.validateUse(client);
+            await this.messageService.updateMessageContent(
+                payload._id,
+                body.messageId,
+                body.content,
+                body.conversationId,
+            );
+
+            const res: SocketResponse<UpdateMessageResult> = {
+                ok: true,
+                data: { updated: true, messageId: body.messageId },
+            };
+            ack?.(res);
+        } catch (error) {
+            console.log('Error updating message:', error);
             const res: SocketResponse = {
                 ok: false,
                 message:

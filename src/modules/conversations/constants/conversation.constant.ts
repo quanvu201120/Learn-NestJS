@@ -19,4 +19,6 @@ export const CONVERSATION_MESSAGES = {
     NOT_GROUP_ADMIN: 'You are not admin of this group',
     USER_NOT_IN_CONVERSATION: 'User is not in conversation',
     MEMBER_REQUIRED: 'Member remove is required',
+    NAME_NOT_CHANGED: 'Name not changed',
+    CURRENT_USER_IS_ALREADY_ADMIN: 'Current user is already admin',
 } as const;

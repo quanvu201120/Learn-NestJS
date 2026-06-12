@@ -24,7 +24,11 @@ import {
 import { serializeMessage } from '../messages/utils/message.serializer';
 import { MessagesService } from '../messages/messages.service';
 import { UsersService } from '../users/users.service';
-import { ConversationResponse } from './types/conversation';
+import {
+    ConversationResponse,
+    UpdateAdminConversationResponse,
+    UpdateNameConversationResponse,
+} from './types/conversation';
 import { RedisService } from '@/redis/redis.service';
 import { Subject } from 'rxjs';
 import { MessageEnumType } from '../messages/schemas/message.schema';
@@ -50,6 +54,15 @@ export class ConversationsService {
         conversationId: string;
         removedMemberId: string;
         removerId: string;
+    }>();
+    public readonly conversationNameChanged$ = new Subject<{
+        conversationId: string;
+        name: string;
+    }>();
+    public readonly conversationAdminChanged$ = new Subject<{
+        conversationId: string;
+        newAdminId: string;
+        membersOnline: string[];
     }>();
     constructor(
         @InjectModel(Conversation.name)
@@ -317,21 +330,34 @@ export class ConversationsService {
 
         this.ensureGroupConversation(conversation);
         this.ensureGroupAdmin(conversation, currentUserId);
-
-        if (!name.trim()) {
+        const normalizedName = name.trim();
+        if (!normalizedName) {
             throw new BadRequestException(CONVERSATION_MESSAGES.NAME_REQUIRED);
         }
+
+        if (normalizedName === conversation.name) {
+            throw new BadRequestException(
+                CONVERSATION_MESSAGES.NAME_NOT_CHANGED,
+            );
+        }
+
         const result = await this.conversationModel
             .findByIdAndUpdate(
                 objectConversationId,
-                { $set: { name } },
+                { $set: { name: normalizedName } },
                 { new: true },
             )
-            .select('-__v')
-            .populate('users', '-password -__v')
-            .populate('lastMessageId', '-__v')
             .lean();
-        return result ? this.serializeConversation(result) : null;
+        const res: UpdateNameConversationResponse = {
+            updated: !!result,
+        };
+        if (result) {
+            this.conversationNameChanged$.next({
+                conversationId: id,
+                name: result.name!,
+            });
+        }
+        return res;
     }
 
     /**
@@ -563,6 +589,12 @@ export class ConversationsService {
         this.ensureGroupAdmin(conversation, currentUserId);
         this.ensureMemberInConversation(conversation, newAdminId);
 
+        if (currentUserId === newAdminId) {
+            throw new BadRequestException(
+                CONVERSATION_MESSAGES.CURRENT_USER_IS_ALREADY_ADMIN,
+            );
+        }
+
         const objectNewAdminId = toObjectId(newAdminId, 'new admin id');
 
         const result = await this.conversationModel
@@ -571,12 +603,27 @@ export class ConversationsService {
                 { $set: { adminGroupId: objectNewAdminId } },
                 { new: true },
             )
-            .select('-__v')
-            .populate('users', '-password -__v')
-            .populate('lastMessageId', '-__v')
             .lean();
 
-        return this.serializeConversation(result);
+        if (!result) {
+            throw new BadRequestException(
+                CONVERSATION_MESSAGES.CONVERSATION_NOT_FOUND,
+            );
+        }
+        const membersOnline = await this.redisService.getUserOnlineInListIds(
+            result.users,
+        );
+        if (membersOnline.length > 0) {
+            this.conversationAdminChanged$.next({
+                conversationId,
+                newAdminId,
+                membersOnline: membersOnline.map((userId) => userId.toString()),
+            });
+        }
+        const res: UpdateAdminConversationResponse = {
+            updated: true,
+        };
+        return res;
     }
 
     /**

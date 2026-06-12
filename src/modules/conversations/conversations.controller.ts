@@ -49,8 +49,8 @@ export class ConversationsController {
         return this.conversationsService.findOne(id, req.user._id);
     }
 
-    @Patch(':id/update-name-conversation')
-    updateNameConversation(
+    @Patch(':id/update-name')
+    updateName(
         @Param('id') id: string,
         @Body() updateNameConversationDto: UpdateNameConversationDto,
         @Request() req: any,
@@ -61,6 +61,7 @@ export class ConversationsController {
             updateNameConversationDto.name,
         );
     }
+
     @Patch(':id/add-members')
     addMembers(
         @Param('id') id: string,
@@ -73,6 +74,7 @@ export class ConversationsController {
             addMembersConversationDto.members,
         );
     }
+
     @Patch(':id/remove-member')
     removeMember(
         @Param('id') id: string,
@@ -85,6 +87,7 @@ export class ConversationsController {
             removeMemberConversationDto.memberId,
         );
     }
+
     @Delete(':id/leave-group')
     leaveGroup(@Param('id') id: string, @Request() req: any) {
         return this.conversationsService.removeMember(
