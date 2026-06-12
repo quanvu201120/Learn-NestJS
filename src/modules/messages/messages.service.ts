@@ -22,7 +22,7 @@ import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
 import { serializeMessage } from './utils/message.serializer';
 import { Subject } from 'rxjs';
 import { UserResponse } from '../users/types/user';
-import { MessageResponse } from './types/message';
+import { MessageReactionEnumType, MessageResponse } from './types/message';
 
 @Injectable()
 export class MessagesService {
@@ -73,10 +73,14 @@ export class MessagesService {
             conversationId,
             'conversation id',
         );
-        return await this.messageModel.findOne({
+        const result = await this.messageModel.findOne({
             _id: objectMessageId,
             conversationId: objectConversationId,
         });
+        if (!result) {
+            throw new BadRequestException(MESSAGE_MESSAGES.MESSAGE_NOT_FOUND);
+        }
+        return result;
     }
 
     /**
@@ -318,6 +322,9 @@ export class MessagesService {
         );
     }
 
+    /**
+     * Cập nhật nội dung tin nhắn
+     */
     async updateMessageContent(
         userId: string,
         messageId: string,
@@ -368,6 +375,116 @@ export class MessagesService {
         if (!updatedMessage) {
             throw new BadRequestException(MESSAGE_MESSAGES.MESSAGE_NOT_UPDATED);
         }
+        const res = serializeMessage(updatedMessage);
+        this.updatedMessage$.next(res);
+        return res;
+    }
+
+    async updateOrInsertReaction(
+        userId: string,
+        messageId: string,
+        conversationId: string,
+        type: MessageReactionEnumType,
+    ) {
+        const { conversation } =
+            await this.conversationService.getConversationOrThrow(
+                conversationId,
+            );
+
+        const objectUserId =
+            this.conversationService.ensureMemberInConversation(
+                conversation,
+                userId,
+            );
+
+        const message = await this.checkMessageExistInConversation(
+            messageId,
+            conversationId,
+        );
+
+        if (message.isDeleted) {
+            throw new BadRequestException(MESSAGE_MESSAGES.ALREADY_DELETED);
+        }
+
+        const hasReacted = message.reactions?.some((reaction) =>
+            reaction.user.equals(objectUserId),
+        );
+        const updatedMessage = !hasReacted
+            ? await this.messageModel
+                  .findOneAndUpdate(
+                      { _id: message._id },
+                      {
+                          $push: { reactions: { user: objectUserId, type } },
+                      },
+                      { new: true, runValidators: true },
+                  )
+                  .populate('senderId', '-password -__v')
+                  .populate('replyTo', '-__v')
+                  .lean()
+            : await this.messageModel
+                  .findOneAndUpdate(
+                      { _id: message._id },
+                      {
+                          $set: { 'reactions.$[elem].type': type },
+                      },
+                      {
+                          arrayFilters: [{ 'elem.user': objectUserId }],
+                          new: true,
+                          runValidators: true,
+                      },
+                  )
+                  .populate('senderId', '-password -__v')
+                  .populate('replyTo', '-__v')
+                  .lean();
+        if (!updatedMessage) {
+            throw new BadRequestException(MESSAGE_MESSAGES.MESSAGE_NOT_UPDATED);
+        }
+        const res = serializeMessage(updatedMessage);
+        this.updatedMessage$.next(res);
+        return res;
+    }
+
+    async removeReaction(
+        userId: string,
+        messageId: string,
+        conversationId: string,
+    ) {
+        const { conversation } =
+            await this.conversationService.getConversationOrThrow(
+                conversationId,
+            );
+
+        const objectUserId =
+            this.conversationService.ensureMemberInConversation(
+                conversation,
+                userId,
+            );
+
+        const message = await this.checkMessageExistInConversation(
+            messageId,
+            conversationId,
+        );
+
+        if (message.isDeleted) {
+            throw new BadRequestException(MESSAGE_MESSAGES.ALREADY_DELETED);
+        }
+
+        const updatedMessage = await this.messageModel
+            .findOneAndUpdate(
+                { _id: message._id },
+                {
+                    $pull: { reactions: { user: objectUserId } },
+                },
+                { new: true, runValidators: true },
+            )
+            .populate('senderId', '-password -__v')
+            .populate('replyTo', '-__v')
+            .lean();
+
+        if (!updatedMessage) {
+            throw new BadRequestException(MESSAGE_MESSAGES.MESSAGE_NOT_UPDATED);
+        }
+
         const res = serializeMessage(updatedMessage);
         this.updatedMessage$.next(res);
         return res;

@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 import {
     Controller,
     Post,
@@ -6,9 +8,12 @@ import {
     Request,
     Get,
     Query,
+    Delete,
+    Patch,
 } from '@nestjs/common';
 import { MessagesService } from './messages.service';
 import { CreateMessageDto } from './dto/create-message.dto';
+import { RemoveReactionDto, UpsertReactionDto } from './dto/update-message.dto';
 
 @Controller()
 export class MessagesController {
@@ -50,6 +55,33 @@ export class MessagesController {
             // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
             req.user._id.toString(),
             cursor,
+        );
+    }
+
+    @Patch('messages/:messageId/reaction')
+    upsertReaction(
+        @Param('messageId') messageId: string,
+        @Body() upsertReactionDto: UpsertReactionDto,
+        @Request() req,
+    ) {
+        return this.messagesService.updateOrInsertReaction(
+            req.user._id,
+            messageId,
+            upsertReactionDto.conversationId,
+            upsertReactionDto.type,
+        );
+    }
+
+    @Delete('messages/:messageId/reaction')
+    removeReaction(
+        @Param('messageId') messageId: string,
+        @Body() removeReactionDto: RemoveReactionDto,
+        @Request() req,
+    ) {
+        return this.messagesService.removeReaction(
+            req.user._id,
+            messageId,
+            removeReactionDto.conversationId,
         );
     }
 }

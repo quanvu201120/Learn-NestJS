@@ -492,6 +492,138 @@
                 margin-top: 6px;
             }
 
+            .reaction-picker-wrap {
+                position: relative;
+                display: inline-flex;
+                align-items: center;
+                padding-bottom: 10px;
+                margin-bottom: -10px;
+            }
+
+            .reaction-picker-wrap::after {
+                content: '';
+                position: absolute;
+                left: 0;
+                right: 0;
+                top: 100%;
+                height: 14px;
+            }
+
+            .reaction-row {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                margin-top: 8px;
+            }
+
+            .reaction-pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                padding: 4px 8px;
+                border-radius: 999px;
+                border: 1px solid rgba(217, 205, 189, 0.95);
+                background: rgba(255, 253, 249, 0.92);
+                font-size: 11px;
+                font-weight: 700;
+                color: var(--muted);
+            }
+
+            .reaction-picker {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                position: absolute;
+                top: calc(100% + 2px);
+                left: 0;
+                z-index: 20;
+                min-width: max-content;
+                padding: 8px;
+                border-radius: 16px;
+                border: 1px solid rgba(217, 205, 189, 0.95);
+                background: rgba(255, 253, 249, 0.98);
+                box-shadow: 0 12px 28px rgba(85, 66, 43, 0.14);
+                opacity: 0;
+                visibility: hidden;
+                pointer-events: none;
+                transform: translateY(6px) scale(0.88);
+                transform-origin: left top;
+                transition:
+                    opacity 160ms ease,
+                    transform 190ms cubic-bezier(0.22, 1, 0.36, 1),
+                    visibility 0s linear 190ms;
+                will-change: opacity, transform;
+            }
+
+            .message-card.own .reaction-picker {
+                left: auto;
+                right: 0;
+                transform-origin: right top;
+            }
+
+            .reaction-picker-wrap:hover .reaction-picker,
+            .reaction-picker-wrap.open .reaction-picker {
+                opacity: 1;
+                visibility: visible;
+                pointer-events: auto;
+                transform: translateY(0) scale(1);
+                transition:
+                    opacity 140ms ease,
+                    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+                    visibility 0s linear 0s;
+            }
+
+            .reaction-btn {
+                border: 1px solid rgba(217, 205, 189, 0.95);
+                background: rgba(255, 253, 249, 0.95);
+                color: var(--muted);
+                min-width: 38px;
+                min-height: 38px;
+                padding: 0;
+                border-radius: 999px;
+                font-size: 20px;
+                line-height: 1;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 2px 6px rgba(85, 66, 43, 0.08);
+                transition:
+                    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+                    box-shadow 160ms ease,
+                    background 140ms ease,
+                    border-color 140ms ease;
+            }
+
+            .reaction-btn:hover {
+                transform: translateY(-8px) scale(1.12);
+                box-shadow: 0 12px 18px rgba(85, 66, 43, 0.16);
+            }
+
+            .reaction-btn.active {
+                background: #d8f1ee;
+                border-color: rgba(15, 118, 110, 0.35);
+                color: #0f766e;
+                box-shadow: 0 10px 18px rgba(15, 118, 110, 0.16);
+                transform: translateY(-4px);
+            }
+
+            .reaction-remove-btn {
+                border-color: rgba(239, 68, 68, 0.2);
+                color: #b91c1c;
+                padding: 0 12px;
+                min-height: 38px;
+                background: rgba(255, 248, 248, 0.98);
+                transition:
+                    transform 140ms ease,
+                    background 140ms ease,
+                    border-color 140ms ease;
+            }
+
+            .reaction-remove-btn:hover {
+                background: rgba(254, 226, 226, 0.9);
+                transform: translateY(-2px);
+            }
+
             .message-action-btn {
                 border: 1px solid rgba(217, 205, 189, 0.95);
                 background: rgba(255, 253, 249, 0.95);
@@ -500,6 +632,33 @@
                 border-radius: 999px;
                 font-size: 11px;
                 font-weight: 700;
+                transition:
+                    transform 140ms ease,
+                    box-shadow 140ms ease,
+                    background 140ms ease,
+                    border-color 140ms ease,
+                    color 140ms ease;
+            }
+
+            .message-action-btn:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 8px 18px rgba(85, 66, 43, 0.1);
+            }
+
+            .reaction-picker-wrap > .message-action-btn[data-action='toggle-reaction-picker'] {
+                padding-inline: 12px;
+                background: linear-gradient(
+                    180deg,
+                    rgba(255, 253, 249, 0.98),
+                    rgba(248, 242, 232, 0.95)
+                );
+            }
+
+            .reaction-picker-wrap:hover > .message-action-btn[data-action='toggle-reaction-picker'],
+            .reaction-picker-wrap.open > .message-action-btn[data-action='toggle-reaction-picker'] {
+                color: var(--accent);
+                border-color: rgba(15, 118, 110, 0.24);
+                background: rgba(216, 241, 238, 0.92);
             }
 
             .message-reply-snippet {
@@ -1053,8 +1212,17 @@
             let usersDirectoryCache = [];
             let replyTargetMessageId = '';
             let editTargetMessageId = '';
+            let hasBoundReactionPickerClose = false;
             let createConversationMode = 'direct';
             let createConversationSelectedUserIds = new Set();
+            const MESSAGE_REACTION_OPTIONS = [
+                { type: 'like', emoji: '👍', label: 'Like' },
+                { type: 'love', emoji: '❤️', label: 'Love' },
+                { type: 'haha', emoji: '😂', label: 'Haha' },
+                { type: 'wow', emoji: '😮', label: 'Wow' },
+                { type: 'sad', emoji: '😢', label: 'Sad' },
+                { type: 'angry', emoji: '😡', label: 'Angry' },
+            ];
 
             const tokenInput = document.getElementById('tokenInput');
             const connectBtn = document.getElementById('connectBtn');
@@ -2351,6 +2519,24 @@
                         </div>
                     `
                     : '';
+                const reactionSummary = buildReactionSummary(message);
+                const reactionSummaryHtml = reactionSummary.length
+                    ? `
+                        <div class="reaction-row">
+                            ${reactionSummary
+                                .map(
+                                    (reaction) => `
+                                        <span class="reaction-pill">
+                                            <span>${reaction.emoji}</span>
+                                            <span>${reaction.count}</span>
+                                        </span>
+                                    `,
+                                )
+                                .join('')}
+                        </div>
+                    `
+                    : '';
+                const myReactionType = getMyReactionType(message);
 
                 let statusHtml = '';
                 if (isOwnMessage) {
@@ -2398,6 +2584,49 @@
                                 Reply
                             </button>
                             ${
+                                !message.isDeleted
+                                    ? `
+                                        <div class="reaction-picker-wrap">
+                                            <button
+                                                class="message-action-btn"
+                                                data-action="toggle-reaction-picker"
+                                                data-message-id="${escapeHtml(message._id)}"
+                                                aria-label="Open reactions"
+                                            >
+                                                React
+                                            </button>
+                                            <div class="reaction-picker">
+                                                ${MESSAGE_REACTION_OPTIONS.map(
+                                                    (reaction) => `
+                                                        <button
+                                                            class="message-action-btn reaction-btn ${myReactionType === reaction.type ? 'active' : ''}"
+                                                            data-action="toggle-reaction"
+                                                            data-message-id="${escapeHtml(message._id)}"
+                                                            data-reaction-type="${escapeHtml(reaction.type)}"
+                                                        >
+                                                            ${reaction.emoji}
+                                                        </button>
+                                                    `,
+                                                ).join('')}
+                                                ${
+                                                    myReactionType
+                                                        ? `
+                                                            <button
+                                                                class="message-action-btn reaction-remove-btn"
+                                                                data-action="remove-reaction"
+                                                                data-message-id="${escapeHtml(message._id)}"
+                                                            >
+                                                                Remove reaction
+                                                            </button>
+                                                        `
+                                                        : ''
+                                                }
+                                            </div>
+                                        </div>
+                                    `
+                                    : ''
+                            }
+                            ${
                                 isOwnMessage && !message.isDeleted
                                     ? `
                                         <button
@@ -2425,6 +2654,7 @@
                         <div class="message-bubble">
                             ${replyPreviewHtml}
                             <div class="message-content">${escapeHtml(content)}</div>
+                            ${reactionSummaryHtml}
                             <div class="message-time">${timeStr}</div>
                         </div>
                         ${statusHtml}
@@ -2434,6 +2664,11 @@
             }
 
             function attachMessageEvents() {
+                if (!hasBoundReactionPickerClose) {
+                    document.addEventListener('click', closeReactionPickers);
+                    hasBoundReactionPickerClose = true;
+                }
+
                 document.querySelectorAll('.message-card').forEach((card) => {
                     card.addEventListener('click', (e) => {
                         if (e.target.closest('.message-status.seen')) {
@@ -2457,6 +2692,16 @@
                     btn.addEventListener('click', (e) => {
                         e.stopPropagation();
                         const messageId = btn.dataset.messageId;
+                        if (btn.dataset.action === 'toggle-reaction-picker') {
+                            const pickerWrap = btn.closest('.reaction-picker-wrap');
+                            if (!pickerWrap) {
+                                return;
+                            }
+                            const shouldOpen = !pickerWrap.classList.contains('open');
+                            closeReactionPickers();
+                            pickerWrap.classList.toggle('open', shouldOpen);
+                            return;
+                        }
                         if (!messageId) {
                             return;
                         }
@@ -2485,8 +2730,30 @@
                                     }
                                 });
                             }
+                            return;
+                        }
+
+                        if (btn.dataset.action === 'toggle-reaction') {
+                            const reactionType = btn.dataset.reactionType;
+                            if (!reactionType) {
+                                return;
+                            }
+                            closeReactionPickers();
+                            toggleMessageReaction(messageId, reactionType);
+                            return;
+                        }
+
+                        if (btn.dataset.action === 'remove-reaction') {
+                            closeReactionPickers();
+                            removeMessageReaction(messageId);
                         }
                     });
+                });
+            }
+
+            function closeReactionPickers() {
+                document.querySelectorAll('.reaction-picker-wrap.open').forEach((item) => {
+                    item.classList.remove('open');
                 });
             }
 
@@ -2726,6 +2993,90 @@
                     .replace(/>/g, '&gt;')
                     .replace(/"/g, '&quot;')
                     .replace(/'/g, '&#39;');
+            }
+
+            function getMessageReactions(message) {
+                if (!Array.isArray(message?.reactions)) {
+                    return [];
+                }
+                return message.reactions.filter(
+                    (reaction) => reaction && reaction.user && reaction.type,
+                );
+            }
+
+            function getMyReactionType(message) {
+                const currentUserId = normalizeId(currentUser?._id);
+                if (!currentUserId) {
+                    return '';
+                }
+                const myReaction = getMessageReactions(message).find(
+                    (reaction) =>
+                        normalizeId(reaction.user?._id || reaction.user) ===
+                        currentUserId,
+                );
+                return myReaction?.type || '';
+            }
+
+            function buildReactionSummary(message) {
+                const counts = new Map();
+                getMessageReactions(message).forEach((reaction) => {
+                    const currentCount = counts.get(reaction.type) || 0;
+                    counts.set(reaction.type, currentCount + 1);
+                });
+
+                return MESSAGE_REACTION_OPTIONS.filter((option) =>
+                    counts.has(option.type),
+                ).map((option) => ({
+                    ...option,
+                    count: counts.get(option.type) || 0,
+                }));
+            }
+
+            async function toggleMessageReaction(messageId, reactionType) {
+                const normalizedMessageId = normalizeId(messageId);
+                if (!normalizedMessageId || !selectedConversationId) {
+                    return;
+                }
+
+                const message = currentMessages.find(
+                    (item) => normalizeId(item._id) === normalizedMessageId,
+                );
+                if (!message) {
+                    return;
+                }
+
+                const currentReaction = getMyReactionType(message);
+                const isRemoving = currentReaction === reactionType;
+
+                try {
+                    await fetchJson(`/messages/${normalizedMessageId}/reaction`, {
+                        method: isRemoving ? 'DELETE' : 'PATCH',
+                        body: isRemoving
+                            ? { conversationId: selectedConversationId }
+                            : {
+                                  conversationId: selectedConversationId,
+                                  type: reactionType,
+                              },
+                    });
+                } catch (error) {
+                    alert(error.message || 'Cap nhat reaction that bai.');
+                }
+            }
+
+            async function removeMessageReaction(messageId) {
+                const normalizedMessageId = normalizeId(messageId);
+                if (!normalizedMessageId || !selectedConversationId) {
+                    return;
+                }
+
+                try {
+                    await fetchJson(`/messages/${normalizedMessageId}/reaction`, {
+                        method: 'DELETE',
+                        body: { conversationId: selectedConversationId },
+                    });
+                } catch (error) {
+                    alert(error.message || 'Xoa reaction that bai.');
+                }
             }
 
             async function fetchJson(path, options) {
@@ -3368,15 +3719,20 @@
                     if (conversationId === selectedConversationId) {
                         const existingIdx = currentMessages.findIndex(m => normalizeId(m._id) === messageId);
                         if (existingIdx !== -1) {
-                            currentMessages[existingIdx].content = updatedMessage.content;
-                            currentMessages[existingIdx].updatedAt = updatedMessage.updatedAt;
+                            currentMessages[existingIdx] = {
+                                ...currentMessages[existingIdx],
+                                ...updatedMessage,
+                            };
                             renderMessages(currentMessages);
                         }
                     }
                     
                     const conversation = getConversationById(conversationId);
                     if (conversation && normalizeId(conversation.lastMessage?._id) === messageId) {
-                        conversation.lastMessage.content = updatedMessage.content;
+                        conversation.lastMessage = {
+                            ...conversation.lastMessage,
+                            ...updatedMessage,
+                        };
                         renderConversations();
                     }
                 });

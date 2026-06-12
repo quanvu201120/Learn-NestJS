@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
+import { MessageReactionEnumType } from '../types/message';
 
 export type MessageDocument = HydratedDocument<Message>;
 export enum MessageEnumType {
@@ -41,6 +42,21 @@ export class Message {
 
     @Prop({ type: Date })
     deletedAt?: Date;
+
+    @Prop({
+        type: [
+            {
+                _id: false,
+                user: { type: Types.ObjectId, ref: 'User' },
+                type: { type: String, enum: MessageReactionEnumType },
+            },
+        ],
+        default: [],
+    })
+    reactions?: {
+        user: Types.ObjectId;
+        type: MessageReactionEnumType;
+    }[];
 }
 
 export const MessageSchema = SchemaFactory.createForClass(Message);

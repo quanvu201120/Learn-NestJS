@@ -9,3 +9,12 @@ export type MessageResponse = Omit<Message, 'senderId' | 'replyTo'> & {
     sender: UserResponse | Types.ObjectId | string;
     replyTo?: MessageResponse | Types.ObjectId | string;
 };
+
+export enum MessageReactionEnumType {
+    LIKE = 'like',
+    LOVE = 'love',
+    HAHA = 'haha',
+    WOW = 'wow',
+    SAD = 'sad',
+    ANGRY = 'angry',
+}
