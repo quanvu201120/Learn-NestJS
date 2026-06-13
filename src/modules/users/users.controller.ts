@@ -11,6 +11,11 @@ import {
     Query,
     UseGuards,
     Request,
+    UseInterceptors,
+    UploadedFile,
+    ParseFilePipe,
+    FileTypeValidator,
+    MaxFileSizeValidator,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -19,6 +24,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { Roles } from '@/utils/decorator-customize';
 import { RolesGuard } from '@/auth/passport/roles.guard';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 @ApiTags('Users - Quản lý người dùng')
 @ApiBearerAuth('JWT-auth')
@@ -64,6 +70,29 @@ export class UsersController {
             req.user._id,
             req.user.role,
         );
+    }
+    @Patch('avatar')
+    @UseInterceptors(FileInterceptor('file'))
+    @ApiOperation({ summary: 'Cập nhật ảnh đại diện của người dùng' })
+    uploadAvatar(
+        @UploadedFile(
+            new ParseFilePipe({
+                validators: [
+                    new FileTypeValidator({ fileType: 'image/*' }),
+                    new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
+                ],
+            }),
+        )
+        file: Express.Multer.File,
+        @Request() req,
+    ) {
+        return this.usersService.uploadAvatar(req.user._id, file);
+    }
+
+    @Delete('avatar')
+    @ApiOperation({ summary: 'Xóa ảnh đại diện của người dùng' })
+    deleteAvatar(@Request() req) {
+        return this.usersService.deleteAvatar(req.user._id);
     }
 
     @Delete(':id')

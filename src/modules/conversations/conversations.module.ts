@@ -8,6 +8,7 @@ import {
 } from './schemas/conversation.schema';
 import { MessagesModule } from '../messages/messages.module';
 import { UsersModule } from '../users/users.module';
+import { MediaModule } from '../media/media.module';
 
 @Module({
     imports: [
@@ -16,6 +17,7 @@ import { UsersModule } from '../users/users.module';
         ]),
         forwardRef(() => MessagesModule),
         forwardRef(() => UsersModule),
+        MediaModule,
     ],
     controllers: [ConversationsController],
     providers: [ConversationsService],

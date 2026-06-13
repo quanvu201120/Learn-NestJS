@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
+/* eslint-disable @typescript-eslint/no-non-null-asserted-optional-chain */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
@@ -5,13 +7,14 @@ import { USER_MESSAGES } from './constants/user.constant';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { User } from './schemas/user.schema';
-import { Model, Types } from 'mongoose';
-import { InjectModel } from '@nestjs/mongoose';
+import { Connection, Model, Types } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import {
     hashPassword,
     formatExpireTime,
     hashCodeVerifyEmail,
     validateObjectId,
+    toObjectId,
 } from '@/utils/utils';
 import aqp from 'api-query-params';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -29,13 +32,22 @@ import * as fs from 'fs';
 import * as path from 'path';
 import handlebars from 'handlebars';
 import { UserResponse } from './types/user';
+import { MediaService } from '../media/media.service';
+import {
+    MEDIA_CONSTANTS,
+    MEDIA_MESSAGES,
+} from '../media/constants/media.constant';
+import { Media } from '../media/schemas/media.schema';
+import { OwnerTypeEnum } from '../media/types/media';
 
 @Injectable()
 export class UsersService {
     constructor(
         @InjectModel(User.name) private userModel: Model<User>,
+        @InjectConnection() private readonly connection: Connection,
         private configService: ConfigService,
         private readonly redisService: RedisService,
+        private readonly mediaService: MediaService,
     ) {}
 
     /**
@@ -105,6 +117,7 @@ export class UsersService {
             .skip(skip)
             .limit(pageSize)
             .select('-password -__v')
+            .populate('avatar', '-__v')
             .sort(sort as any)
             .lean();
 
@@ -119,6 +132,7 @@ export class UsersService {
         return (await this.userModel
             .findById(id)
             .select('-password -__v')
+            .populate('avatar', '-__v')
             .lean()) as UserResponse;
     }
 
@@ -164,6 +178,7 @@ export class UsersService {
         const user = (await this.userModel
             .findOneAndUpdate({ _id }, { ...updateData }, { new: true })
             .select('-password -__v')
+            .populate('avatar', '-__v')
             .lean()) as UserResponse;
 
         if (!user) {
@@ -510,10 +525,175 @@ export class UsersService {
         });
     }
 
+    /**
+     * Cập nhật thời gian online cuối cùng của user.
+     */
     async setLastOnline(userId: string) {
         return await this.userModel.updateOne(
             { _id: userId },
             { $set: { lastOnlineAt: new Date() } },
         );
+    }
+
+    /**
+     * Cập nhật ảnh đại diện của user
+     */
+    async uploadAvatar(userId: string, file: Express.Multer.File) {
+        const objectUserId = toObjectId(userId, 'user id');
+        const existingUser = await this.userModel
+            .findById(objectUserId)
+            .select('_id avatar')
+            .lean();
+        if (!existingUser) {
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
+        }
+        let uploadedAvatar: Media | null = null;
+        let isUpdatedUser = false;
+        const session = await this.connection.startSession();
+        try {
+            uploadedAvatar = await this.mediaService.uploadImageToCloudinary(
+                objectUserId,
+                OwnerTypeEnum.USER,
+                objectUserId,
+                file,
+                MEDIA_CONSTANTS.USER_AVATAR_FOLDER,
+            );
+            if (!uploadedAvatar) {
+                throw new BadRequestException(
+                    MEDIA_MESSAGES.FILE_UPLOAD_FAILED,
+                );
+            }
+            const avatarOld = existingUser.avatar
+                ? await this.mediaService.findById(
+                      existingUser.avatar.toString(),
+                  )
+                : null;
+            const user = await session.withTransaction(async () => {
+                const createdMedia = await this.mediaService.createMedia(
+                    uploadedAvatar as Media,
+                    session,
+                );
+                const updatedUser = await this.userModel
+                    .findByIdAndUpdate(
+                        objectUserId,
+                        {
+                            $set: {
+                                avatar: createdMedia._id,
+                            },
+                        },
+                        { new: true, session },
+                    )
+                    .select('-password -__v')
+                    .populate('avatar', '-__v')
+                    .lean();
+                if (!updatedUser) {
+                    throw new BadRequestException(
+                        USER_MESSAGES.AVATAR_UPLOAD_FAILED,
+                    );
+                }
+                if (avatarOld) {
+                    const resultDeleteMedia =
+                        await this.mediaService.deleteMedia(
+                            avatarOld._id.toString(),
+                            session,
+                        );
+                    if (!resultDeleteMedia) {
+                        throw new BadRequestException(
+                            MEDIA_MESSAGES.MEDIA_DELETE_FAILED,
+                        );
+                    }
+                }
+                return updatedUser as UserResponse;
+            });
+            if (!user) {
+                throw new BadRequestException(
+                    USER_MESSAGES.AVATAR_UPLOAD_FAILED,
+                );
+            }
+            isUpdatedUser = true;
+            if (avatarOld?.publicId) {
+                await this.mediaService
+                    .deleteImageFromCloudinary(avatarOld.publicId)
+                    .catch((error) => {
+                        console.error('Failed to delete old avatar:', error);
+                    });
+            }
+            return user;
+        } catch (error) {
+            if (uploadedAvatar && uploadedAvatar.publicId && !isUpdatedUser) {
+                await this.mediaService.deleteImageFromCloudinary(
+                    uploadedAvatar.publicId,
+                );
+            }
+            throw error;
+        } finally {
+            await session.endSession();
+        }
+    }
+
+    /**
+     * Xóa ảnh đại diện của user
+     */
+    async deleteAvatar(userId: string) {
+        const objectUserId = toObjectId(userId, 'user id');
+        const existingUser = await this.userModel
+            .findById(objectUserId)
+            .select('_id avatar')
+            .lean();
+        if (!existingUser) {
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
+        }
+        if (!existingUser.avatar) {
+            throw new BadRequestException(USER_MESSAGES.AVATAR_NOT_EXIST);
+        }
+        const avatarOld = await this.mediaService.findById(
+            existingUser.avatar.toString(),
+        );
+        const session = await this.connection.startSession();
+        try {
+            const user = await session.withTransaction(async () => {
+                const updatedUser = await this.userModel
+                    .findByIdAndUpdate(
+                        objectUserId,
+                        {
+                            $unset: {
+                                avatar: '',
+                            },
+                        },
+                        { new: true, session },
+                    )
+                    .select('-password -__v')
+                    .populate('avatar', '-__v')
+                    .lean();
+                if (!updatedUser) {
+                    throw new BadRequestException(
+                        USER_MESSAGES.AVATAR_DELETE_FAILED,
+                    );
+                }
+                const resultDeleteMedia = await this.mediaService.deleteMedia(
+                    avatarOld._id.toString(),
+                    session,
+                );
+                if (!resultDeleteMedia) {
+                    throw new BadRequestException(
+                        MEDIA_MESSAGES.MEDIA_DELETE_FAILED,
+                    );
+                }
+                return updatedUser as UserResponse;
+            });
+            if (!user) {
+                throw new BadRequestException(
+                    USER_MESSAGES.AVATAR_DELETE_FAILED,
+                );
+            }
+            await this.mediaService
+                .deleteImageFromCloudinary(avatarOld.publicId!)
+                .catch((error) => {
+                    console.error('Failed to delete old avatar:', error);
+                });
+            return user;
+        } finally {
+            await session.endSession();
+        }
     }
 }

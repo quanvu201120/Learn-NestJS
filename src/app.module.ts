@@ -14,6 +14,7 @@ import { ConversationsModule } from './modules/conversations/conversations.modul
 import { MessagesModule } from './modules/messages/messages.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { PresenceModule } from './modules/presence/presence.module';
+import { MediaModule } from './modules/media/media.module';
 
 @Module({
     imports: [
@@ -25,6 +26,7 @@ import { PresenceModule } from './modules/presence/presence.module';
         MessagesModule,
         RealtimeModule,
         PresenceModule,
+        MediaModule,
         MongooseModule.forRootAsync({
             imports: [ConfigModule],
             // eslint-disable-next-line @typescript-eslint/require-await

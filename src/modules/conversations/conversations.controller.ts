@@ -9,6 +9,11 @@ import {
     Param,
     Delete,
     Request,
+    UseInterceptors,
+    UploadedFile,
+    ParseFilePipe,
+    FileTypeValidator,
+    MaxFileSizeValidator,
 } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
@@ -20,6 +25,7 @@ import {
     UpdateNameConversationDto,
 } from './dto/update-conversation.dto';
 import { RedisService } from '@/redis/redis.service';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 @Controller('conversations')
 export class ConversationsController {
@@ -133,5 +139,28 @@ export class ConversationsController {
     @Delete(':id')
     hiddenHistory(@Param('id') id: string, @Request() req) {
         return this.conversationsService.hiddenHistory(id, req.user._id);
+    }
+
+    @Patch(':id/avatar')
+    @UseInterceptors(FileInterceptor('file'))
+    uploadAvatar(
+        @Param('id') id: string,
+        @UploadedFile(
+            new ParseFilePipe({
+                validators: [
+                    new FileTypeValidator({ fileType: 'image/*' }),
+                    new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
+                ],
+            }),
+        )
+        file: Express.Multer.File,
+        @Request() req,
+    ) {
+        return this.conversationsService.uploadAvatar(id, req.user._id, file);
+    }
+
+    @Delete(':id/avatar')
+    deleteAvatar(@Param('id') id: string, @Request() req: any) {
+        return this.conversationsService.deleteAvatar(id, req.user._id);
     }
 }

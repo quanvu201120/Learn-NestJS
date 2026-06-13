@@ -21,4 +21,9 @@ export const CONVERSATION_MESSAGES = {
     MEMBER_REQUIRED: 'Member remove is required',
     NAME_NOT_CHANGED: 'Name not changed',
     CURRENT_USER_IS_ALREADY_ADMIN: 'Current user is already admin',
+    NOT_A_GROUP: 'Not a group conversation',
+    AVATAR_UPLOAD_FAILED: 'Avatar upload failed',
+    AVATAR_NOT_FOUND: 'Avatar not found',
+    AVATAR_DELETE_FAILED: 'Avatar delete failed',
+    AVATAR_NOT_EXIST: 'Avatar not exist',
 } as const;

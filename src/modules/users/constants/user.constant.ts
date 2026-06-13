@@ -12,5 +12,11 @@ export const USER_MESSAGES = {
     CHANGE_PASSWORD_SUCCESS: 'Change password successfully',
     EMAIL_NOT_FOUND: 'Email not found',
     RESET_PASSWORD_SUCCESS: 'Reset password successfully',
-    PLEASE_WAIT_COOLDOWN: (waitTime: number) => `Please wait ${waitTime} seconds before requesting a new code.`,
+    PLEASE_WAIT_COOLDOWN: (waitTime: number) =>
+        `Please wait ${waitTime} seconds before requesting a new code.`,
+    FILE_UPLOAD_FAILED: 'File upload failed',
+    AVATAR_UPLOAD_FAILED: 'Avatar upload failed',
+    AVATAR_DELETE_FAILED: 'Avatar delete failed',
+    AVATAR_DELETED_SUCCESS: 'Avatar deleted successfully',
+    AVATAR_NOT_EXIST: 'User not have avatar',
 } as const;

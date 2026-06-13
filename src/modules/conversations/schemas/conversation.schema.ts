@@ -1,3 +1,4 @@
+import { Media, MediaSchema } from '@/modules/media/schemas/media.schema';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 
@@ -47,6 +48,9 @@ export class Conversation {
         default: {},
     })
     readReceipts?: Map<string, Types.ObjectId>;
+
+    @Prop({ type: MediaSchema })
+    avatar?: Media;
 }
 
 export const ConversationSchema = SchemaFactory.createForClass(Conversation);
