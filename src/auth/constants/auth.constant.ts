@@ -11,4 +11,6 @@ export const AUTH_MESSAGES = {
     LOGOUT_SUCCESS: 'Logout successfully',
     LOGOUT_ALL_SUCCESS: 'Logout all devices successfully',
     LOGOUT_ALL_FAILED: 'Logout all devices failed!',
+    TOKEN_VERSION_MISMATCH: 'Token version mismatch',
+    SESSION_USER_NOT_MATCH: 'Session user not match',
 } as const;

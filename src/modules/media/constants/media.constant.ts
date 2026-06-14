@@ -15,4 +15,7 @@ export const MEDIA_MESSAGES = {
     MEDIA_CREATE_FAILED: 'Media creation failed',
     MEDIA_NOT_FOUND: 'Media not found',
     MEDIA_DELETE_FAILED: 'Media deletion failed',
+    PUBLIC_ID_NOT_FOUND: 'Public ID not found',
+    AVATAR_DELETE_FAILED: 'Avatar delete failed',
+    OBJECT_KEY_NOT_FOUND: 'Object key not found',
 } as const;

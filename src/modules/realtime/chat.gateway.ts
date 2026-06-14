@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-misused-promises */
@@ -45,6 +46,9 @@ import {
     UpdateMessageResult,
 } from './types/responseSocket';
 import { UsersService } from '../users/users.service';
+import { USER_MESSAGES } from '../users/constants/user.constant';
+import { AUTH_MESSAGES } from '@/auth/constants/auth.constant';
+import { SessionService } from '../session/session.service';
 @WebSocketGateway({
     cors: { origin: '*' },
     transports: ['websocket'],
@@ -61,6 +65,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         private readonly conversationService: ConversationsService,
         private readonly redisService: RedisService,
         private readonly usersService: UsersService,
+        private readonly sessionService: SessionService,
     ) {}
 
     /**
@@ -82,10 +87,30 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             const payload: PayloadJWT = await this.jwtService.verifyAsync(
                 token,
                 {
-                    secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
+                    secret: this.configService.get<string>('JWT_SECRET'),
                 },
             );
 
+            const user = await this.usersService.findOne(payload._id);
+            if (!user) {
+                throw new UnauthorizedException(USER_MESSAGES.USER_NOT_FOUND);
+            }
+            if (payload.tokenVersion !== user.tokenVersion) {
+                throw new UnauthorizedException(
+                    AUTH_MESSAGES.TOKEN_VERSION_MISMATCH,
+                );
+            }
+            const session = await this.sessionService.findSessionById(
+                payload.sessionId,
+            );
+            if (payload._id !== session?.userId.toString()) {
+                throw new UnauthorizedException(
+                    AUTH_MESSAGES.SESSION_USER_NOT_MATCH,
+                );
+            }
+            if (session?.isRevoked || !session) {
+                throw new UnauthorizedException(AUTH_MESSAGES.SESSION_REVOKED);
+            }
             client.data.user = payload;
             const roomName = getRoomNameUser(payload._id);
             client.join(roomName);
@@ -305,7 +330,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         @Ack() ack: (response: any) => void,
     ) {
         try {
-            const payload = this.validateUse(client);
+            const payload = await this.validateActiveSession(client);
 
             const { conversation } =
                 await this.conversationService.getConversationOrThrow(
@@ -358,7 +383,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         @Ack() ack: (response: any) => void,
     ) {
         try {
-            const payload = this.validateUse(client);
+            const payload = await this.validateActiveSession(client);
             const { conversationId, type, content, replyTo } = body;
             const { message, conversation } =
                 await this.messageService.createMessage(
@@ -578,7 +603,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         @MessageBody() body: MarkReadSocketDto,
     ) {
         try {
-            const payload = this.validateUse(client);
+            const payload = await this.validateActiveSession(client);
             await this.conversationService.markAsRead(
                 body.conversationId,
                 payload._id,
@@ -632,7 +657,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         @Ack() ack: (response: any) => void,
     ) {
         try {
-            const payload = this.validateUse(client);
+            const payload = await this.validateActiveSession(client);
 
             await this.messageService.softDeleteMessage(
                 body.messageId,
@@ -675,7 +700,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         @Ack() ack: (response: any) => void,
     ) {
         try {
-            const payload = this.validateUse(client);
+            const payload = await this.validateActiveSession(client);
             await this.messageService.updateMessageContent(
                 payload._id,
                 body.messageId,
@@ -706,6 +731,49 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         const payload = client.data.user as PayloadJWT | undefined;
         if (!payload?._id) {
             throw new UnauthorizedException(REALTIME_MESSAGES.MISSING_TOKEN);
+        }
+
+        return payload;
+    }
+
+    /**
+     * Re-check user/session state for write actions so old sockets cannot keep
+     * mutating data after logout, logout-all, or session revocation.
+     */
+    private async validateActiveSession(client: Socket) {
+        const payload = this.validateUse(client);
+
+        const user = await this.usersService.findOne(payload._id);
+        if (!user) {
+            client.disconnect();
+            throw new UnauthorizedException(USER_MESSAGES.USER_NOT_FOUND);
+        }
+
+        if (payload.tokenVersion !== user.tokenVersion) {
+            client.disconnect();
+            throw new UnauthorizedException(
+                AUTH_MESSAGES.TOKEN_VERSION_MISMATCH,
+            );
+        }
+
+        const session = await this.sessionService.findSessionById(
+            payload.sessionId,
+        );
+        if (!session) {
+            client.disconnect();
+            throw new UnauthorizedException(AUTH_MESSAGES.SESSION_NOT_FOUND);
+        }
+
+        if (session.userId.toString() !== payload._id) {
+            client.disconnect();
+            throw new UnauthorizedException(
+                AUTH_MESSAGES.SESSION_USER_NOT_MATCH,
+            );
+        }
+
+        if (session.isRevoked) {
+            client.disconnect();
+            throw new UnauthorizedException(AUTH_MESSAGES.SESSION_REVOKED);
         }
 
         return payload;

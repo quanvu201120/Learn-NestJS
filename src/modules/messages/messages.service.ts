@@ -333,9 +333,13 @@ export class MessagesService {
     ) {
         const objectUserId = toObjectId(userId, 'user id');
         const objectMessageId = toObjectId(messageId, 'message id');
-        const objectConversationId = toObjectId(
-            conversationId,
-            'conversation id',
+        const { conversation, objectConversationId } =
+            await this.conversationService.getConversationOrThrow(
+                conversationId,
+            );
+        this.conversationService.ensureMemberInConversation(
+            conversation,
+            userId,
         );
         const message = await this.messageModel
             .findOne({

@@ -48,7 +48,7 @@
             }
 
             .toolbar {
-                padding: 20px;
+                padding: 14px 18px;
                 border-bottom: 1px solid rgba(117, 104, 90, 0.15);
                 background: rgba(255, 253, 249, 0.9);
                 backdrop-filter: blur(12px);
@@ -56,39 +56,52 @@
 
             .toolbar-grid {
                 display: grid;
-                grid-template-columns: 1fr auto auto auto;
-                gap: 12px;
+                grid-template-columns: minmax(240px, 1fr) auto auto auto;
+                gap: 10px;
                 align-items: end;
             }
 
             .field {
                 display: flex;
                 flex-direction: column;
-                gap: 6px;
+                gap: 4px;
+            }
+
+            .field-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
             }
 
             .field label {
-                font-size: 12px;
+                font-size: 11px;
                 font-weight: 700;
                 letter-spacing: 0.04em;
                 text-transform: uppercase;
                 color: var(--muted);
             }
 
+            .toolbar .status {
+                margin: 0;
+                font-size: 11px;
+                white-space: nowrap;
+            }
+
             .current-user {
                 display: flex;
                 align-items: center;
-                gap: 12px;
-                min-width: 220px;
-                padding: 10px 14px;
+                gap: 10px;
+                min-width: 0;
+                padding: 8px 12px;
                 border: 1px solid rgba(217, 205, 189, 0.9);
                 border-radius: 14px;
                 background: rgba(248, 242, 232, 0.8);
             }
 
             .current-user-avatar {
-                width: 52px;
-                height: 52px;
+                width: 44px;
+                height: 44px;
                 border-radius: 999px;
                 border: 2px solid rgba(15, 118, 110, 0.14);
                 object-fit: cover;
@@ -114,7 +127,7 @@
             }
 
             .current-user-name {
-                font-size: 14px;
+                font-size: 13px;
                 font-weight: 700;
                 color: var(--text);
                 word-break: break-word;
@@ -128,9 +141,9 @@
             }
 
             .current-user-actions button {
-                padding: 8px 12px;
+                padding: 6px 10px;
                 border-radius: 999px;
-                font-size: 12px;
+                font-size: 11px;
             }
 
             .current-user-empty {
@@ -149,7 +162,7 @@
                 width: 100%;
                 border: 1px solid var(--border);
                 border-radius: 12px;
-                padding: 12px 14px;
+                padding: 10px 12px;
                 background: #fff;
                 color: var(--text);
                 outline: none;
@@ -164,11 +177,13 @@
             button {
                 border: 0;
                 border-radius: 12px;
-                padding: 12px 16px;
+                padding: 8px 12px;
                 cursor: pointer;
                 background: var(--panel-alt);
                 color: var(--text);
                 font-weight: 700;
+                font-size: 11px;
+                line-height: 1.2;
             }
 
             button.primary {
@@ -201,7 +216,7 @@
             }
 
             .panel-header {
-                padding: 18px 20px;
+                padding: 14px 16px;
                 border-bottom: 1px solid rgba(217, 205, 189, 0.8);
                 background: linear-gradient(
                     180deg,
@@ -212,12 +227,12 @@
 
             .panel-title {
                 margin: 0;
-                font-size: 18px;
+                font-size: 16px;
             }
 
             .panel-subtitle {
-                margin: 6px 0 0;
-                font-size: 13px;
+                margin: 4px 0 0;
+                font-size: 12px;
                 color: var(--muted);
             }
 
@@ -260,6 +275,21 @@
             .conversation-name {
                 font-weight: 700;
                 margin-bottom: 6px;
+            }
+
+            .conversation-list-avatar {
+                width: 40px;
+                height: 40px;
+                border-radius: 14px;
+                border: 1px solid rgba(217, 205, 189, 0.9);
+                object-fit: cover;
+                background:
+                    linear-gradient(135deg, #efe5d4 0%, #f8f2e8 100%);
+                flex-shrink: 0;
+            }
+
+            .conversation-list-avatar.direct {
+                border-radius: 999px;
             }
 
             .conversation-head {
@@ -341,9 +371,9 @@
             .messages-toolbar {
                 display: flex;
                 justify-content: space-between;
-                align-items: center;
-                gap: 12px;
-                padding: 16px 20px;
+                align-items: flex-start;
+                gap: 10px;
+                padding: 10px 14px;
                 border-bottom: 1px solid rgba(217, 205, 189, 0.8);
                 background: rgba(248, 242, 232, 0.55);
             }
@@ -351,7 +381,7 @@
             .messages-heading {
                 display: flex;
                 flex-direction: column;
-                gap: 8px;
+                gap: 5px;
             }
 
             .presence-row {
@@ -359,6 +389,41 @@
                 align-items: center;
                 gap: 10px;
                 flex-wrap: wrap;
+            }
+
+            .conversation-hero {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                min-width: 0;
+            }
+
+            .conversation-avatar {
+                width: 48px;
+                height: 48px;
+                border-radius: 18px;
+                border: 1px solid rgba(217, 205, 189, 0.95);
+                object-fit: cover;
+                background:
+                    linear-gradient(135deg, #efe5d4 0%, #f8f2e8 100%);
+                flex-shrink: 0;
+            }
+
+            .conversation-avatar.direct {
+                border-radius: 999px;
+            }
+
+            .conversation-avatar-actions {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+
+            .conversation-avatar-actions button {
+                padding: 6px 10px;
+                border-radius: 999px;
+                font-size: 11px;
             }
 
             .presence-badge {
@@ -427,7 +492,16 @@
             }
 
             .panel-actions {
-                margin-top: 14px;
+                margin-top: 10px;
+            }
+
+            .panel-actions button,
+            .toolbar-actions button {
+                padding: 6px 10px;
+                min-height: 32px;
+                border-radius: 999px;
+                font-size: 10px;
+                white-space: nowrap;
             }
 
             .message-list {
@@ -443,8 +517,8 @@
                 flex-shrink: 0;
                 display: grid;
                 grid-template-columns: 1fr auto;
-                gap: 12px;
-                padding: 16px 20px 20px;
+                gap: 10px;
+                padding: 10px 14px 12px;
                 border-top: 1px solid rgba(217, 205, 189, 0.8);
                 background: rgba(255, 253, 249, 0.92);
             }
@@ -458,8 +532,8 @@
                 display: flex;
                 align-items: flex-start;
                 justify-content: space-between;
-                gap: 12px;
-                padding: 14px 20px 0;
+                gap: 10px;
+                padding: 10px 14px 0;
             }
 
             .reply-preview-copy {
@@ -1000,7 +1074,12 @@
             <header class="toolbar">
                 <div class="toolbar-grid">
                     <div class="field">
-                        <label for="tokenInput">Bearer Token</label>
+                        <div class="field-head">
+                            <label for="tokenInput">Bearer Token</label>
+                            <p id="statusText" class="status">
+                                Socket: disconnected
+                            </p>
+                        </div>
                         <input
                             id="tokenInput"
                             placeholder="Paste JWT access token here"
@@ -1052,7 +1131,6 @@
                         </div>
                     </div>
                 </div>
-                <p id="statusText" class="status">Socket: disconnected</p>
             </header>
 
             <main class="layout">
@@ -1086,23 +1164,56 @@
 
                 <section class="panel messages-wrap">
                     <div class="messages-toolbar">
-                        <div class="messages-heading">
-                            <h2 id="messagesTitle" class="panel-title">
-                                Messages
-                            </h2>
-                            <p id="messagesSubtitle" class="panel-subtitle">
-                                Chon mot conversation de tai history message
-                            </p>
-                            <div id="presenceRow" class="presence-row hidden">
-                                <span
-                                    id="directPresenceBadge"
-                                    class="presence-badge dot-only offline hidden"
-                                    title="Offline"
-                                ></span>
-                                <span
-                                    id="groupPresenceSummary"
-                                    class="presence-summary hidden"
-                                ></span>
+                        <div class="conversation-hero">
+                            <img
+                                id="conversationAvatar"
+                                class="conversation-avatar group hidden"
+                                alt="Conversation avatar"
+                                src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'%3E%3Crect width='80' height='80' rx='24' fill='%23efe5d4'/%3E%3Ccircle cx='28' cy='31' r='12' fill='%23b7a48f'/%3E%3Ccircle cx='52' cy='31' r='10' fill='%23b7a48f' opacity='0.9'/%3E%3Cpath d='M14 63c3-10 10-15 17-15s14 5 17 15' fill='%23b7a48f'/%3E%3Cpath d='M36 63c3-8 8-12 15-12s12 4 15 12' fill='%23a8937a'/%3E%3C/svg%3E"
+                            />
+                            <div class="messages-heading">
+                                <h2 id="messagesTitle" class="panel-title">
+                                    Messages
+                                </h2>
+                                <p id="messagesSubtitle" class="panel-subtitle">
+                                    Chon mot conversation de tai history message
+                                </p>
+                                <div id="presenceRow" class="presence-row hidden">
+                                    <span
+                                        id="directPresenceBadge"
+                                        class="presence-badge dot-only offline hidden"
+                                        title="Offline"
+                                    ></span>
+                                    <span
+                                        id="groupPresenceSummary"
+                                        class="presence-summary hidden"
+                                    ></span>
+                                </div>
+                                <div
+                                    id="conversationAvatarActions"
+                                    class="conversation-avatar-actions hidden"
+                                >
+                                    <button
+                                        id="updateConversationAvatarBtn"
+                                        class="secondary-btn"
+                                        type="button"
+                                    >
+                                        Update Group Avatar
+                                    </button>
+                                    <button
+                                        id="deleteConversationAvatarBtn"
+                                        class="danger"
+                                        type="button"
+                                    >
+                                        Delete Group Avatar
+                                    </button>
+                                </div>
+                                <input
+                                    id="conversationAvatarInput"
+                                    type="file"
+                                    accept="image/*"
+                                    hidden
+                                />
                             </div>
                         </div>
                         <div class="toolbar-actions">
@@ -1340,6 +1451,20 @@
             const removeAvatarBtn =
                 document.getElementById('removeAvatarBtn');
             const avatarInput = document.getElementById('avatarInput');
+            const conversationAvatar =
+                document.getElementById('conversationAvatar');
+            const conversationAvatarActions = document.getElementById(
+                'conversationAvatarActions',
+            );
+            const updateConversationAvatarBtn = document.getElementById(
+                'updateConversationAvatarBtn',
+            );
+            const deleteConversationAvatarBtn = document.getElementById(
+                'deleteConversationAvatarBtn',
+            );
+            const conversationAvatarInput = document.getElementById(
+                'conversationAvatarInput',
+            );
             const presenceRow = document.getElementById('presenceRow');
             const directPresenceBadge = document.getElementById(
                 'directPresenceBadge',
@@ -1384,6 +1509,8 @@
             const DEFAULT_PAGE_TITLE = 'Chat Test Client';
             const DEFAULT_AVATAR_DATA_URL =
                 "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'%3E%3Crect width='80' height='80' rx='40' fill='%23efe5d4'/%3E%3Ccircle cx='40' cy='31' r='14' fill='%23b7a48f'/%3E%3Cpath d='M18 66c4-12 13-18 22-18s18 6 22 18' fill='%23b7a48f'/%3E%3C/svg%3E";
+            const DEFAULT_GROUP_AVATAR_DATA_URL =
+                "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'%3E%3Crect width='80' height='80' rx='24' fill='%23efe5d4'/%3E%3Ccircle cx='28' cy='31' r='12' fill='%23b7a48f'/%3E%3Ccircle cx='52' cy='31' r='10' fill='%23b7a48f' opacity='0.9'/%3E%3Cpath d='M14 63c3-10 10-15 17-15s14 5 17 15' fill='%23b7a48f'/%3E%3Cpath d='M36 63c3-8 8-12 15-12s12 4 15 12' fill='%23a8937a'/%3E%3C/svg%3E";
 
             function log(message, data) {
                 if (data === undefined) {
@@ -1480,10 +1607,50 @@
                 }
 
                 if (typeof media === 'string') {
-                    return media;
+                    const normalizedMedia = media.trim();
+                    if (
+                        normalizedMedia.startsWith('http://') ||
+                        normalizedMedia.startsWith('https://') ||
+                        normalizedMedia.startsWith('data:') ||
+                        normalizedMedia.startsWith('blob:')
+                    ) {
+                        return normalizedMedia;
+                    }
+
+                    return '';
                 }
 
                 return media.url || media.secureUrl || media.secure_url || '';
+            }
+
+            function getCachedUserById(userId) {
+                const normalizedUserId = normalizeId(userId);
+                if (!normalizedUserId) {
+                    return null;
+                }
+
+                return (
+                    usersDirectoryCache.find(
+                        (user) => normalizeId(user?._id) === normalizedUserId,
+                    ) || null
+                );
+            }
+
+            function getConversationAvatarUrl(conversation) {
+                if (!conversation) {
+                    return '';
+                }
+
+                if (!conversation.isGroup) {
+                    const peer = getDirectConversationPeer(conversation);
+                    const peerId = normalizeId(peer?._id);
+                    return (
+                        getMediaUrl(peer?.avatar) ||
+                        getMediaUrl(getCachedUserById(peerId)?.avatar)
+                    );
+                }
+
+                return getMediaUrl(conversation.avatar);
             }
 
             function updateCurrentUserUI() {
@@ -1493,6 +1660,31 @@
                 currentUserAvatar.src =
                     getMediaUrl(currentUser?.avatar) || DEFAULT_AVATAR_DATA_URL;
                 removeAvatarBtn.disabled = !Boolean(getMediaUrl(currentUser?.avatar));
+            }
+
+            function updateConversationAvatarUI() {
+                const conversation = getConversationById(selectedConversationId);
+                const avatarUrl = getConversationAvatarUrl(conversation);
+                const isGroup = Boolean(conversation?.isGroup);
+                const isGroupAdmin = isCurrentUserGroupAdmin(conversation);
+
+                conversationAvatar.classList.toggle('hidden', !conversation);
+                conversationAvatar.classList.toggle('group', isGroup);
+                conversationAvatar.classList.toggle('direct', !isGroup);
+                conversationAvatar.src = avatarUrl || (isGroup
+                    ? DEFAULT_GROUP_AVATAR_DATA_URL
+                    : DEFAULT_AVATAR_DATA_URL);
+
+                conversationAvatarActions.classList.toggle(
+                    'hidden',
+                    !(isGroup && isGroupAdmin),
+                );
+                updateConversationAvatarBtn.disabled = !Boolean(
+                    isGroup && selectedConversationId,
+                );
+                deleteConversationAvatarBtn.disabled = !Boolean(
+                    isGroup && isGroupAdmin && getMediaUrl(conversation?.avatar),
+                );
             }
 
             function normalizeId(value) {
@@ -1753,6 +1945,102 @@
                 }
             }
 
+            async function uploadConversationAvatar(file) {
+                if (!file || !selectedConversationId) {
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const response = await fetch(
+                    `${API_BASE_URL}/conversations/${selectedConversationId}/avatar`,
+                    {
+                        method: 'PATCH',
+                        headers: getAuthHeaderOnly(),
+                        body: formData,
+                        cache: 'no-store',
+                    },
+                );
+
+                const text = await response.text();
+                const data = text ? JSON.parse(text) : null;
+
+                if (!response.ok) {
+                    throw new Error(
+                        data?.message
+                            ? Array.isArray(data.message)
+                                ? data.message.join(', ')
+                                : data.message
+                            : `Request failed: ${response.status}`,
+                    );
+                }
+
+                return data?.data || null;
+            }
+
+            async function handleConversationAvatarFileChange(event) {
+                const file = event.target.files?.[0];
+                if (!file || !selectedConversationId) {
+                    return;
+                }
+
+                updateConversationAvatarBtn.disabled = true;
+                deleteConversationAvatarBtn.disabled = true;
+
+                try {
+                    await uploadConversationAvatar(file);
+                    await loadConversations();
+                    if (selectedConversationId) {
+                        await loadMessages(selectedConversationId);
+                    }
+                    alert('Cap nhat avatar group thanh cong.');
+                } catch (error) {
+                    alert(error.message || 'Cap nhat avatar group that bai.');
+                } finally {
+                    conversationAvatarInput.value = '';
+                    updateConversationAvatarUI();
+                }
+            }
+
+            async function deleteConversationAvatar() {
+                const conversation = getConversationById(selectedConversationId);
+                if (!conversation?.isGroup) {
+                    alert('Hay chon mot group chat.');
+                    return;
+                }
+
+                if (!getMediaUrl(conversation?.avatar)) {
+                    alert('Group hien tai chua co avatar.');
+                    return;
+                }
+
+                const confirmed = window.confirm(
+                    'Ban co chac muon xoa avatar group hien tai khong?',
+                );
+                if (!confirmed) {
+                    return;
+                }
+
+                updateConversationAvatarBtn.disabled = true;
+                deleteConversationAvatarBtn.disabled = true;
+
+                try {
+                    await fetchJson(`/conversations/${selectedConversationId}/avatar`, {
+                        method: 'DELETE',
+                    });
+                    await loadConversations();
+                    if (selectedConversationId) {
+                        await loadMessages(selectedConversationId);
+                    }
+                    alert('Xoa avatar group thanh cong.');
+                } catch (error) {
+                    alert(error.message || 'Xoa avatar group that bai.');
+                } finally {
+                    updateConversationAvatarUI();
+                }
+            }
+
             function getConversationName(conversation) {
                 if (
                     conversation.isGroup &&
@@ -1931,6 +2219,7 @@
                     'hidden',
                     !(conversation?.isGroup && isGroupAdmin),
                 );
+                updateConversationAvatarUI();
             }
 
             function closeCreateConversationModal() {
@@ -2141,6 +2430,56 @@
                     ...user,
                     _id: normalizeId(user?._id || user),
                 }));
+                return usersDirectoryCache;
+            }
+
+            async function enrichUsersDirectoryWithIds(userIds) {
+                const normalizedIds = [...new Set((userIds || []).map(normalizeId).filter(Boolean))];
+                const missingIds = normalizedIds.filter(
+                    (userId) => !getCachedUserById(userId),
+                );
+
+                if (!missingIds.length) {
+                    return usersDirectoryCache;
+                }
+
+                const fetchedUsers = await Promise.all(
+                    missingIds.map(async (userId) => {
+                        try {
+                            const user = await fetchJson(`/users/${userId}`);
+                            return user
+                                ? {
+                                      ...user,
+                                      _id: normalizeId(user?._id || userId),
+                                  }
+                                : null;
+                        } catch (error) {
+                            console.error(
+                                'Load direct peer avatar fallback failed',
+                                userId,
+                                error,
+                            );
+                            return null;
+                        }
+                    }),
+                );
+
+                const nextUsers = fetchedUsers.filter(Boolean);
+                if (nextUsers.length) {
+                    const existingById = new Map(
+                        usersDirectoryCache.map((user) => [
+                            normalizeId(user?._id),
+                            user,
+                        ]),
+                    );
+
+                    nextUsers.forEach((user) => {
+                        existingById.set(normalizeId(user._id), user);
+                    });
+
+                    usersDirectoryCache = [...existingById.values()];
+                }
+
                 return usersDirectoryCache;
             }
 
@@ -3019,6 +3358,11 @@
                             const isDirectPeerOnline = directPeerId
                                 ? sidebarPresenceMap.get(directPeerId)
                                 : false;
+                            const avatarUrl =
+                                getConversationAvatarUrl(conversation) ||
+                                (isDirectConversation
+                                    ? DEFAULT_AVATAR_DATA_URL
+                                    : DEFAULT_GROUP_AVATAR_DATA_URL);
                             const lastMessage = conversation.lastMessage;
                             const preview =
                                 lastMessage && typeof lastMessage === 'object'
@@ -3032,6 +3376,11 @@
                                 >
                                     <div class="conversation-head">
                                         <div class="conversation-head-main">
+                                            <img
+                                                class="conversation-list-avatar ${isDirectConversation ? 'direct' : 'group'}"
+                                                alt="Conversation avatar"
+                                                src="${escapeHtml(avatarUrl)}"
+                                            />
                                             <div class="conversation-name">${escapeHtml(getConversationName(conversation))}</div>
                                             ${
                                                 isUnseen
@@ -3501,8 +3850,16 @@
             async function loadConversations() {
                 try {
                     await loadCurrentUserFromToken();
+                    await loadUsersDirectory();
                     const data = await fetchJson('/conversations');
                     conversations = Array.isArray(data) ? data : [];
+                    await enrichUsersDirectoryWithIds(
+                        conversations
+                            .filter((conversation) => !conversation?.isGroup)
+                            .map((conversation) =>
+                                normalizeId(getDirectConversationPeer(conversation)?._id),
+                            ),
+                    );
                     log('Loaded conversations', conversations);
                     syncUnseenConversationsFromConversationList();
                     await refreshSidebarPresence();
@@ -4154,8 +4511,31 @@
 
             avatarInput.addEventListener('change', handleAvatarFileChange);
 
+            updateConversationAvatarBtn.addEventListener('click', () => {
+                const conversation = getConversationById(selectedConversationId);
+                if (!conversation?.isGroup || !isCurrentUserGroupAdmin(conversation)) {
+                    alert('Chi admin group moi duoc cap nhat avatar.');
+                    return;
+                }
+                conversationAvatarInput.click();
+            });
+
+            conversationAvatarInput.addEventListener(
+                'change',
+                handleConversationAvatarFileChange,
+            );
+
             removeAvatarBtn.addEventListener('click', () => {
                 deleteCurrentUserAvatar();
+            });
+
+            deleteConversationAvatarBtn.addEventListener('click', () => {
+                const conversation = getConversationById(selectedConversationId);
+                if (!conversation?.isGroup || !isCurrentUserGroupAdmin(conversation)) {
+                    alert('Chi admin group moi duoc xoa avatar.');
+                    return;
+                }
+                deleteConversationAvatar();
             });
 
             reloadMessagesBtn.addEventListener('click', () => {

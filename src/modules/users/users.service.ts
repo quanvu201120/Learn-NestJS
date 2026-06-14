@@ -621,9 +621,14 @@ export class UsersService {
             return user;
         } catch (error) {
             if (uploadedAvatar && uploadedAvatar.publicId && !isUpdatedUser) {
-                await this.mediaService.deleteImageFromCloudinary(
-                    uploadedAvatar.publicId,
-                );
+                await this.mediaService
+                    .deleteImageFromCloudinary(uploadedAvatar.publicId)
+                    .catch((cleanupError) => {
+                        console.error(
+                            'Failed to cleanup uploaded avatar:',
+                            cleanupError,
+                        );
+                    });
             }
             throw error;
         } finally {
@@ -649,6 +654,7 @@ export class UsersService {
         const avatarOld = await this.mediaService.findById(
             existingUser.avatar.toString(),
         );
+
         const session = await this.connection.startSession();
         try {
             const user = await session.withTransaction(async () => {
@@ -670,14 +676,17 @@ export class UsersService {
                         USER_MESSAGES.AVATAR_DELETE_FAILED,
                     );
                 }
-                const resultDeleteMedia = await this.mediaService.deleteMedia(
-                    avatarOld._id.toString(),
-                    session,
-                );
-                if (!resultDeleteMedia) {
-                    throw new BadRequestException(
-                        MEDIA_MESSAGES.MEDIA_DELETE_FAILED,
-                    );
+                if (avatarOld) {
+                    const resultDeleteMedia =
+                        await this.mediaService.deleteMedia(
+                            avatarOld._id.toString(),
+                            session,
+                        );
+                    if (!resultDeleteMedia) {
+                        throw new BadRequestException(
+                            MEDIA_MESSAGES.MEDIA_DELETE_FAILED,
+                        );
+                    }
                 }
                 return updatedUser as UserResponse;
             });
@@ -686,11 +695,13 @@ export class UsersService {
                     USER_MESSAGES.AVATAR_DELETE_FAILED,
                 );
             }
-            await this.mediaService
-                .deleteImageFromCloudinary(avatarOld.publicId!)
-                .catch((error) => {
-                    console.error('Failed to delete old avatar:', error);
-                });
+            if (avatarOld?.publicId) {
+                await this.mediaService
+                    .deleteImageFromCloudinary(avatarOld.publicId)
+                    .catch((error) => {
+                        console.error('Failed to delete old avatar:', error);
+                    });
+            }
             return user;
         } finally {
             await session.endSession();

@@ -37,13 +37,9 @@ export class MediaService implements OnModuleInit {
 
     async findById(id: string, session?: ClientSession) {
         const objectId = toObjectId(id, 'media id');
-        const result = await this.mediaModel.findById(objectId, null, {
+        return await this.mediaModel.findById(objectId, null, {
             session,
         });
-        if (!result) {
-            throw new BadRequestException(MEDIA_MESSAGES.MEDIA_NOT_FOUND);
-        }
-        return result;
     }
 
     async deleteMedia(id: string, session?: ClientSession) {

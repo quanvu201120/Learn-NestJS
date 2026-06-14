@@ -64,7 +64,10 @@ export class AuthController {
 
         response.cookie('refreshToken', data.refreshToken, {
             httpOnly: true,
-            secure: false,
+            secure:
+                this.configService.get<string>('NODE_ENV') === 'production'
+                    ? true
+                    : false,
             sameSite: 'lax',
             maxAge: ms(
                 this.configService.get<string>(
@@ -90,7 +93,10 @@ export class AuthController {
 
         response.cookie('refreshToken', data.refreshToken, {
             httpOnly: true,
-            secure: false,
+            secure:
+                this.configService.get<string>('NODE_ENV') === 'production'
+                    ? true
+                    : false,
             sameSite: 'lax',
             maxAge: ms(
                 this.configService.get<string>(
@@ -121,7 +127,10 @@ export class AuthController {
 
         response.clearCookie('refreshToken', {
             httpOnly: true,
-            secure: false,
+            secure:
+                this.configService.get<string>('NODE_ENV') === 'production'
+                    ? true
+                    : false,
             sameSite: 'lax',
             maxAge: 0,
         });
@@ -141,7 +150,10 @@ export class AuthController {
             await this.authService.logoutAllDevices(req.user._id);
             response.clearCookie('refreshToken', {
                 httpOnly: true,
-                secure: false,
+                secure:
+                    this.configService.get<string>('NODE_ENV') === 'production'
+                        ? true
+                        : false,
                 sameSite: 'lax',
                 maxAge: 0,
             });

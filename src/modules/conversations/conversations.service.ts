@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable prettier/prettier */
 /* eslint-disable @typescript-eslint/no-unused-vars */
@@ -38,6 +39,7 @@ import {
     MEDIA_CONSTANTS,
     MEDIA_MESSAGES,
 } from '../media/constants/media.constant';
+import { OwnerTypeEnum } from '../media/types/media';
 
 @Injectable()
 export class ConversationsService {
@@ -264,6 +266,7 @@ export class ConversationsService {
             .select('-__v')
             .populate('users', '-password -__v')
             .populate('lastMessageId', '-__v')
+            .populate('avatar', '-__v')
             .sort({ updatedAt: -1 })
             .lean();
         return res.map((conversation) =>
@@ -296,6 +299,7 @@ export class ConversationsService {
             .select('-__v')
             .populate('users', '-password -__v')
             .populate('lastMessageId', '-__v')
+            .populate('avatar', '-__v')
             .lean();
         return res ? this.serializeConversation(res) : null;
     }
@@ -420,6 +424,7 @@ export class ConversationsService {
             .select('-__v')
             .populate('users', '-password -__v')
             .populate('lastMessageId', '-__v')
+            .populate('avatar', '-__v')
             .lean();
 
         if (result) {
@@ -491,6 +496,7 @@ export class ConversationsService {
             .select('-__v')
             .populate('users', '-password -__v')
             .populate('lastMessageId', '-__v')
+            .populate('avatar', '-__v')
             .lean();
 
         if (!result) {
@@ -754,98 +760,154 @@ export class ConversationsService {
         userId: string,
         file: Express.Multer.File,
     ) {
-        // const { conversation, objectConversationId } =
-        //     await this.getConversationOrThrow(conversationId);
-        // this.ensureGroupConversation(conversation);
-        // this.ensureGroupAdmin(conversation, userId);
-        // let uploadedAvatar: Media | null = null;
-        // let isUpdatedUser = false;
-        // try {
-        //     uploadedAvatar = await this.mediaService.uploadImageToCloudinary(
-        //         file,
-        //         MEDIA_CONSTANTS.GROUP_AVATAR_FOLDER,
-        //     );
-        //     if (!uploadedAvatar) {
-        //         throw new BadRequestException(
-        //             MEDIA_MESSAGES.FILE_UPLOAD_FAILED,
-        //         );
-        //     }
-        //     const conversationUpadted = await this.conversationModel
-        //         .findByIdAndUpdate(
-        //             objectConversationId,
-        //             {
-        //                 $set: {
-        //                     avatar: uploadedAvatar,
-        //                 },
-        //             },
-        //             { new: true },
-        //         )
-        //         .select('-__v')
-        //         .populate('users', '-password -__v')
-        //         .populate('lastMessageId', '-__v')
-        //         .lean();
-        //     if (!conversationUpadted) {
-        //         throw new BadRequestException(
-        //             CONVERSATION_MESSAGES.AVATAR_UPLOAD_FAILED,
-        //         );
-        //     }
-        //     isUpdatedUser = true;
-        //     if (conversation.avatar && conversation.avatar.publicId) {
-        //         await this.mediaService
-        //             .deleteImageFromCloudinary(conversation.avatar.publicId)
-        //             .catch((error) => {
-        //                 console.error('Failed to delete old avatar:', error);
-        //             });
-        //     }
-        //     return this.serializeConversation(conversationUpadted);
-        // } catch (error) {
-        //     if (uploadedAvatar && uploadedAvatar.publicId && !isUpdatedUser) {
-        //         await this.mediaService.deleteImageFromCloudinary(
-        //             uploadedAvatar.publicId,
-        //         );
-        //     }
-        //     throw error;
-        // }
+        const { conversation, objectConversationId } =
+            await this.getConversationOrThrow(conversationId);
+        this.ensureGroupConversation(conversation);
+        const objectUserId = this.ensureGroupAdmin(conversation, userId);
+        let uploadedAvatar: Media | null = null;
+        let isUpdatedUser = false;
+        const session = await this.connection.startSession();
+        try {
+            uploadedAvatar = await this.mediaService.uploadImageToCloudinary(
+                objectUserId,
+                OwnerTypeEnum.CONVERSATION,
+                objectConversationId,
+                file,
+                MEDIA_CONSTANTS.GROUP_AVATAR_FOLDER,
+            );
+            if (!uploadedAvatar) {
+                throw new BadRequestException(
+                    MEDIA_MESSAGES.FILE_UPLOAD_FAILED,
+                );
+            }
+            const avatarOld = conversation.avatar
+                ? await this.mediaService.findById(
+                      conversation.avatar?.toString(),
+                  )
+                : null;
+
+            const conversationUpdated = await session.withTransaction(
+                async () => {
+                    const createdMedia = await this.mediaService.createMedia(
+                        uploadedAvatar as Media,
+                        session,
+                    );
+                    const updated = await this.conversationModel
+                        .findByIdAndUpdate(
+                            objectConversationId,
+                            {
+                                $set: {
+                                    avatar: createdMedia._id,
+                                },
+                            },
+                            { new: true, session },
+                        )
+                        .select('-__v')
+                        .populate('users', '-password -__v')
+                        .populate('lastMessageId', '-__v')
+                        .populate('avatar', '-__v')
+                        .lean();
+                    if (!updated) {
+                        throw new BadRequestException(
+                            CONVERSATION_MESSAGES.AVATAR_UPLOAD_FAILED,
+                        );
+                    }
+                    if (avatarOld) {
+                        await this.mediaService.deleteMedia(
+                            avatarOld._id.toString(),
+                            session,
+                        );
+                    }
+                    return updated;
+                },
+            );
+            if (avatarOld && avatarOld.publicId) {
+                await this.mediaService
+                    .deleteImageFromCloudinary(avatarOld.publicId)
+                    .catch((error) => {
+                        console.error('Failed to delete old avatar:', error);
+                    });
+            }
+
+            isUpdatedUser = true;
+            return this.serializeConversation(conversationUpdated);
+        } catch (error) {
+            if (uploadedAvatar && uploadedAvatar.publicId && !isUpdatedUser) {
+                await this.mediaService
+                    .deleteImageFromCloudinary(uploadedAvatar.publicId)
+                    .catch((cleanupError) => {
+                        console.error(
+                            'Failed to cleanup uploaded avatar:',
+                            cleanupError,
+                        );
+                    });
+            }
+            throw error;
+        } finally {
+            await session.endSession();
+        }
     }
 
     /**
      * Xóa ảnh nhóm chat
      */
-    async deleteAvatar(userId: string, conversationId: string) {
-        // const { conversation, objectConversationId } =
-        //     await this.getConversationOrThrow(conversationId);
-        // this.ensureGroupConversation(conversation);
-        // this.ensureGroupAdmin(conversation, userId);
-        // if (!conversation.avatar || !conversation.avatar.publicId) {
-        //     throw new BadRequestException(
-        //         CONVERSATION_MESSAGES.AVATAR_NOT_EXIST,
-        //     );
-        // }
-        // const conversationUpdated = await this.conversationModel
-        //     .findByIdAndUpdate(
-        //         objectConversationId,
-        //         {
-        //             $unset: {
-        //                 avatar: '',
-        //             },
-        //         },
-        //         { new: true },
-        //     )
-        //     .select('-__v')
-        //     .populate('users', '-password -__v')
-        //     .populate('lastMessageId', '-__v')
-        //     .lean();
-        // if (!conversationUpdated) {
-        //     throw new BadRequestException(
-        //         CONVERSATION_MESSAGES.AVATAR_DELETE_FAILED,
-        //     );
-        // }
-        // await this.mediaService
-        //     .deleteImageFromCloudinary(conversation.avatar.publicId)
-        //     .catch((error) => {
-        //         console.error('Failed to delete old avatar:', error);
-        //     });
-        // return this.serializeConversation(conversationUpdated);
+    async deleteAvatar(conversationId: string, userId: string) {
+        const { conversation, objectConversationId } =
+            await this.getConversationOrThrow(conversationId);
+        this.ensureGroupConversation(conversation);
+        this.ensureGroupAdmin(conversation, userId);
+        if (!conversation.avatar) {
+            throw new BadRequestException(
+                CONVERSATION_MESSAGES.AVATAR_NOT_EXIST,
+            );
+        }
+        const avatarOld = await this.mediaService.findById(
+            conversation.avatar.toString(),
+        );
+        const session = await this.connection.startSession();
+        try {
+            const conversationUpdated = await session.withTransaction(
+                async () => {
+                    const update = await this.conversationModel
+                        .findByIdAndUpdate(
+                            objectConversationId,
+                            {
+                                $unset: {
+                                    avatar: '',
+                                },
+                            },
+                            { new: true, session },
+                        )
+                        .select('-__v')
+                        .populate('users', '-password -__v')
+                        .populate('lastMessageId', '-__v')
+                        .populate('avatar', '-__v')
+                        .lean();
+                    if (!update) {
+                        throw new BadRequestException(
+                            CONVERSATION_MESSAGES.AVATAR_DELETE_FAILED,
+                        );
+                    }
+                    if (avatarOld) {
+                        await this.mediaService.deleteMedia(
+                            avatarOld._id.toString(),
+                            session,
+                        );
+                    }
+                    return update;
+                },
+            );
+            if (avatarOld?.publicId) {
+                await this.mediaService
+                    .deleteImageFromCloudinary(avatarOld.publicId)
+                    .catch((error) => {
+                        console.error('Failed to delete old avatar:', error);
+                    });
+            }
+            return this.serializeConversation(conversationUpdated);
+        } finally {
+            await session.endSession();
+        }
     }
 
     /**

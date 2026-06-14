@@ -49,8 +49,8 @@ export class Conversation {
     })
     readReceipts?: Map<string, Types.ObjectId>;
 
-    @Prop({ type: MediaSchema })
-    avatar?: Media;
+    @Prop({ type: Types.ObjectId, ref: 'Media' })
+    avatar?: Types.ObjectId;
 }
 
 export const ConversationSchema = SchemaFactory.createForClass(Conversation);
