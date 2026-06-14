@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { MESSAGE_MESSAGES } from './constants/message.constant';
 import {
@@ -7,7 +9,6 @@ import {
     Injectable,
     InternalServerErrorException,
 } from '@nestjs/common';
-import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
 import {
@@ -23,6 +24,13 @@ import { serializeMessage } from './utils/message.serializer';
 import { Subject } from 'rxjs';
 import { UserResponse } from '../users/types/user';
 import { MessageReactionEnumType, MessageResponse } from './types/message';
+import { MediaProviderEnum, OwnerTypeEnum } from '../media/types/media';
+import { Media, MediaDocument } from '../media/schemas/media.schema';
+import { MediaService } from '../media/media.service';
+import {
+    MEDIA_CONSTANTS,
+    MEDIA_MESSAGES,
+} from '../media/constants/media.constant';
 
 @Injectable()
 export class MessagesService {
@@ -41,6 +49,7 @@ export class MessagesService {
         private readonly conversationService: ConversationsService,
         @InjectConnection()
         private readonly connection: Connection,
+        private readonly mediaService: MediaService,
     ) {}
 
     /**
@@ -52,6 +61,7 @@ export class MessagesService {
             .findById(objectMessageId)
             .populate('senderId', '-password -__v')
             .populate('replyTo', '-__v')
+            .populate('mediaId', '-__v')
             .lean();
 
         if (!message) {
@@ -93,9 +103,18 @@ export class MessagesService {
         senderId: string,
         conversationId: string,
         type: MessageEnumType,
-        content: string,
+        content?: string,
         replyTo?: string,
+        file?: Express.Multer.File,
     ) {
+        if (
+            [MessageEnumType.TEXT, MessageEnumType.SYSTEM].includes(type) &&
+            !content?.trim()
+        ) {
+            throw new BadRequestException(
+                MESSAGE_MESSAGES.MESSAGE_CONTENT_REQUIRED,
+            );
+        }
         const { conversation, objectConversationId } =
             await this.conversationService.getConversationOrThrow(
                 conversationId,
@@ -124,11 +143,54 @@ export class MessagesService {
             }
             objectReplyTo = replyMessage._id;
         }
+        let uploadedFile: Media | null = null;
+        const provider: MediaProviderEnum =
+            type === MessageEnumType.IMAGE
+                ? MediaProviderEnum.CLOUDINARY
+                : MediaProviderEnum.R2;
         const session = await this.connection.startSession();
-
         try {
             let newMessage: MessageDocument | null = null;
+
+            if (
+                type === MessageEnumType.IMAGE ||
+                type === MessageEnumType.VIDEO ||
+                type === MessageEnumType.FILE
+            ) {
+                if (!file) {
+                    throw new BadRequestException(
+                        MESSAGE_MESSAGES.FILE_REQUIRED,
+                    );
+                }
+
+                if (provider === MediaProviderEnum.CLOUDINARY) {
+                    uploadedFile =
+                        await this.mediaService.uploadImageToCloudinary(
+                            objectSenderId,
+                            OwnerTypeEnum.CONVERSATION,
+                            objectConversationId,
+                            file,
+                            MEDIA_CONSTANTS.CONVERSATION_IMAGE_FOLDER,
+                        );
+                    if (!uploadedFile) {
+                        throw new BadRequestException(
+                            MEDIA_MESSAGES.FILE_UPLOAD_FAILED,
+                        );
+                    }
+                } else {
+                    //R2
+                }
+            }
             await session.withTransaction(async () => {
+                let createMedia: MediaDocument | null = null;
+
+                if (uploadedFile) {
+                    createMedia = await this.mediaService.createMedia(
+                        uploadedFile,
+                        session,
+                    );
+                }
+
                 // bọc các lệnh ghi DB vào transaction thật
                 const createdMessages = await this.messageModel.create(
                     [
@@ -138,6 +200,7 @@ export class MessagesService {
                             type,
                             content,
                             replyTo: objectReplyTo,
+                            mediaId: createMedia?._id || undefined,
                         },
                     ],
                     { session }, // truyền session vào create để query này thuộc transaction
@@ -171,6 +234,22 @@ export class MessagesService {
             const message = await this.getMessageById(newMessageId);
             this.createdMessage$.next(message);
             return { message, conversation };
+        } catch (error) {
+            if (
+                uploadedFile &&
+                uploadedFile.publicId &&
+                uploadedFile.provider === MediaProviderEnum.CLOUDINARY
+            ) {
+                await this.mediaService
+                    .deleteImageFromCloudinary(uploadedFile.publicId)
+                    .catch((cleanupError) => {
+                        console.error(
+                            'Failed to cleanup uploaded media:',
+                            cleanupError,
+                        );
+                    });
+            }
+            throw error;
         } finally {
             await session.endSession();
         }
@@ -194,6 +273,7 @@ export class MessagesService {
             .findById(conversation.lastMessageId)
             .populate('senderId', '-password -__v')
             .populate('replyTo', '-__v')
+            .populate('mediaId', '-__v')
             .lean();
         if (!lastMessage) {
             throw new BadRequestException(MESSAGE_MESSAGES.MESSAGE_NOT_FOUND);
@@ -240,6 +320,7 @@ export class MessagesService {
             .select('-__v')
             .populate('senderId', '-password -__v')
             .populate('replyTo', '-__v')
+            .populate('mediaId', '-__v')
             .sort({ createdAt: -1 })
             .limit(GLOBAL_CONSTANTS.LIMIT_MESSAGES_DEFAULT)
             .lean();
@@ -350,6 +431,7 @@ export class MessagesService {
             })
             .populate('senderId', '-password -__v')
             .populate('replyTo', '-__v')
+            .populate('mediaId', '-__v')
             .lean();
 
         if (!message) {
@@ -375,6 +457,7 @@ export class MessagesService {
             )
             .populate('senderId', '-password -__v')
             .populate('replyTo', '-__v')
+            .populate('mediaId', '-__v')
             .lean();
         if (!updatedMessage) {
             throw new BadRequestException(MESSAGE_MESSAGES.MESSAGE_NOT_UPDATED);
@@ -424,6 +507,7 @@ export class MessagesService {
                   )
                   .populate('senderId', '-password -__v')
                   .populate('replyTo', '-__v')
+                  .populate('mediaId', '-__v')
                   .lean()
             : await this.messageModel
                   .findOneAndUpdate(
@@ -439,6 +523,7 @@ export class MessagesService {
                   )
                   .populate('senderId', '-password -__v')
                   .populate('replyTo', '-__v')
+                  .populate('mediaId', '-__v')
                   .lean();
         if (!updatedMessage) {
             throw new BadRequestException(MESSAGE_MESSAGES.MESSAGE_NOT_UPDATED);
@@ -483,6 +568,7 @@ export class MessagesService {
             )
             .populate('senderId', '-password -__v')
             .populate('replyTo', '-__v')
+            .populate('mediaId', '-__v')
             .lean();
 
         if (!updatedMessage) {

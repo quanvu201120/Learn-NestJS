@@ -24,6 +24,7 @@ import { ConversationsService } from '../conversations/conversations.service';
 import { PayloadJWT } from '../users/schemas/user.schema';
 import { getRoomNameConversation, getRoomNameUser } from '@/utils/utils';
 import { CreateMessageSocketDto } from '../messages/dto/create-message.dto';
+import { MessageEnumType } from '../messages/schemas/message.schema';
 import {
     MarkReadSocketDto,
     TypingSocketDto,
@@ -384,12 +385,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     ) {
         try {
             const payload = await this.validateActiveSession(client);
-            const { conversationId, type, content, replyTo } = body;
+            const { conversationId, content, replyTo } = body;
             const { message, conversation } =
                 await this.messageService.createMessage(
                     payload._id,
                     conversationId,
-                    type,
+                    MessageEnumType.TEXT,
                     content,
                     replyTo,
                 );

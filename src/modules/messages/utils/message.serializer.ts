@@ -19,7 +19,7 @@ export const serializeReplyMessage = (replyTo: any) => {
 };
 
 export const serializeMessage = (message: any): MessageResponse => {
-    const { senderId, replyTo, ...rest } = message;
+    const { senderId, replyTo, mediaId, ...rest } = message;
 
     return {
         ...rest,
@@ -35,6 +35,15 @@ export const serializeMessage = (message: any): MessageResponse => {
                 ? { ...senderId, _id: senderId._id.toString() }
                 : senderId
                   ? senderId.toString()
+                  : undefined,
+        media:
+            mediaId &&
+            typeof mediaId === 'object' &&
+            !(mediaId instanceof Types.ObjectId) &&
+            Object.keys(mediaId).includes('_id')
+                ? { ...mediaId, _id: mediaId._id.toString() }
+                : mediaId
+                  ? mediaId.toString()
                   : undefined,
         replyTo: replyTo ? serializeReplyMessage(replyTo) : undefined,
     };

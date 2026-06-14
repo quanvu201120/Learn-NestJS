@@ -30,8 +30,11 @@ export class Message {
     })
     type: MessageEnumType;
 
-    @Prop({ type: String, required: true })
-    content: string;
+    @Prop({ type: String })
+    content?: string;
+
+    @Prop({ type: Types.ObjectId, ref: 'Media' })
+    mediaId?: Types.ObjectId;
 
     @Prop({ type: Types.ObjectId, ref: 'Message' })
     replyTo?: Types.ObjectId;

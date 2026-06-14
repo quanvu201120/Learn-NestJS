@@ -516,11 +516,20 @@
             .composer {
                 flex-shrink: 0;
                 display: grid;
-                grid-template-columns: 1fr auto;
+                grid-template-columns: auto 1fr auto;
                 gap: 10px;
                 padding: 10px 14px 12px;
                 border-top: 1px solid rgba(217, 205, 189, 0.8);
                 background: rgba(255, 253, 249, 0.92);
+            }
+
+            .composer-file-input {
+                display: none;
+            }
+
+            .composer-icon-btn {
+                min-width: 44px;
+                padding: 0 14px;
             }
 
             .composer-wrap {
@@ -844,6 +853,7 @@
 
             .message-card {
                 display: flex;
+                width: fit-content;
                 max-width: 78%;
                 flex-direction: column;
                 cursor: pointer;
@@ -875,9 +885,16 @@
             }
 
             .message-bubble {
+                display: inline-flex;
+                flex-direction: column;
+                align-items: flex-start;
                 border-radius: 20px;
                 padding: 12px 14px 10px;
                 box-shadow: 0 10px 24px rgba(85, 66, 43, 0.08);
+            }
+
+            .message-card.own .message-bubble {
+                align-items: flex-end;
             }
 
             .message-card.own .message-bubble {
@@ -897,9 +914,44 @@
                 opacity: 0.65;
             }
 
+            .message-card.media-only {
+                max-width: min(320px, 78%);
+            }
+
+            .message-bubble.media-only {
+                padding: 8px 8px 6px;
+            }
+
             .message-content {
                 white-space: pre-wrap;
                 line-height: 1.45;
+            }
+
+            .message-media {
+                display: block;
+                width: min(280px, 100%);
+                border-radius: 16px;
+                overflow: hidden;
+                margin-bottom: 0;
+                border: 1px solid rgba(217, 205, 189, 0.7);
+                background: rgba(255, 255, 255, 0.18);
+            }
+
+            .message-bubble:not(.media-only) .message-media {
+                margin-bottom: 8px;
+            }
+
+            .message-media img {
+                display: block;
+                width: 100%;
+                height: auto;
+                object-fit: cover;
+            }
+
+            .message-media-label {
+                font-size: 13px;
+                font-weight: 600;
+                opacity: 0.92;
             }
 
             .message-time {
@@ -1291,6 +1343,20 @@
                         </div>
                         <div id="messageComposer" class="composer">
                             <input
+                                id="messageImageInput"
+                                class="composer-file-input"
+                                type="file"
+                                accept="image/*"
+                            />
+                            <button
+                                id="sendImageBtn"
+                                class="secondary-btn composer-icon-btn"
+                                type="button"
+                                title="Send image"
+                            >
+                                Image
+                            </button>
+                            <input
                                 id="messageInput"
                                 placeholder="Nhap noi dung tin nhan..."
                             />
@@ -1433,7 +1499,10 @@
             const fetchLoadingIndicator = document.getElementById('fetchLoadingIndicator');
             const composerWrap = document.getElementById('composerWrap');
             const messageComposer = document.getElementById('messageComposer');
+            const messageImageInput =
+                document.getElementById('messageImageInput');
             const messageInput = document.getElementById('messageInput');
+            const sendImageBtn = document.getElementById('sendImageBtn');
             const sendMessageBtn = document.getElementById('sendMessageBtn');
             const replyPreview = document.getElementById('replyPreview');
             const replyPreviewText =
@@ -1621,6 +1690,38 @@
                 }
 
                 return media.url || media.secureUrl || media.secure_url || '';
+            }
+
+            function getMessageTypeKey(message) {
+                return String(message?.type || '').trim().toLowerCase();
+            }
+
+            function getMessageTypeLabel(message) {
+                const type = getMessageTypeKey(message);
+                if (type === 'image') return '[Image]';
+                if (type === 'video') return '[Video]';
+                if (type === 'file') return '[File]';
+                if (type === 'system') return '[System]';
+                return '[Empty message]';
+            }
+
+            function getMessagePreviewText(message) {
+                if (!message) {
+                    return '[Empty message]';
+                }
+
+                if (message.isDeleted) {
+                    return 'Tin nhan da bi thu hoi';
+                }
+
+                const content = typeof message.content === 'string'
+                    ? message.content.trim()
+                    : '';
+                if (content) {
+                    return content;
+                }
+
+                return getMessageTypeLabel(message);
             }
 
             function getCachedUserById(userId) {
@@ -2157,9 +2258,7 @@
                 }
 
                 const authorName = getUserLabel(targetMessage.sender);
-                const previewText = targetMessage.isDeleted
-                    ? 'Tin nhắn đã bị thu hồi'
-                    : targetMessage.content || '[Empty message]';
+                const previewText = getMessagePreviewText(targetMessage);
                 replyPreviewText.textContent = `${authorName}: ${previewText}`;
                 replyPreview.classList.remove('hidden');
             }
@@ -3017,9 +3116,18 @@
                     senderId && currentUserId && senderId === currentUserId;
                 const messageClass = isOwnMessage ? 'own' : 'other';
                 const deletedClass = message.isDeleted ? 'deleted' : '';
+                const messageType = getMessageTypeKey(message);
                 const content = message.isDeleted
                     ? 'Tin nhắn đã bị thu hồi'
-                    : message.content || '';
+                    : typeof message.content === 'string'
+                      ? message.content
+                      : '';
+                const hasTextContent = Boolean(content);
+                const mediaUrl =
+                    !message.isDeleted && messageType === 'image'
+                        ? getMediaUrl(message.media)
+                        : '';
+                const isMediaOnly = Boolean(mediaUrl) && !hasTextContent;
                 const replySource =
                     message.replyTo && typeof message.replyTo === 'object'
                         ? message.replyTo
@@ -3041,9 +3149,7 @@
                                 ),
                             )}</span>
                             <div class="message-reply-text">${escapeHtml(
-                                replySource.isDeleted
-                                    ? 'Tin nhắn đã bị thu hồi'
-                                    : replySource.content || '[Empty message]',
+                                getMessagePreviewText(replySource),
                             )}</div>
                         </div>
                     `
@@ -3101,6 +3207,26 @@
 
                 let timeStr = message.createdAt ? escapeHtml(formatTime(message.createdAt)) : '';
                 const showStatusClass = isLatest && isOwnMessage ? 'show-status' : '';
+                const mediaOnlyClass = isMediaOnly ? 'media-only' : '';
+                const messageMediaHtml = mediaUrl
+                    ? `
+                        <div class="message-media">
+                            <img src="${escapeHtml(mediaUrl)}" alt="Sent image" />
+                        </div>
+                    `
+                    : '';
+                const messageTextHtml = messageType === 'image'
+                    ? content
+                        ? `<div class="message-content">${escapeHtml(content)}</div>`
+                        : ''
+                    : `
+                        <div class="message-content">${escapeHtml(
+                            content ||
+                                (messageType !== 'text'
+                                    ? getMessageTypeLabel(message)
+                                    : ''),
+                        )}</div>
+                    `;
                 const messageActionsHtml = message.status === 'sending'
                     ? ''
                     : `
@@ -3156,7 +3282,9 @@
                                     : ''
                             }
                             ${
-                                isOwnMessage && !message.isDeleted
+                                isOwnMessage &&
+                                !message.isDeleted &&
+                                messageType === 'text'
                                     ? `
                                         <button
                                             class="message-action-btn"
@@ -3179,10 +3307,11 @@
                     `;
 
                 return `
-                    <article class="message-card ${messageClass} ${deletedClass} ${showStatusClass}">
-                        <div class="message-bubble">
+                    <article class="message-card ${messageClass} ${deletedClass} ${showStatusClass} ${mediaOnlyClass}">
+                        <div class="message-bubble ${mediaOnlyClass}">
                             ${replyPreviewHtml}
-                            <div class="message-content">${escapeHtml(content)}</div>
+                            ${messageMediaHtml}
+                            ${messageTextHtml}
                             ${reactionSummaryHtml}
                             <div class="message-time">${timeStr}</div>
                         </div>
@@ -3366,7 +3495,7 @@
                             const lastMessage = conversation.lastMessage;
                             const preview =
                                 lastMessage && typeof lastMessage === 'object'
-                                    ? lastMessage.content || '[Empty message]'
+                                    ? getMessagePreviewText(lastMessage)
                                     : 'Chua co last message';
 
                             return `
@@ -3633,6 +3762,30 @@
 
                 const response = await fetch(`${API_BASE_URL}${path}`, {
                     ...requestOptions,
+                });
+
+                const text = await response.text();
+                const data = text ? JSON.parse(text) : null;
+                if (!response.ok) {
+                    throw new Error(
+                        data?.message
+                            ? Array.isArray(data.message)
+                                ? data.message.join(', ')
+                                : data.message
+                            : `Request failed: ${response.status}`,
+                    );
+                }
+
+                return data.data;
+            }
+
+            async function fetchFormData(path, formData, options = {}) {
+                log('fetchFormData', `${API_BASE_URL}${path}`);
+                const response = await fetch(`${API_BASE_URL}${path}`, {
+                    method: options.method || 'POST',
+                    headers: getAuthHeaderOnly(),
+                    body: formData,
+                    cache: 'no-store',
                 });
 
                 const text = await response.text();
@@ -4771,7 +4924,6 @@
                         {
                             conversationId: selectedConversationId,
                             content,
-                            type: 'text',
                             replyTo: replyTargetMessageId || undefined,
                         },
                         (response) => {
@@ -4806,7 +4958,117 @@
                 }
             }
 
+            async function sendCurrentImageMessage(file) {
+                if (!file || !selectedConversationId) {
+                    return;
+                }
+
+                stopCurrentTyping({ silent: true });
+
+                const tempId = 'temp-image-' + Date.now();
+                const replyTargetMessage = getReplyTargetMessage();
+                const previewUrl = URL.createObjectURL(file);
+                const tempMessage = {
+                    _id: tempId,
+                    type: 'image',
+                    content: '',
+                    media: {
+                        _id: tempId + '-media',
+                        url: previewUrl,
+                        mimeType: file.type,
+                        fileName: file.name,
+                    },
+                    sender: currentUser,
+                    createdAt: new Date().toISOString(),
+                    status: 'sending',
+                    replyTo: replyTargetMessage || undefined,
+                    isOptimistic: true,
+                    serverMessageId: '',
+                };
+                appendMessage(tempMessage);
+
+                const formData = new FormData();
+                formData.append('file', file);
+                if (replyTargetMessageId) {
+                    formData.append('replyTo', replyTargetMessageId);
+                }
+
+                try {
+                    const createdMessage = await fetchFormData(
+                        `/conversations/${selectedConversationId}/message/image`,
+                        formData,
+                    );
+                    const createdMessageId = normalizeId(createdMessage?._id);
+                    const tempIdx = currentMessages.findIndex(
+                        (message) => message._id === tempId,
+                    );
+                    const existingIdx = createdMessageId
+                        ? currentMessages.findIndex(
+                              (message) =>
+                                  normalizeId(message._id) === createdMessageId,
+                          )
+                        : -1;
+
+                    if (existingIdx !== -1) {
+                        currentMessages[existingIdx] = createdMessage;
+                        if (tempIdx !== -1 && tempIdx !== existingIdx) {
+                            currentMessages.splice(tempIdx, 1);
+                        }
+                        URL.revokeObjectURL(previewUrl);
+                    } else if (tempIdx !== -1) {
+                        currentMessages[tempIdx] = {
+                            ...createdMessage,
+                            status: 'sent',
+                            isOptimistic: false,
+                            serverMessageId: createdMessageId || '',
+                        };
+                        URL.revokeObjectURL(previewUrl);
+                    } else {
+                        appendMessage(createdMessage);
+                        URL.revokeObjectURL(previewUrl);
+                    }
+
+                    updateConversationWithMessage(
+                        selectedConversationId,
+                        createdMessage,
+                    );
+                    renderConversations();
+                    renderMessages(currentMessages);
+                    clearReplyTarget();
+                } catch (error) {
+                    const tempMessageRef = currentMessages.find(
+                        (message) => message._id === tempId,
+                    );
+                    if (tempMessageRef) {
+                        tempMessageRef.status = 'error';
+                        renderMessages(currentMessages);
+                    }
+                    alert(error.message || 'Gui anh that bai.');
+                } finally {
+                    messageImageInput.value = '';
+                }
+            }
+
             sendMessageBtn.addEventListener('click', sendCurrentMessage);
+            sendImageBtn.addEventListener('click', () => {
+                if (!selectedConversationId) {
+                    alert('Chon conversation truoc khi gui anh.');
+                    return;
+                }
+                messageImageInput.click();
+            });
+            messageImageInput.addEventListener('change', async (event) => {
+                const file = event.target.files?.[0];
+                if (!file) {
+                    return;
+                }
+
+                try {
+                    await sendCurrentImageMessage(file);
+                } catch (error) {
+                    console.error('Send image failed', error);
+                }
+            });
 
             messageInput.addEventListener('input', () => {
                 if (!socket || !socket.connected || !selectedConversationId) {

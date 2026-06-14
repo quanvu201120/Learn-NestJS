@@ -4,6 +4,7 @@ import { MessagesController } from './messages.controller';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Message, MessageSchema } from './schemas/message.schema';
 import { ConversationsModule } from '../conversations/conversations.module';
+import { MediaModule } from '../media/media.module';
 
 @Module({
     imports: [
@@ -11,6 +12,7 @@ import { ConversationsModule } from '../conversations/conversations.module';
             { name: Message.name, schema: MessageSchema },
         ]),
         forwardRef(() => ConversationsModule),
+        forwardRef(() => MediaModule),
     ],
     controllers: [MessagesController],
     providers: [MessagesService],

@@ -773,7 +773,7 @@ export class ConversationsService {
                 OwnerTypeEnum.CONVERSATION,
                 objectConversationId,
                 file,
-                MEDIA_CONSTANTS.GROUP_AVATAR_FOLDER,
+                MEDIA_CONSTANTS.CONVERSATION_AVATAR_FOLDER,
             );
             if (!uploadedAvatar) {
                 throw new BadRequestException(

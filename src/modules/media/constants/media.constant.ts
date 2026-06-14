@@ -1,10 +1,10 @@
 export const MEDIA_CONSTANTS = {
     USER_AVATAR_FOLDER: 'users/avatar',
-    GROUP_AVATAR_FOLDER: 'conversations/avatar',
-    MESSAGE_IMAGE_FOLDER: 'messages/image',
-    MESSAGE_VIDEO_FOLDER: 'messages/video',
-    MESSAGE_AUDIO_FOLDER: 'messages/audio',
-    MESSAGE_FILE_FOLDER: 'messages/file',
+    CONVERSATION_AVATAR_FOLDER: 'conversations/avatar',
+    CONVERSATION_IMAGE_FOLDER: 'conversations/images',
+    CONVERSATION_VIDEO_FOLDER: 'conversations/videos',
+    CONVERSATION_AUDIO_FOLDER: 'conversations/audio',
+    CONVERSATION_FILE_FOLDER: 'conversations/file',
 } as const;
 
 export const MEDIA_MESSAGES = {

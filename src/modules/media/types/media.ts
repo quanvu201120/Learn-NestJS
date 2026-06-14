@@ -13,7 +13,6 @@ export enum MediaResourceTypeEnum {
 export enum OwnerTypeEnum {
     USER = 'User',
     CONVERSATION = 'Conversation',
-    MESSAGE = 'Message',
 }
 
 export enum ActionEnum {

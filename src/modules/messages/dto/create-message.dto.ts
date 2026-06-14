@@ -1,17 +1,12 @@
 import {
-    IsEnum,
     IsMongoId,
     IsOptional,
     IsString,
     MaxLength,
     MinLength,
 } from 'class-validator';
-import { MessageEnumType } from '../schemas/message.schema';
 
-export class CreateMessageDto {
-    @IsEnum(MessageEnumType)
-    type: MessageEnumType;
-
+export class CreateTextMessageDto {
     @IsString()
     @MinLength(1)
     @MaxLength(2000)
@@ -21,12 +16,15 @@ export class CreateMessageDto {
     @IsOptional()
     replyTo?: string;
 }
+export class CreateMediaMessageDto {
+    @IsMongoId()
+    @IsOptional()
+    replyTo?: string;
+}
+
 export class CreateMessageSocketDto {
     @IsMongoId()
     conversationId: string;
-
-    @IsEnum(MessageEnumType)
-    type: MessageEnumType;
 
     @IsString()
     @MinLength(1)

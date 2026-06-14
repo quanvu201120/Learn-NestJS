@@ -2,6 +2,7 @@ export const MESSAGE_MESSAGES = {
     MESSAGE_NOT_FOUND: 'Message not found',
     REPLY_NOT_FOUND: 'Reply message not found',
     REPLY_DELETED: 'Reply message is deleted',
+    MESSAGE_CONTENT_REQUIRED: 'Message content is required',
     MESSAGE_NOT_CREATED: 'Message not created',
     CONVERSATION_NO_MESSAGES: 'Conversation has no messages',
     CANNOT_DELETE_USER_HIDDEN:
@@ -12,4 +13,5 @@ export const MESSAGE_MESSAGES = {
     ALREADY_DELETED: 'Message is already deleted',
     DELETE_SUCCESS: 'Deleted message successfully',
     MESSAGE_NOT_UPDATED: 'Message not updated',
+    FILE_REQUIRED: 'File is required',
 } as const;
