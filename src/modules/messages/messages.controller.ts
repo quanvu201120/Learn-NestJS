@@ -23,7 +23,7 @@ import {
 } from './dto/create-message.dto';
 import { RemoveReactionDto, UpsertReactionDto } from './dto/update-message.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { MessageEnumType } from './schemas/message.schema';
+import { MessageEnumType } from './types/message';
 
 @Controller()
 export class MessagesController {
@@ -53,7 +53,7 @@ export class MessagesController {
             new ParseFilePipe({
                 validators: [
                     new FileTypeValidator({ fileType: 'image/*' }),
-                    new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
+                    new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }),
                 ],
             }),
         )
@@ -110,9 +110,9 @@ export class MessagesController {
                 validators: [
                     new FileTypeValidator({
                         fileType:
-                            /(application\/pdf|application\/msword|application\/vnd.openxmlformats-officedocument.wordprocessingml.document|text\/plain)$/,
+                            /(application\/pdf|application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document|application\/vnd\.ms-excel|application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|application\/vnd\.ms-powerpoint|application\/vnd\.openxmlformats-officedocument\.presentationml\.presentation|text\/plain|text\/csv|application\/zip|application\/x-zip-compressed|application\/x-rar-compressed|application\/vnd\.rar)$/,
                     }),
-                    new MaxFileSizeValidator({ maxSize: 20 * 1024 * 1024 }),
+                    new MaxFileSizeValidator({ maxSize: 50 * 1024 * 1024 }),
                 ],
             }),
         )
@@ -125,6 +125,38 @@ export class MessagesController {
             req.user._id.toString(),
             conversationId,
             MessageEnumType.FILE,
+            undefined,
+            createMediaMessageDto.replyTo,
+            file,
+        );
+        return message;
+    }
+
+    @Post('conversations/:conversationId/message/voice')
+    @UseInterceptors(FileInterceptor('file'))
+    async sendVoiceMessage(
+        @Param('conversationId') conversationId: string,
+        @UploadedFile(
+            new ParseFilePipe({
+                validators: [
+                    new FileTypeValidator({
+                        fileType:
+                            /^(audio\/(webm|ogg|wav|x-wav|mpeg|mp4|aac)|video\/webm)(;.*)?$/i,
+                        fallbackToMimetype: true,
+                    }),
+                    new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }),
+                ],
+            }),
+        )
+        file: Express.Multer.File,
+        @Body() createMediaMessageDto: CreateMediaMessageDto,
+        @Request() req,
+    ) {
+        const { message } = await this.messagesService.createMessage(
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+            req.user._id.toString(),
+            conversationId,
+            MessageEnumType.VOICE,
             undefined,
             createMediaMessageDto.replyTo,
             file,

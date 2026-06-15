@@ -37,8 +37,8 @@ export class Media {
     })
     resourceType: MediaResourceTypeEnum;
 
-    @Prop({ type: String, required: true })
-    url: string;
+    @Prop({ type: String })
+    url?: string;
 
     @Prop({ type: String })
     publicId?: string;

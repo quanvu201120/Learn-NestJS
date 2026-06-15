@@ -1,15 +1,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
-import { MessageReactionEnumType } from '../types/message';
+import { MessageEnumType, MessageReactionEnumType } from '../types/message';
 
 export type MessageDocument = HydratedDocument<Message>;
-export enum MessageEnumType {
-    TEXT = 'text',
-    IMAGE = 'image',
-    VIDEO = 'video',
-    FILE = 'file',
-    SYSTEM = 'system',
-}
+
 @Schema({ timestamps: true })
 export class Message {
     @Prop({

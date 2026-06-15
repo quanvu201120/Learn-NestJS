@@ -32,14 +32,15 @@ import {
 } from './types/conversation';
 import { RedisService } from '@/redis/redis.service';
 import { Subject } from 'rxjs';
-import { MessageEnumType } from '../messages/schemas/message.schema';
 import { MediaService } from '../media/media.service';
 import { Media } from '../media/schemas/media.schema';
 import {
     MEDIA_CONSTANTS,
     MEDIA_MESSAGES,
 } from '../media/constants/media.constant';
-import { OwnerTypeEnum } from '../media/types/media';
+import { MediaProviderEnum, OwnerTypeEnum } from '../media/types/media';
+import { MessageEnumType } from '../messages/types/message';
+import { serializeMedia } from '../media/utils/media.serializer';
 
 @Injectable()
 export class ConversationsService {
@@ -100,10 +101,11 @@ export class ConversationsService {
      * Chuyển đổi ID của lastMessage thành object nếu đã được populate.
      */
     private serializeConversation(conversation: any): ConversationResponse {
-        const { lastMessageId, ...rest } = conversation;
+        const { lastMessageId, avatar, ...rest } = conversation;
 
         return {
             ...rest,
+            avatar: avatar ? serializeMedia(avatar) : avatar,
             lastMessage: lastMessageId
                 ? typeof lastMessageId === 'object' && '_id' in lastMessageId
                     ? serializeMessage(lastMessageId)
@@ -547,10 +549,29 @@ export class ConversationsService {
 
         const session = await this.connection.startSession();
 
+        const mediaList = {
+            publicIds: [] as string[],
+            objectKeys: [] as string[],
+        };
+
         try {
             await session.withTransaction(async () => {
-                // Xóa toàn bộ tin nhắn của nhóm trước
+                const getMedia =
+                    await this.mediaService.getMediaCleanupKeysByConversation(
+                        conversation._id.toString(),
+                        session,
+                    );
+                mediaList.publicIds = getMedia.listPublicId;
+                mediaList.objectKeys = getMedia.listObjectKey;
+
+                // Xóa toàn bộ tin nhắn thuộc conversation trong database
                 await this.messageService.deleteMessagesByConversationId(
+                    id,
+                    session,
+                );
+
+                // Xóa toàn bộ media thuộc conversation trong database
+                await this.mediaService.deleteAllMediaByConversation(
                     id,
                     session,
                 );
@@ -568,22 +589,31 @@ export class ConversationsService {
         } finally {
             await session.endSession();
         }
-        try {
-            const removeAllUnseenConversation =
-                await this.redisService.removeAllUnseenConversation(
-                    conversation.users,
-                    id,
-                );
 
-            if (removeAllUnseenConversation.ok === false) {
-                console.error(
-                    'Remove all unseen conversation failed',
-                    removeAllUnseenConversation,
-                );
-            }
-        } catch (error) {
-            console.error('Remove all unseen conversation failed', error);
+        //Kiểm tra và xóa unseen conversation trong redis, không throw lỗi
+        await this.redisService
+            .removeAllUnseenConversation(conversation.users, id)
+            .catch((error) => {
+                console.error('Remove all unseen conversation failed', error);
+            });
+
+        // Xóa toàn bộ media thuộc conversation trong r2
+        if (mediaList.objectKeys && mediaList.objectKeys.length > 0) {
+            await this.mediaService
+                .deleteFilesFromR2(mediaList.objectKeys)
+                .catch((error) => {
+                    console.error('Delete files from R2 failed', error);
+                });
         }
+        // Xóa toàn bộ media thuộc conversation trong cloudinary
+        if (mediaList.publicIds && mediaList.publicIds.length > 0) {
+            await this.mediaService
+                .deleteImagesFromCloudinary(mediaList.publicIds)
+                .catch((error) => {
+                    console.error('Delete files from cloudinary failed', error);
+                });
+        }
+
         this.conversationDisbanded$.next({
             conversationId: id,
             memberIds: conversation.users.map((user) => user.toString()),

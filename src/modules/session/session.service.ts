@@ -12,15 +12,24 @@ export class SessionService {
         @InjectModel(Session.name) public sessionModel: Model<Session>,
     ) {}
 
+    /**
+     * Tạo session đăng nhập bền vững cho một thiết bị hoặc trình duyệt.
+     */
     async create(createSessionDto: CreateSessionDto) {
         return await this.sessionModel.create(createSessionDto);
     }
 
+    /**
+     * Tìm một session theo id sau khi kiểm tra định dạng ObjectId hợp lệ.
+     */
     async findSessionById(id: string) {
         validateObjectId(id, 'session id');
         return await this.sessionModel.findById(id);
     }
 
+    /**
+     * Cập nhật refresh token hash và thời gian hết hạn mới cho session đang hoạt động.
+     */
     async rotateSession(
         _id: string,
         refreshTokenHash: string,
@@ -40,6 +49,9 @@ export class SessionService {
         );
     }
 
+    /**
+     * Thu hồi một session đang hoạt động của user.
+     */
     async revoke(_id: string, userId: string) {
         validateObjectId(_id, 'session id');
         validateObjectId(userId, 'user id');
@@ -55,6 +67,9 @@ export class SessionService {
         );
     }
 
+    /**
+     * Thu hồi toàn bộ session đang hoạt động của một user.
+     */
     async revokeAllByUserId(userId: string) {
         validateObjectId(userId, 'user id');
 

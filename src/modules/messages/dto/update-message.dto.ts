@@ -5,8 +5,7 @@ import {
     IsOptional,
     IsString,
 } from 'class-validator';
-import { MessageEnumType } from '../schemas/message.schema';
-import { MessageReactionEnumType } from '../types/message';
+import { MessageEnumType, MessageReactionEnumType } from '../types/message';
 
 export class UpdateMessageDto {
     @IsEnum(MessageEnumType)

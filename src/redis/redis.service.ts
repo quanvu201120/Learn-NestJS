@@ -287,6 +287,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         return members.filter((_, index) => results[index]);
     }
 
+    /**
+     * Tạo Redis key theo từng socket để theo dõi trạng thái đang gõ phím.
+     */
     private getTypingKey(
         conversationId: string,
         userId: string,
@@ -295,6 +298,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         return `typing:conversation:${conversationId}:user:${userId}:socket:${socketId}`;
     }
 
+    /**
+     * Tạo pattern để scan toàn bộ typing key của một user trong một conversation.
+     */
     private getTypingPattern(conversationId: string, userId: string) {
         return `typing:conversation:${conversationId}:user:${userId}:socket:*`;
     }

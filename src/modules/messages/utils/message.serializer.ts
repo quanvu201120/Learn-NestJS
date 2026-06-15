@@ -5,7 +5,34 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Types } from 'mongoose';
 import { MessageResponse } from '../types/message';
+import { serializeMedia } from '@/modules/media/utils/media.serializer';
 
+/**
+ * Chuẩn hóa thông tin người gửi trong payload message.
+ */
+const serializeSender = (senderId: any) => {
+    if (
+        !senderId ||
+        typeof senderId !== 'object' ||
+        senderId instanceof Types.ObjectId ||
+        !Object.keys(senderId).includes('_id')
+    ) {
+        return senderId ? senderId.toString() : undefined;
+    }
+
+    return {
+        ...senderId,
+        _id: senderId._id.toString(),
+        avatar: senderId.avatar
+            ? serializeMedia(senderId.avatar)
+            : senderId.avatar,
+    };
+};
+
+/**
+ * Chuẩn hóa message được reply tới.
+ * Nếu relation chưa populate thì giữ lại dưới dạng string id.
+ */
 export const serializeReplyMessage = (replyTo: any) => {
     if (
         typeof replyTo !== 'object' ||
@@ -18,6 +45,9 @@ export const serializeReplyMessage = (replyTo: any) => {
     return serializeMessage(replyTo);
 };
 
+/**
+ * Chuyển document message thô thành response shape mà client sử dụng.
+ */
 export const serializeMessage = (message: any): MessageResponse => {
     const { senderId, replyTo, mediaId, ...rest } = message;
 
@@ -28,20 +58,13 @@ export const serializeMessage = (message: any): MessageResponse => {
             ? rest.conversationId.toString()
             : undefined,
         sender:
-            senderId &&
-            typeof senderId === 'object' &&
-            !(senderId instanceof Types.ObjectId) &&
-            Object.keys(senderId).includes('_id')
-                ? { ...senderId, _id: senderId._id.toString() }
-                : senderId
-                  ? senderId.toString()
-                  : undefined,
+            serializeSender(senderId),
         media:
             mediaId &&
             typeof mediaId === 'object' &&
             !(mediaId instanceof Types.ObjectId) &&
             Object.keys(mediaId).includes('_id')
-                ? { ...mediaId, _id: mediaId._id.toString() }
+                ? serializeMedia(mediaId)
                 : mediaId
                   ? mediaId.toString()
                   : undefined,

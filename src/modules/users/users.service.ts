@@ -39,6 +39,7 @@ import {
 } from '../media/constants/media.constant';
 import { Media } from '../media/schemas/media.schema';
 import { OwnerTypeEnum } from '../media/types/media';
+import { serializeMedia } from '../media/utils/media.serializer';
 
 @Injectable()
 export class UsersService {
@@ -49,6 +50,20 @@ export class UsersService {
         private readonly redisService: RedisService,
         private readonly mediaService: MediaService,
     ) {}
+
+    /**
+     * Chuẩn hóa dữ liệu avatar lồng bên trong trước khi trả object user về cho client.
+     */
+    private serializeUserResponse(user: UserResponse | null) {
+        if (!user) {
+            return user;
+        }
+
+        return {
+            ...user,
+            avatar: user.avatar ? serializeMedia(user.avatar) : user.avatar,
+        } as UserResponse;
+    }
 
     /**
      * Tạo tài khoản mới, sinh mã OTP lưu vào Redis và gửi email kích hoạt.
@@ -121,7 +136,10 @@ export class UsersService {
             .sort(sort as any)
             .lean();
 
-        return { totalPages, users };
+        return {
+            totalPages,
+            users: users.map((user) => this.serializeUserResponse(user)),
+        };
     }
 
     /**
@@ -129,11 +147,13 @@ export class UsersService {
      */
     async findOneForApi(id: string) {
         validateObjectId(id, 'user id');
-        return (await this.userModel
+        const user = (await this.userModel
             .findById(id)
             .select('-password -__v')
             .populate('avatar', '-__v')
             .lean()) as UserResponse;
+
+        return this.serializeUserResponse(user);
     }
 
     /**
@@ -185,7 +205,7 @@ export class UsersService {
             throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
         }
 
-        return user;
+        return this.serializeUserResponse(user);
     }
 
     /**
@@ -618,7 +638,7 @@ export class UsersService {
                         console.error('Failed to delete old avatar:', error);
                     });
             }
-            return user;
+            return this.serializeUserResponse(user);
         } catch (error) {
             if (uploadedAvatar && uploadedAvatar.publicId && !isUpdatedUser) {
                 await this.mediaService
@@ -702,7 +722,7 @@ export class UsersService {
                         console.error('Failed to delete old avatar:', error);
                     });
             }
-            return user;
+            return this.serializeUserResponse(user);
         } finally {
             await session.endSession();
         }

@@ -528,13 +528,79 @@
             }
 
             .composer-icon-btn {
-                min-width: 44px;
-                padding: 0 14px;
+                width: 38px;
+                height: 38px;
+                min-width: 38px;
+                padding: 0;
+                border-radius: 999px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 18px;
+                line-height: 1;
+                border: 1px solid rgba(15, 118, 110, 0.16);
+                background: #fff;
+                color: var(--accent);
+                box-shadow: 0 6px 16px rgba(15, 118, 110, 0.08);
+            }
+
+            .composer-icon-btn:hover {
+                border-color: rgba(15, 118, 110, 0.32);
+                background: var(--accent-soft);
+            }
+
+            .composer-media-actions {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .composer-input {
+                min-width: 0;
             }
 
             .composer-wrap {
                 border-top: 1px solid rgba(217, 205, 189, 0.8);
                 background: rgba(255, 253, 249, 0.92);
+            }
+
+            .voice-preview {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 10px 14px 0;
+                flex-wrap: wrap;
+            }
+
+            .voice-preview audio {
+                flex: 1;
+                min-width: 240px;
+                max-width: 100%;
+            }
+
+            .voice-preview-actions {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-left: auto;
+            }
+
+            .composer-icon-btn.recording {
+                border-color: rgba(180, 35, 24, 0.25);
+                background: #fbe7e5;
+                color: var(--danger);
+                animation: pulse-record 1.1s ease-in-out infinite;
+            }
+
+            @keyframes pulse-record {
+                0%,
+                100% {
+                    transform: scale(1);
+                }
+
+                50% {
+                    transform: scale(1.08);
+                }
             }
 
             .reply-preview {
@@ -948,6 +1014,53 @@
                 object-fit: cover;
             }
 
+            .message-media video {
+                display: block;
+                width: 100%;
+                max-height: 320px;
+                background: #000;
+            }
+
+            .message-media audio {
+                display: block;
+                width: 100%;
+            }
+
+            .message-file-link {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                padding: 14px 16px;
+                color: inherit;
+                text-decoration: none;
+            }
+
+            .message-file-copy {
+                min-width: 0;
+            }
+
+            .message-file-name {
+                display: block;
+                font-size: 14px;
+                font-weight: 700;
+                word-break: break-word;
+            }
+
+            .message-file-meta {
+                display: block;
+                margin-top: 4px;
+                font-size: 12px;
+                color: var(--muted);
+            }
+
+            .message-file-download {
+                flex-shrink: 0;
+                font-size: 12px;
+                font-weight: 700;
+                color: var(--accent);
+            }
+
             .message-media-label {
                 font-size: 13px;
                 font-weight: 600;
@@ -1341,6 +1454,28 @@
                                 Clear
                             </button>
                         </div>
+                        <div id="voicePreview" class="voice-preview hidden">
+                            <div class="reply-preview-copy">
+                                <span class="reply-preview-label">
+                                    Voice draft
+                                </span>
+                                <div
+                                    id="voicePreviewMeta"
+                                    class="reply-preview-text"
+                                >
+                                    Bam mic lan nua de dung ghi am.
+                                </div>
+                            </div>
+                            <audio id="voicePreviewAudio" controls></audio>
+                            <div class="voice-preview-actions">
+                                <button id="discardVoiceBtn" class="secondary-btn">
+                                    Xoa
+                                </button>
+                                <button id="sendVoiceDraftBtn" class="primary">
+                                    Gui
+                                </button>
+                            </div>
+                        </div>
                         <div id="messageComposer" class="composer">
                             <input
                                 id="messageImageInput"
@@ -1348,16 +1483,59 @@
                                 type="file"
                                 accept="image/*"
                             />
-                            <button
-                                id="sendImageBtn"
-                                class="secondary-btn composer-icon-btn"
-                                type="button"
-                                title="Send image"
-                            >
-                                Image
-                            </button>
+                            <input
+                                id="messageVideoInput"
+                                class="composer-file-input"
+                                type="file"
+                                accept="video/mp4,video/webm,video/quicktime"
+                            />
+                            <input
+                                id="messageFileInput"
+                                class="composer-file-input"
+                                type="file"
+                                accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+                            />
+                            <div class="composer-media-actions">
+                                <button
+                                    id="sendImageBtn"
+                                    class="secondary-btn composer-icon-btn"
+                                    type="button"
+                                    title="Send image"
+                                    aria-label="Send image"
+                                >
+                                    🖼
+                                </button>
+                                <button
+                                    id="sendVideoBtn"
+                                    class="secondary-btn composer-icon-btn"
+                                    type="button"
+                                    title="Send video"
+                                    aria-label="Send video"
+                                >
+                                    🎬
+                                </button>
+                                <button
+                                    id="sendFileBtn"
+                                    class="secondary-btn composer-icon-btn"
+                                    type="button"
+                                    title="Send file"
+                                    aria-label="Send file"
+                                >
+                                    📎
+                                </button>
+                                <button
+                                    id="sendVoiceBtn"
+                                    class="secondary-btn composer-icon-btn"
+                                    type="button"
+                                    title="Record voice"
+                                    aria-label="Record voice"
+                                >
+                                    🎤
+                                </button>
+                            </div>
                             <input
                                 id="messageInput"
+                                class="composer-input"
                                 placeholder="Nhap noi dung tin nhan..."
                             />
                             <button id="sendMessageBtn" class="primary">
@@ -1464,6 +1642,14 @@
             let hasBoundReactionPickerClose = false;
             let createConversationMode = 'direct';
             let createConversationSelectedUserIds = new Set();
+            let voiceRecorder = null;
+            let voiceRecorderStream = null;
+            let voiceRecorderChunks = [];
+            let voiceDraftBlob = null;
+            let voiceDraftMimeType = '';
+            let voiceDraftUrl = '';
+            let voiceRecordingStartedAt = 0;
+            let voiceDiscardOnStop = false;
             const MESSAGE_REACTION_OPTIONS = [
                 { type: 'like', emoji: '👍', label: 'Like' },
                 { type: 'love', emoji: '❤️', label: 'Love' },
@@ -1501,13 +1687,29 @@
             const messageComposer = document.getElementById('messageComposer');
             const messageImageInput =
                 document.getElementById('messageImageInput');
+            const messageVideoInput =
+                document.getElementById('messageVideoInput');
+            const messageFileInput =
+                document.getElementById('messageFileInput');
             const messageInput = document.getElementById('messageInput');
             const sendImageBtn = document.getElementById('sendImageBtn');
+            const sendVideoBtn = document.getElementById('sendVideoBtn');
+            const sendFileBtn = document.getElementById('sendFileBtn');
+            const sendVoiceBtn = document.getElementById('sendVoiceBtn');
             const sendMessageBtn = document.getElementById('sendMessageBtn');
             const replyPreview = document.getElementById('replyPreview');
             const replyPreviewText =
                 document.getElementById('replyPreviewText');
             const clearReplyBtn = document.getElementById('clearReplyBtn');
+            const voicePreview = document.getElementById('voicePreview');
+            const voicePreviewMeta =
+                document.getElementById('voicePreviewMeta');
+            const voicePreviewAudio =
+                document.getElementById('voicePreviewAudio');
+            const discardVoiceBtn =
+                document.getElementById('discardVoiceBtn');
+            const sendVoiceDraftBtn =
+                document.getElementById('sendVoiceDraftBtn');
             const typingIndicator = document.getElementById('typingIndicator');
             const messagesTitle = document.getElementById('messagesTitle');
             const messagesSubtitle =
@@ -1701,6 +1903,7 @@
                 if (type === 'image') return '[Image]';
                 if (type === 'video') return '[Video]';
                 if (type === 'file') return '[File]';
+                if (type === 'voice') return '[Voice]';
                 if (type === 'system') return '[System]';
                 return '[Empty message]';
             }
@@ -1722,6 +1925,187 @@
                 }
 
                 return getMessageTypeLabel(message);
+            }
+
+            function formatFileSize(size) {
+                const fileSize = Number(size);
+                if (!Number.isFinite(fileSize) || fileSize <= 0) {
+                    return '';
+                }
+
+                const units = ['B', 'KB', 'MB', 'GB'];
+                let value = fileSize;
+                let unitIndex = 0;
+
+                while (value >= 1024 && unitIndex < units.length - 1) {
+                    value /= 1024;
+                    unitIndex += 1;
+                }
+
+                const digits = value >= 10 || unitIndex === 0 ? 0 : 1;
+                return `${value.toFixed(digits)} ${units[unitIndex]}`;
+            }
+
+            function getMediaValidationConfig(type) {
+                const normalizedType = String(type || '').toLowerCase();
+
+                if (normalizedType === 'image') {
+                    return {
+                        maxSize: 10 * 1024 * 1024,
+                        mimeTypes: ['image/'],
+                        label: 'anh',
+                    };
+                }
+
+                if (normalizedType === 'video') {
+                    return {
+                        maxSize: 50 * 1024 * 1024,
+                        mimeTypes: ['video/mp4', 'video/webm', 'video/quicktime'],
+                        label: 'video',
+                    };
+                }
+
+                if (normalizedType === 'voice') {
+                    return {
+                        maxSize: 10 * 1024 * 1024,
+                        mimeTypes: [
+                            'audio/webm',
+                            'audio/ogg',
+                            'audio/wav',
+                            'audio/x-wav',
+                            'audio/mpeg',
+                            'audio/mp4',
+                            'audio/aac',
+                        ],
+                        label: 'voice',
+                    };
+                }
+
+                if (normalizedType === 'file') {
+                    return {
+                        maxSize: 50 * 1024 * 1024,
+                        mimeTypes: [
+                            'application/pdf',
+                            'application/msword',
+                            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                            'application/vnd.ms-excel',
+                            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                            'application/vnd.ms-powerpoint',
+                            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                            'text/plain',
+                            'text/csv',
+                            'application/zip',
+                            'application/x-zip-compressed',
+                            'application/x-rar-compressed',
+                            'application/vnd.rar',
+                        ],
+                        label: 'file',
+                    };
+                }
+
+                return null;
+            }
+
+            function validateMediaFile(file, type) {
+                if (!file) {
+                    throw new Error('Khong tim thay file de gui.');
+                }
+
+                const config = getMediaValidationConfig(type);
+                if (!config) {
+                    return;
+                }
+
+                if (file.size > config.maxSize) {
+                    throw new Error(
+                        `${config.label} vuot qua gioi han ${formatFileSize(config.maxSize)}.`,
+                    );
+                }
+
+                const isMimeAllowed = config.mimeTypes.some((allowedMimeType) =>
+                    allowedMimeType.endsWith('/')
+                        ? file.type.startsWith(allowedMimeType)
+                        : file.type === allowedMimeType ||
+                          file.type.startsWith(`${allowedMimeType};`),
+                );
+
+                if (!isMimeAllowed) {
+                    throw new Error(`Dinh dang ${config.label} khong hop le.`);
+                }
+            }
+
+            function chooseVoiceMimeType() {
+                if (
+                    typeof MediaRecorder === 'undefined' ||
+                    typeof MediaRecorder.isTypeSupported !== 'function'
+                ) {
+                    return '';
+                }
+
+                const candidates = [
+                    'audio/webm;codecs=opus',
+                    'audio/ogg;codecs=opus',
+                    'audio/mp4',
+                    'audio/webm',
+                ];
+
+                return (
+                    candidates.find((mimeType) =>
+                        MediaRecorder.isTypeSupported(mimeType),
+                    ) || ''
+                );
+            }
+
+            function getVoiceFileExtension(mimeType) {
+                if (!mimeType) return 'webm';
+                if (mimeType.includes('ogg')) return 'ogg';
+                if (mimeType.includes('mp4')) return 'm4a';
+                if (mimeType.includes('wav')) return 'wav';
+                if (mimeType.includes('mpeg')) return 'mp3';
+                return 'webm';
+            }
+
+            function setVoiceButtonRecordingState(isRecording) {
+                if (!sendVoiceBtn) return;
+
+                sendVoiceBtn.classList.toggle('recording', Boolean(isRecording));
+                sendVoiceBtn.textContent = isRecording ? '■' : '🎤';
+                sendVoiceBtn.title = isRecording
+                    ? 'Stop recording'
+                    : 'Record voice';
+                sendVoiceBtn.setAttribute(
+                    'aria-label',
+                    isRecording ? 'Stop recording' : 'Record voice',
+                );
+            }
+
+            function stopVoiceRecorderStream() {
+                if (voiceRecorderStream) {
+                    voiceRecorderStream.getTracks().forEach((track) => track.stop());
+                    voiceRecorderStream = null;
+                }
+            }
+
+            function resetVoiceDraft({ revokeUrl = true } = {}) {
+                voiceRecorder = null;
+                voiceRecorderChunks = [];
+                voiceDraftBlob = null;
+                voiceDraftMimeType = '';
+                voiceRecordingStartedAt = 0;
+                voiceDiscardOnStop = false;
+                stopVoiceRecorderStream();
+
+                if (revokeUrl && voiceDraftUrl) {
+                    URL.revokeObjectURL(voiceDraftUrl);
+                }
+
+                voiceDraftUrl = '';
+                voicePreviewAudio.pause();
+                voicePreviewAudio.removeAttribute('src');
+                voicePreviewAudio.load();
+                voicePreviewMeta.textContent = 'Bam mic lan nua de dung ghi am.';
+                voicePreview.classList.add('hidden');
+                setVoiceButtonRecordingState(false);
             }
 
             function getCachedUserById(userId) {
@@ -3124,10 +3508,23 @@
                       : '';
                 const hasTextContent = Boolean(content);
                 const mediaUrl =
-                    !message.isDeleted && messageType === 'image'
+                    !message.isDeleted &&
+                    ['image', 'video', 'file', 'voice'].includes(messageType)
                         ? getMediaUrl(message.media)
                         : '';
                 const isMediaOnly = Boolean(mediaUrl) && !hasTextContent;
+                const mediaFileName =
+                    message.media && typeof message.media === 'object'
+                        ? message.media.fileName || ''
+                        : '';
+                const mediaMimeType =
+                    message.media && typeof message.media === 'object'
+                        ? message.media.mimeType || ''
+                        : '';
+                const mediaSize =
+                    message.media && typeof message.media === 'object'
+                        ? formatFileSize(message.media.size)
+                        : '';
                 const replySource =
                     message.replyTo && typeof message.replyTo === 'object'
                         ? message.replyTo
@@ -3208,13 +3605,52 @@
                 let timeStr = message.createdAt ? escapeHtml(formatTime(message.createdAt)) : '';
                 const showStatusClass = isLatest && isOwnMessage ? 'show-status' : '';
                 const mediaOnlyClass = isMediaOnly ? 'media-only' : '';
-                const messageMediaHtml = mediaUrl
-                    ? `
+                let messageMediaHtml = '';
+                if (mediaUrl && messageType === 'image') {
+                    messageMediaHtml = `
                         <div class="message-media">
                             <img src="${escapeHtml(mediaUrl)}" alt="Sent image" />
                         </div>
-                    `
-                    : '';
+                    `;
+                } else if (mediaUrl && messageType === 'video') {
+                    messageMediaHtml = `
+                        <div class="message-media">
+                            <video controls preload="metadata" src="${escapeHtml(mediaUrl)}"></video>
+                        </div>
+                    `;
+                } else if (mediaUrl && messageType === 'voice') {
+                    messageMediaHtml = `
+                        <div class="message-media">
+                            <audio controls preload="metadata" src="${escapeHtml(mediaUrl)}"></audio>
+                        </div>
+                    `;
+                } else if (mediaUrl && messageType === 'file') {
+                    const fileLabel = mediaFileName || 'Download file';
+                    const fileMeta = [mediaMimeType, mediaSize]
+                        .filter(Boolean)
+                        .join(' | ');
+                    messageMediaHtml = `
+                        <div class="message-media">
+                            <a
+                                class="message-file-link"
+                                href="${escapeHtml(mediaUrl)}"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                download="${escapeHtml(fileLabel)}"
+                            >
+                                <div class="message-file-copy">
+                                    <span class="message-file-name">${escapeHtml(fileLabel)}</span>
+                                    ${
+                                        fileMeta
+                                            ? `<span class="message-file-meta">${escapeHtml(fileMeta)}</span>`
+                                            : ''
+                                    }
+                                </div>
+                                <span class="message-file-download">Tai xuong</span>
+                            </a>
+                        </div>
+                    `;
+                }
                 const messageTextHtml = messageType === 'image'
                     ? content
                         ? `<div class="message-content">${escapeHtml(content)}</div>`
@@ -3227,7 +3663,8 @@
                                     : ''),
                         )}</div>
                     `;
-                const messageActionsHtml = message.status === 'sending'
+                const messageActionsHtml =
+                    message.status === 'sending' || message.status === 'error'
                     ? ''
                     : `
                         <div class="message-actions">
@@ -4958,25 +5395,160 @@
                 }
             }
 
-            async function sendCurrentImageMessage(file) {
-                if (!file || !selectedConversationId) {
+            async function startVoiceRecording() {
+                if (!selectedConversationId) {
+                    alert('Chon conversation truoc khi gui voice.');
                     return;
                 }
 
+                if (voiceDraftBlob || voiceDraftUrl) {
+                    resetVoiceDraft();
+                }
+
+                if (
+                    typeof navigator === 'undefined' ||
+                    !navigator.mediaDevices ||
+                    typeof navigator.mediaDevices.getUserMedia !== 'function' ||
+                    typeof MediaRecorder === 'undefined'
+                ) {
+                    alert('Trinh duyet nay khong ho tro ghi am.');
+                    return;
+                }
+
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        audio: true,
+                    });
+                    const mimeType = chooseVoiceMimeType();
+                    const recorder = mimeType
+                        ? new MediaRecorder(stream, { mimeType })
+                        : new MediaRecorder(stream);
+
+                    voiceRecorderStream = stream;
+                    voiceRecorder = recorder;
+                    voiceRecorderChunks = [];
+                    voiceDraftBlob = null;
+                    voiceDraftMimeType = mimeType || recorder.mimeType || 'audio/webm';
+                    voiceRecordingStartedAt = Date.now();
+                    voiceDiscardOnStop = false;
+                    voicePreviewMeta.textContent =
+                        'Dang ghi am... Bam mic lan nua de dung.';
+                    voicePreview.classList.remove('hidden');
+                    voicePreviewAudio.removeAttribute('src');
+                    voicePreviewAudio.load();
+                    setVoiceButtonRecordingState(true);
+
+                    recorder.addEventListener('dataavailable', (event) => {
+                        if (event.data && event.data.size > 0) {
+                            voiceRecorderChunks.push(event.data);
+                        }
+                    });
+
+                    recorder.addEventListener(
+                        'stop',
+                        () => {
+                            const durationMs = Math.max(
+                                0,
+                                Date.now() - voiceRecordingStartedAt,
+                            );
+                            const blob = new Blob(voiceRecorderChunks, {
+                                type: voiceDraftMimeType,
+                            });
+                            voiceDraftBlob = blob.size > 0 ? blob : null;
+                            voiceRecorderChunks = [];
+                            stopVoiceRecorderStream();
+                            setVoiceButtonRecordingState(false);
+
+                            if (voiceDiscardOnStop) {
+                                resetVoiceDraft();
+                                return;
+                            }
+
+                            if (!voiceDraftBlob) {
+                                voicePreviewMeta.textContent =
+                                    'Khong thu duoc am thanh. Thu lai nhe.';
+                                voicePreview.classList.add('hidden');
+                                return;
+                            }
+
+                            if (voiceDraftUrl) {
+                                URL.revokeObjectURL(voiceDraftUrl);
+                            }
+                            voiceDraftUrl = URL.createObjectURL(voiceDraftBlob);
+                            voicePreviewAudio.src = voiceDraftUrl;
+                            voicePreviewAudio.load();
+
+                            const seconds = Math.max(
+                                1,
+                                Math.round(durationMs / 1000),
+                            );
+                            voicePreviewMeta.textContent = `Da ghi am ${seconds} giay. Nghe lai, xoa hoac gui.`;
+                        },
+                        { once: true },
+                    );
+
+                    recorder.start();
+                } catch (error) {
+                    console.error('Voice record start failed', error);
+                    stopVoiceRecorderStream();
+                    setVoiceButtonRecordingState(false);
+                    voicePreview.classList.add('hidden');
+                    alert('Khong the bat microphone.');
+                }
+            }
+
+            function stopVoiceRecording() {
+                if (voiceRecorder && voiceRecorder.state === 'recording') {
+                    voiceRecorder.stop();
+                }
+            }
+
+            async function sendVoiceDraft() {
+                if (!voiceDraftBlob) {
+                    alert('Chua co voice de gui.');
+                    return;
+                }
+
+                const extension = getVoiceFileExtension(voiceDraftMimeType);
+                const voiceFile = new File(
+                    [voiceDraftBlob],
+                    `voice-${Date.now()}.${extension}`,
+                    {
+                        type: voiceDraftMimeType || 'audio/webm',
+                    },
+                );
+
+                resetVoiceDraft();
+                await sendCurrentMediaMessage(voiceFile, 'voice');
+            }
+
+            async function sendCurrentMediaMessage(file, type) {
+                if (!file || !selectedConversationId || !type) {
+                    return;
+                }
+
+                validateMediaFile(file, type);
                 stopCurrentTyping({ silent: true });
 
-                const tempId = 'temp-image-' + Date.now();
+                const normalizedType = String(type).toLowerCase();
+                const tempId = `temp-${normalizedType}-` + Date.now();
                 const replyTargetMessage = getReplyTargetMessage();
-                const previewUrl = URL.createObjectURL(file);
+                const previewUrl =
+                    normalizedType === 'image' ||
+                    normalizedType === 'video' ||
+                    normalizedType === 'voice'
+                        ? URL.createObjectURL(file)
+                        : '';
                 const tempMessage = {
                     _id: tempId,
-                    type: 'image',
+                    type: normalizedType,
                     content: '',
                     media: {
                         _id: tempId + '-media',
-                        url: previewUrl,
+                        url: previewUrl || '#',
                         mimeType: file.type,
                         fileName: file.name,
+                        size: file.size,
                     },
                     sender: currentUser,
                     createdAt: new Date().toISOString(),
@@ -4995,7 +5567,7 @@
 
                 try {
                     const createdMessage = await fetchFormData(
-                        `/conversations/${selectedConversationId}/message/image`,
+                        `/conversations/${selectedConversationId}/message/${normalizedType}`,
                         formData,
                     );
                     const createdMessageId = normalizeId(createdMessage?._id);
@@ -5014,7 +5586,6 @@
                         if (tempIdx !== -1 && tempIdx !== existingIdx) {
                             currentMessages.splice(tempIdx, 1);
                         }
-                        URL.revokeObjectURL(previewUrl);
                     } else if (tempIdx !== -1) {
                         currentMessages[tempIdx] = {
                             ...createdMessage,
@@ -5022,12 +5593,13 @@
                             isOptimistic: false,
                             serverMessageId: createdMessageId || '',
                         };
-                        URL.revokeObjectURL(previewUrl);
                     } else {
                         appendMessage(createdMessage);
-                        URL.revokeObjectURL(previewUrl);
                     }
 
+                    if (previewUrl) {
+                        URL.revokeObjectURL(previewUrl);
+                    }
                     updateConversationWithMessage(
                         selectedConversationId,
                         createdMessage,
@@ -5043,9 +5615,11 @@
                         tempMessageRef.status = 'error';
                         renderMessages(currentMessages);
                     }
-                    alert(error.message || 'Gui anh that bai.');
+                    alert(error.message || 'Gui media that bai.');
                 } finally {
                     messageImageInput.value = '';
+                    messageVideoInput.value = '';
+                    messageFileInput.value = '';
                 }
             }
 
@@ -5057,6 +5631,47 @@
                 }
                 messageImageInput.click();
             });
+            sendVideoBtn.addEventListener('click', () => {
+                if (!selectedConversationId) {
+                    alert('Chon conversation truoc khi gui video.');
+                    return;
+                }
+                messageVideoInput.click();
+            });
+            sendFileBtn.addEventListener('click', () => {
+                if (!selectedConversationId) {
+                    alert('Chon conversation truoc khi gui file.');
+                    return;
+                }
+                messageFileInput.click();
+            });
+            sendVoiceBtn.addEventListener('click', async () => {
+                if (voiceRecorder && voiceRecorder.state === 'recording') {
+                    stopVoiceRecording();
+                    return;
+                }
+
+                try {
+                    await startVoiceRecording();
+                } catch (error) {
+                    console.error('Start voice recording failed', error);
+                }
+            });
+            discardVoiceBtn.addEventListener('click', () => {
+                if (voiceRecorder && voiceRecorder.state === 'recording') {
+                    voiceDiscardOnStop = true;
+                    stopVoiceRecording();
+                    return;
+                }
+                resetVoiceDraft();
+            });
+            sendVoiceDraftBtn.addEventListener('click', async () => {
+                try {
+                    await sendVoiceDraft();
+                } catch (error) {
+                    console.error('Send voice draft failed', error);
+                }
+            });
             messageImageInput.addEventListener('change', async (event) => {
                 const file = event.target.files?.[0];
                 if (!file) {
@@ -5064,9 +5679,33 @@
                 }
 
                 try {
-                    await sendCurrentImageMessage(file);
+                    await sendCurrentMediaMessage(file, 'image');
                 } catch (error) {
                     console.error('Send image failed', error);
+                }
+            });
+            messageVideoInput.addEventListener('change', async (event) => {
+                const file = event.target.files?.[0];
+                if (!file) {
+                    return;
+                }
+
+                try {
+                    await sendCurrentMediaMessage(file, 'video');
+                } catch (error) {
+                    console.error('Send video failed', error);
+                }
+            });
+            messageFileInput.addEventListener('change', async (event) => {
+                const file = event.target.files?.[0];
+                if (!file) {
+                    return;
+                }
+
+                try {
+                    await sendCurrentMediaMessage(file, 'file');
+                } catch (error) {
+                    console.error('Send file failed', error);
                 }
             });
 

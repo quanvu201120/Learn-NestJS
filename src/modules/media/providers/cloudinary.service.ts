@@ -23,10 +23,17 @@ export class CloudinaryService {
         });
     }
 
+    /**
+     * Kiểm tra nhanh kết nối với Cloudinary khi cần debug hoặc chẩn đoán.
+     */
     async ping() {
         return await cloudinary.api.ping();
     }
 
+    /**
+     * Stream buffer ảnh lên Cloudinary và map kết quả trả về
+     * thành shape media mà ứng dụng đang dùng.
+     */
     async uploadImage(
         uploadedBy: Types.ObjectId,
         ownerType: OwnerTypeEnum,
@@ -61,12 +68,33 @@ export class CloudinaryService {
         });
     }
 
+    /**
+     * Xóa một resource ảnh trên Cloudinary.
+     */
     async deleteResource(publicId: string): Promise<void> {
         await cloudinary.uploader.destroy(publicId, {
             resource_type: 'image',
         });
     }
 
+    /**
+     * Xóa nhiều resource ảnh trên Cloudinary trong một request.
+     */
+    async deleteResources(publicIds: string[]): Promise<void> {
+        const uniquePublicIds = [...new Set(publicIds.filter(Boolean))];
+
+        if (uniquePublicIds.length === 0) {
+            return;
+        }
+
+        await cloudinary.api.delete_resources(uniquePublicIds, {
+            resource_type: 'image',
+        });
+    }
+
+    /**
+     * Chuyển response upload của Cloudinary thành payload media để lưu trong hệ thống.
+     */
     private mapUploadResult(
         uploadedBy: Types.ObjectId,
         ownerType: OwnerTypeEnum,

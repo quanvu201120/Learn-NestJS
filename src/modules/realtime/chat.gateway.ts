@@ -24,7 +24,6 @@ import { ConversationsService } from '../conversations/conversations.service';
 import { PayloadJWT } from '../users/schemas/user.schema';
 import { getRoomNameConversation, getRoomNameUser } from '@/utils/utils';
 import { CreateMessageSocketDto } from '../messages/dto/create-message.dto';
-import { MessageEnumType } from '../messages/schemas/message.schema';
 import {
     MarkReadSocketDto,
     TypingSocketDto,
@@ -50,6 +49,7 @@ import { UsersService } from '../users/users.service';
 import { USER_MESSAGES } from '../users/constants/user.constant';
 import { AUTH_MESSAGES } from '@/auth/constants/auth.constant';
 import { SessionService } from '../session/session.service';
+import { MessageEnumType } from '../messages/types/message';
 @WebSocketGateway({
     cors: { origin: '*' },
     transports: ['websocket'],
@@ -317,6 +317,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 this.server.to(roomName).emit('chat:new-message', message);
             },
         });
+
+        this.messageService.unseenMessage$.subscribe({
+            next: ({ conversationId, userIds }) => {
+                userIds.forEach((userId) => {
+                    this.server
+                        .to(getRoomNameUser(userId))
+                        .emit('user:unseen-message', {
+                            conversationId,
+                        });
+                });
+            },
+        });
     }
 
     /**
@@ -394,33 +406,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                     content,
                     replyTo,
                 );
-
-            const membersOnline = (
-                await this.redisService.getUserOnlineInListIds(
-                    conversation.users,
-                )
-            ).filter((item) => item.toString() !== payload._id.toString());
-
-            if (membersOnline.length > 0) {
-                const resultUnseen = await this.redisService.setUnseenMessage(
-                    membersOnline,
-                    conversationId,
-                );
-                if (resultUnseen) {
-                    resultUnseen.forEach(([pipelineError, result], index) => {
-                        if (!pipelineError && Number(result) > 0) {
-                            const roomName = getRoomNameUser(
-                                membersOnline[index].toString(),
-                            );
-                            this.server
-                                .to(roomName)
-                                .emit('user:unseen-message', {
-                                    conversationId,
-                                });
-                        }
-                    });
-                }
-            }
 
             const res: SocketResponse<CreateMessageResult> = {
                 ok: true,

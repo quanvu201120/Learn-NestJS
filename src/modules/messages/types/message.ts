@@ -3,7 +3,10 @@ import { Types } from 'mongoose';
 import { Message } from '../schemas/message.schema';
 import { Media } from '@/modules/media/schemas/media.schema';
 
-export type MessageResponse = Omit<Message, 'senderId' | 'replyTo' | 'mediaId'> & {
+export type MessageResponse = Omit<
+    Message,
+    'senderId' | 'replyTo' | 'mediaId'
+> & {
     _id: Types.ObjectId | string;
     createdAt?: Date;
     updatedAt?: Date;
@@ -19,4 +22,13 @@ export enum MessageReactionEnumType {
     WOW = 'wow',
     SAD = 'sad',
     ANGRY = 'angry',
+}
+
+export enum MessageEnumType {
+    TEXT = 'text',
+    IMAGE = 'image',
+    VIDEO = 'video',
+    FILE = 'file',
+    VOICE = 'voice',
+    SYSTEM = 'system',
 }

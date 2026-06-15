@@ -11,11 +11,7 @@ import {
 } from '@nestjs/common';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
-import {
-    Message,
-    MessageDocument,
-    MessageEnumType,
-} from './schemas/message.schema';
+import { Message, MessageDocument } from './schemas/message.schema';
 import { Connection, Model, Types, ClientSession } from 'mongoose';
 import { parseDateOrThrow, toObjectId } from '@/utils/utils';
 import { ConversationsService } from '../conversations/conversations.service';
@@ -23,20 +19,33 @@ import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
 import { serializeMessage } from './utils/message.serializer';
 import { Subject } from 'rxjs';
 import { UserResponse } from '../users/types/user';
-import { MessageReactionEnumType, MessageResponse } from './types/message';
-import { MediaProviderEnum, OwnerTypeEnum } from '../media/types/media';
+import {
+    MessageEnumType,
+    MessageReactionEnumType,
+    MessageResponse,
+} from './types/message';
+import {
+    MediaProviderEnum,
+    MediaResourceTypeEnum,
+    OwnerTypeEnum,
+} from '../media/types/media';
 import { Media, MediaDocument } from '../media/schemas/media.schema';
 import { MediaService } from '../media/media.service';
 import {
     MEDIA_CONSTANTS,
     MEDIA_MESSAGES,
 } from '../media/constants/media.constant';
+import { RedisService } from '@/redis/redis.service';
 
 @Injectable()
 export class MessagesService {
     public readonly restoredConversation$ = new Subject<{
         conversationId: string;
         members: string[];
+    }>();
+    public readonly unseenMessage$ = new Subject<{
+        conversationId: string;
+        userIds: string[];
     }>();
 
     public readonly updatedMessage$ = new Subject<MessageResponse>();
@@ -50,6 +59,7 @@ export class MessagesService {
         @InjectConnection()
         private readonly connection: Connection,
         private readonly mediaService: MediaService,
+        private readonly redisService: RedisService,
     ) {}
 
     /**
@@ -155,7 +165,8 @@ export class MessagesService {
             if (
                 type === MessageEnumType.IMAGE ||
                 type === MessageEnumType.VIDEO ||
-                type === MessageEnumType.FILE
+                type === MessageEnumType.FILE ||
+                type === MessageEnumType.VOICE
             ) {
                 if (!file) {
                     throw new BadRequestException(
@@ -178,20 +189,44 @@ export class MessagesService {
                         );
                     }
                 } else {
-                    //R2
+                    const resourceType: MediaResourceTypeEnum =
+                        type === MessageEnumType.VIDEO
+                            ? MediaResourceTypeEnum.VIDEO
+                            : type === MessageEnumType.VOICE
+                              ? MediaResourceTypeEnum.AUDIO
+                              : MediaResourceTypeEnum.FILE;
+                    const folder =
+                        type === MessageEnumType.VIDEO
+                            ? MEDIA_CONSTANTS.CONVERSATION_VIDEO_FOLDER
+                            : type === MessageEnumType.VOICE
+                              ? MEDIA_CONSTANTS.CONVERSATION_AUDIO_FOLDER
+                              : MEDIA_CONSTANTS.CONVERSATION_FILE_FOLDER;
+                    uploadedFile = await this.mediaService.uploadFileToR2(
+                        objectSenderId,
+                        OwnerTypeEnum.CONVERSATION,
+                        objectConversationId,
+                        file,
+                        resourceType,
+                        folder,
+                    );
+                    if (!uploadedFile) {
+                        throw new BadRequestException(
+                            MEDIA_MESSAGES.FILE_UPLOAD_FAILED,
+                        );
+                    }
                 }
             }
+            // bọc các lệnh ghi DB vào transaction thật
             await session.withTransaction(async () => {
                 let createMedia: MediaDocument | null = null;
-
+                // nếu có file được upload, tạo media
                 if (uploadedFile) {
                     createMedia = await this.mediaService.createMedia(
                         uploadedFile,
                         session,
                     );
                 }
-
-                // bọc các lệnh ghi DB vào transaction thật
+                // tạo message
                 const createdMessages = await this.messageModel.create(
                     [
                         {
@@ -207,7 +242,7 @@ export class MessagesService {
                 );
 
                 newMessage = createdMessages[0]; // create với session trả về mảng, lấy phần tử đầu
-
+                // cập nhật lastMessageId và mở lại conversation cho các thành viên bị ẩn
                 await this.conversationService.updateLastMessageAndRestoreConversation(
                     conversationId,
                     newMessage._id.toString(),
@@ -230,11 +265,18 @@ export class MessagesService {
                     members: userHiddenHistory,
                 });
             }
+            await this.emitUnseenMessageForOnlineMembers(
+                conversation.users,
+                senderId,
+                conversationId,
+            );
+
             const newMessageId = (newMessage as MessageDocument)._id.toString();
             const message = await this.getMessageById(newMessageId);
             this.createdMessage$.next(message);
             return { message, conversation };
         } catch (error) {
+            // nếu có lỗi xảy ra, rollback transaction và cleanup file đã upload
             if (
                 uploadedFile &&
                 uploadedFile.publicId &&
@@ -242,6 +284,20 @@ export class MessagesService {
             ) {
                 await this.mediaService
                     .deleteImageFromCloudinary(uploadedFile.publicId)
+                    .catch((cleanupError) => {
+                        console.error(
+                            'Failed to cleanup uploaded media:',
+                            cleanupError,
+                        );
+                    });
+            }
+            if (
+                uploadedFile &&
+                uploadedFile.objectKey &&
+                uploadedFile.provider === MediaProviderEnum.R2
+            ) {
+                await this.mediaService
+                    .deleteFileFromR2(uploadedFile.objectKey)
                     .catch((cleanupError) => {
                         console.error(
                             'Failed to cleanup uploaded media:',
@@ -428,6 +484,7 @@ export class MessagesService {
                 conversationId: objectConversationId,
                 senderId: objectUserId,
                 isDeleted: false,
+                type: MessageEnumType.TEXT,
             })
             .populate('senderId', '-password -__v')
             .populate('replyTo', '-__v')
@@ -449,6 +506,7 @@ export class MessagesService {
                     conversationId: objectConversationId,
                     senderId: objectUserId,
                     isDeleted: false,
+                    type: MessageEnumType.TEXT,
                 },
                 {
                     $set: { content },
@@ -465,6 +523,45 @@ export class MessagesService {
         const res = serializeMessage(updatedMessage);
         this.updatedMessage$.next(res);
         return res;
+    }
+
+    /**
+     * Đánh dấu conversation là chưa đọc cho các thành viên đang online
+     * và phát sự kiện realtime tới những user vừa được thêm cờ unseen.
+     */
+    private async emitUnseenMessageForOnlineMembers(
+        members: Types.ObjectId[],
+        senderId: string,
+        conversationId: string,
+    ) {
+        const membersOnline = (
+            await this.redisService.getUserOnlineInListIds(members)
+        ).filter((item) => item.toString() !== senderId);
+
+        if (membersOnline.length === 0) {
+            return;
+        }
+
+        const resultUnseen = await this.redisService.setUnseenMessage(
+            membersOnline,
+            conversationId,
+        );
+
+        const userIdsNeedNotify =
+            resultUnseen
+                ?.map(([pipelineError, result], index) =>
+                    !pipelineError && Number(result) > 0
+                        ? membersOnline[index]?.toString()
+                        : null,
+                )
+                .filter((userId): userId is string => !!userId) ?? [];
+
+        if (userIdsNeedNotify.length > 0) {
+            this.unseenMessage$.next({
+                conversationId,
+                userIds: userIdsNeedNotify,
+            });
+        }
     }
 
     async updateOrInsertReaction(
