@@ -2,47 +2,48 @@
 
 ## Mục tiêu file này
 
-File này là bản đồ flow tổng thể của app để:
+File này là bản đồ flow tổng thể của backend hiện tại để:
 
-- nhìn nhanh toàn bộ luồng backend hiện tại
-- bám đúng API khi làm frontend
-- tránh quên rule nghiệp vụ giữa `auth`, `users`, `session`, `conversations`, `messages`
+- nhìn nhanh luồng app đang chạy theo code thật
+- giúp FE gọi đúng API, đúng event socket
+- tránh nhầm giữa behavior mong muốn và behavior đang implement
 
 ## Tổng quan module
 
-- `auth`: đăng ký, kích hoạt tài khoản, login, refresh token, logout, đổi mật khẩu, quên mật khẩu
-- `users`: quản lý user, xem danh sách, xem chi tiết, cập nhật, xóa
-- `session`: quản lý phiên đăng nhập gắn với refresh token
-- `conversations`: direct chat, group chat, rename group, add/remove member, hide history, mark as read
-- `messages`: hiện mới có schema + helper check message thuộc conversation, nghiệp vụ gửi/lấy lịch sử đang làm tiếp
-- `redis`: lưu OTP / cooldown cho active account và forgot password
+- `auth`: đăng ký, kích hoạt tài khoản, login, refresh token, logout, logout all, đổi mật khẩu, quên mật khẩu
+- `users`: CRUD user cơ bản, cập nhật avatar user
+- `session`: lưu session đăng nhập cho access token và refresh token, không có controller public
+- `conversations`: tạo direct/group chat, đổi tên nhóm, thêm/xóa thành viên, rời nhóm, giải tán nhóm, đổi admin, ẩn lịch sử, mark as read, avatar nhóm
+- `messages`: gửi/lấy tin nhắn, reaction, sửa nội dung tin nhắn text, thu hồi tin nhắn
+- `realtime`: socket auth, join room, heartbeat, typing, mark-read, realtime events
+- `presence`: API kiểm tra user nào đang online
+- `media`: layer upload media/avatar dùng nội bộ cho user, conversation, message
+- `redis`: OTP active/forgot password, cooldown gửi mail, presence, typing, unseen conversation
 
-## Quản lý Constants
+## Guard mặc định
 
-Toàn bộ hardcoded string (message lỗi, v.v) và hardcoded value (số giây, giới hạn phân trang) trong project đã được đưa vào constant:
+App đang dùng `APP_GUARD` với `JwtAuthGuard` trong `src/app.module.ts:34`.
 
-- **Global/Common Constants**: Các hằng số dùng chung toàn app được đặt tại `src/common/constants/global.constant.ts`. (VD: `GLOBAL_CONSTANTS`, `GLOBAL_MESSAGES`).
-- **Feature-based Constants**: Mỗi module có file constant riêng nằm trong thư mục `constants` của module đó:
-    - `src/auth/constants/auth.constant.ts`: `AUTH_MESSAGES`
-    - `src/modules/users/constants/user.constant.ts`: `USER_MESSAGES`
-    - `src/modules/conversations/constants/conversation.constant.ts`: `CONVERSATION_MESSAGES`
-    - `src/modules/messages/constants/message.constant.ts`: `MESSAGE_MESSAGES`
-    - `src/modules/realtime/constants/realtime.constant.ts`: `REALTIME_MESSAGES`
+- mọi API mặc định đều cần access token
+- chỉ route có `@Public()` mới không cần login
+- access token được truyền qua `Authorization: Bearer <token>`
+
+Flow validate access token trong `src/auth/passport/jwt.strategy.ts:23`:
+
+1. verify JWT access token
+2. lấy user theo `_id`
+3. check `tokenVersion`
+4. lấy `session` theo `sessionId`
+5. check session đúng owner và chưa bị revoke
+6. gắn `req.user = { _id, role }`
 
 ## Kiến trúc auth hiện tại
 
-- `JWT access token` đi qua header `Authorization: Bearer <token>`
-- `refresh token` đi qua cookie `refreshToken`
-- mọi login tạo một `session` mới trong MongoDB
-- `session` lưu:
-    - `userId`
-    - `refreshTokenHash`
-    - `expiresAt`
-    - `userAgent`
-    - `deviceName`
-    - `isRevoked`
-- `tokenVersion` nằm ở `user`
-    - dùng để vô hiệu toàn bộ access/refresh token cũ khi logout all devices
+- `accessToken` đi qua header
+- `refreshToken` đi qua cookie `refreshToken` dạng `HttpOnly`, `sameSite=lax`
+- login tạo `session` mới trong MongoDB
+- session lưu `userId`, `refreshTokenHash`, `expiresAt`, `userAgent`, `deviceName`, `lastUsedAt`, `isRevoked`
+- `tokenVersion` nằm ở user, dùng để vô hiệu toàn bộ token cũ khi logout all devices
 
 ## Luồng Auth
 
@@ -52,23 +53,17 @@ Endpoint:
 
 - `POST /auth/register`
 
-Flow:
+Flow backend trong `src/auth/auth.controller.ts:144` và `src/modules/users/users.service.ts:53`:
 
 1. nhận `email`, `password`
-2. check email đã tồn tại chưa
-3. hash password
-4. tạo user mới với:
-    - `isActive = false`
-    - `role = USER`
-    - `tokenVersion = 0`
-5. tạo activation code
-6. hash code rồi lưu Redis với TTL
-7. gửi email active account
-8. trả user info, không trả password
-
-Frontend note:
-
-- sau register cần điều hướng sang màn nhập code active
+2. tạo user mới với:
+   - `isActive = false`
+   - `role = USER`
+   - `name = phần trước @ của email`
+3. sinh activation code dạng `uuid`
+4. hash code rồi lưu Redis với TTL
+5. gửi mail kích hoạt
+6. trả thông tin user, không trả password
 
 ### 2. Activate account
 
@@ -76,15 +71,13 @@ Endpoint:
 
 - `POST /auth/active`
 
-Flow:
+Flow backend:
 
 1. nhận `email`, `code`
-2. tìm user theo email
-3. check user tồn tại và chưa active
-4. lấy code hash trong Redis
-5. hash code người dùng nhập để so sánh
-6. đúng thì set `isActive = true`
-7. xóa code trong Redis
+2. check user tồn tại và chưa active
+3. lấy code hash trong Redis để so sánh
+4. đúng thì set `isActive = true`
+5. xóa code khỏi Redis
 
 ### 3. Resend activation code
 
@@ -92,18 +85,13 @@ Endpoint:
 
 - `POST /auth/resend-code-active`
 
-Flow:
+Flow backend:
 
 1. nhận `email`
 2. check user tồn tại và chưa active
-3. check cooldown qua Redis TTL
-4. tạo code mới
-5. lưu lại Redis với TTL mới
-6. gửi mail
-
-Frontend note:
-
-- nên hiện countdown resend theo cooldown
+3. check cooldown Redis, hiện tại cooldown là `60s`
+4. sinh code mới, lưu lại Redis, gửi mail
+5. response hiện tại là chuỗi `'OK'`
 
 ### 4. Login
 
@@ -111,27 +99,21 @@ Endpoint:
 
 - `POST /auth/login`
 
-Flow:
+Flow backend:
 
-1. `LocalStrategy` validate `email/password`
-2. check user active
-3. tạo `session`
-4. generate `accessToken` + `refreshToken`
-5. hash `refreshToken`
-6. cập nhật session với:
-    - `refreshTokenHash`
-    - `expiresAt`
-    - `lastUsedAt`
-7. set cookie `refreshToken`
-8. trả:
-    - `accessToken`
-    - `result` là user
-    - `message`
+1. `LocalAuthGuard` validate `email/password`
+2. tạo `session`
+3. generate `accessToken` và `refreshToken`
+4. hash `refreshToken` rồi lưu vào session
+5. set cookie `refreshToken`
+6. trả:
+   - `accessToken`
+   - `user`
 
-Frontend note:
+Lưu ý:
 
-- access token dùng cho header
-- refresh token do cookie giữ
+- response hiện tại không trả `message`
+- FE không cần tự lưu refresh token
 
 ### 5. Refresh token
 
@@ -139,23 +121,22 @@ Endpoint:
 
 - `POST /auth/refreshToken`
 
-Flow:
+Flow backend:
 
 1. đọc `refreshToken` từ cookie
-2. verify JWT refresh token
-3. lấy user theo `_id`
-4. check `tokenVersion`
-5. lấy `sessionId` từ payload
-6. check session:
-    - tồn tại
-    - chưa revoke
-    - chưa hết hạn
-    - đúng owner
-7. hash refresh token cũ và so với `session.refreshTokenHash`
-8. generate cặp token mới
-9. rotate session với hash mới
-10. set lại cookie refresh token mới
-11. trả access token mới
+2. verify JWT refresh token bằng `JWT_REFRESH_SECRET`
+3. check `tokenVersion`
+4. check session tồn tại, chưa revoke, chưa hết hạn, đúng owner
+5. so sánh `refreshTokenHash`
+6. rotate refresh token trong session
+7. set lại cookie `refreshToken`
+8. trả:
+   - `accessToken`
+
+Lưu ý:
+
+- response hiện tại chỉ trả `accessToken`
+- nếu refresh token đã hết hạn, service sẽ cố revoke session cũ
 
 ### 6. Logout
 
@@ -163,13 +144,16 @@ Endpoint:
 
 - `POST /auth/logout`
 
-Flow:
+Flow backend:
 
-1. đọc refresh token từ cookie
-2. verify token
-3. check token thuộc đúng user hiện tại
-4. revoke session hiện tại
-5. clear cookie refresh token
+1. route này cần access token
+2. backend cố đọc `refreshToken` từ cookie để revoke session hiện tại
+3. dù revoke thành công hay không vẫn clear cookie `refreshToken`
+4. trả message logout success
+
+Lưu ý:
+
+- nếu client không gửi cookie thì cookie vẫn bị clear, nhưng session có thể không được revoke
 
 ### 7. Logout all devices
 
@@ -177,16 +161,13 @@ Endpoint:
 
 - `POST /auth/logoutAll`
 
-Flow:
+Flow backend:
 
-1. lấy user hiện tại
-2. tăng `tokenVersion`
+1. cần access token
+2. tăng `tokenVersion` của user
 3. revoke toàn bộ session chưa revoke của user
-4. clear cookie refresh token
-
-Frontend note:
-
-- sau action này nên force về login
+4. clear cookie `refreshToken`
+5. trả message thành công
 
 ### 8. Change password
 
@@ -194,13 +175,16 @@ Endpoint:
 
 - `POST /auth/change-password`
 
-Flow:
+Flow backend:
 
-1. user phải login
-2. nhận `passwordOld`, `passwordNew`
-3. check password cũ bằng bcrypt
-4. hash password mới
-5. lưu lại user
+1. nhận `passwordOld`, `passwordNew`
+2. check password cũ
+3. hash password mới
+4. lưu lại user
+
+Lưu ý:
+
+- đổi mật khẩu hiện tại không tự revoke các session cũ
 
 ### 9. Forgot password
 
@@ -208,14 +192,13 @@ Endpoint:
 
 - `POST /auth/forgot-password`
 
-Flow:
+Flow backend:
 
 1. nhận `email`
 2. check email tồn tại
 3. check cooldown Redis
-4. tạo code forgot mới
-5. lưu Redis
-6. gửi mail
+4. sinh code mới, lưu Redis, gửi mail
+5. response hiện tại là chuỗi `'OK'`
 
 ### 10. Reset password
 
@@ -223,112 +206,107 @@ Endpoint:
 
 - `POST /auth/reset-password`
 
-Flow:
+Flow backend:
 
 1. nhận `email`, `code`, `password`
-2. check email tồn tại
-3. verify code trong Redis
-4. hash password mới
-5. save user
+2. verify code trong Redis
+3. hash password mới
+4. save user
 
-## Luồng Jwt Guard
+Lưu ý:
 
-Mặc định app có `APP_GUARD` là `JwtAuthGuard`.
-
-Nghĩa là:
-
-- mọi API mặc định cần access token
-- chỉ các route có `@Public()` mới không cần login
-
-Flow validate access token:
-
-1. lấy bearer token từ header
-2. verify access token
-3. lấy user theo `_id`
-4. check `tokenVersion`
-5. lấy `session` theo `sessionId`
-6. check:
-    - session tồn tại
-    - đúng owner
-    - chưa revoke
-7. gắn `req.user = { _id, role }`
+- reset password hiện tại cũng không revoke session/token cũ
 
 ## Luồng Users
 
+Controller: `src/modules/users/users.controller.ts:25`
+
 ### 1. Create user
 
-Endpoint:
-
-- `POST /users`
-
-Rule:
-
-- chỉ `ADMIN`
-
-Flow:
-
-1. check email unique
-2. hash password
-3. tạo user mới
+- Endpoint: `POST /users`
+- Guard: chỉ `ADMIN`
 
 ### 2. Get users list
 
-Endpoint:
-
-- `GET /users`
-
-Flow:
-
-1. nhận `query`, `current`, `pageSize`
-2. parse filter/sort bằng `api-query-params`
-3. query Mongo
-4. trả:
-    - `totalPages`
-    - `userList`
+- Endpoint: `GET /users`
+- Query:
+  - `current`
+  - `pageSize`
+  - ngoài ra service còn parse filter/sort qua `api-query-params`
+- Response:
+  - `totalPages`
+  - `users`
 
 ### 3. Get user detail
 
-Endpoint:
-
-- `GET /users/:id`
+- Endpoint: `GET /users/:id`
 
 ### 4. Update user
 
-Endpoint:
+- Endpoint: `PATCH /users`
+- Rule thực tế trong `src/modules/users/users.service.ts:154`:
+  - `ADMIN` cập nhật được user bất kỳ
+  - user thường chỉ cập nhật được chính mình
+  - body phải có `_id`
 
-- `PATCH /users`
+### 5. Upload/Delete avatar user
 
-Flow:
+- `PATCH /users/avatar`
+  - form-data field `file`
+  - chỉ nhận ảnh, tối đa `5MB`
+- `DELETE /users/avatar`
 
-1. nếu đổi email thì check unique
-2. update user
-3. không trả password
+### 6. Disable/Enable user
 
-### 5. Delete user
-
-Endpoint:
-
-- `DELETE /users/:id`
-
-## Luồng Session
-
-Session là persistence layer cho auth.
-
-Các thao tác chính:
-
-- `create`: tạo session mới lúc login
-- `rotateSession`: cập nhật refresh token hash mới lúc refresh/login
-- `revoke`: logout 1 session
-- `revokeAllByUserId`: logout tất cả session
+- User tự vô hiệu hóa:
+  - Endpoint: `PATCH /users/me/disable`
+  - một chiều, sau khi gọi xong backend sẽ:
+    - set `isDisabled = true`
+    - set `disabledAt`
+    - tăng `tokenVersion`
+    - revoke toàn bộ session
+    - clear cookie `refreshToken` ở request hiện tại
+- Admin vô hiệu hóa user:
+  - Endpoint: `PATCH /users/:id/disable`
+- Admin gỡ trạng thái vô hiệu hóa:
+  - Endpoint: `PATCH /users/:id/enable`
 
 Rule:
 
-- session bị revoke thì access token cũ sẽ fail ở `JwtStrategy`
-- session hết hạn sẽ bị TTL index của Mongo cleanup dần
+- user thường không có API bật lại account
+- admin mới được disable/enable user khác
+- admin không enable chính mình qua endpoint admin
+- hệ thống giữ nguyên message, conversation, reaction cũ; không hard delete user nữa
+
+Gợi ý FE:
+
+- với hành động self-disable nên làm 2 bước xác nhận
+- có thể thêm countdown 5-10s trước nút confirm cuối
+- không cần email xác nhận vì backend xử lý theo access token hiện tại
+
+## Luồng Session
+
+`session` hiện là persistence layer nội bộ, chưa có public API riêng.
+
+Các thao tác chính trong `src/modules/session/session.service.ts:17`:
+
+- `create`: tạo session mới lúc login
+- `rotateSession`: cập nhật refresh token hash và `expiresAt`
+- `revoke`: logout 1 session
+- `revokeAllByUserId`: logout tất cả session
+
+Rule hiện tại:
+
+- `JwtStrategy` check session tồn tại và chưa revoke
+- socket write actions cũng re-check session qua `validateActiveSession`
+- khi disable account, service sẽ tăng `tokenVersion` và revoke toàn bộ session
+- document không thấy check `expiresAt` ở `JwtStrategy`, chỉ check khi refresh token và socket revalidation theo session existence/revoked
 
 ## Data model chat hiện tại
 
 ### Conversation
+
+Schema: `src/modules/conversations/schemas/conversation.schema.ts:7`
 
 Các field chính:
 
@@ -337,36 +315,33 @@ Các field chính:
 - `users: ObjectId[]`
 - `adminGroupId`
 - `lastMessageId`
-- `deletedHistory`
+- `hiddenHistory`
 - `readReceipts`
+- `avatar`
 
-`deletedHistory`:
-
-- lưu trạng thái ẩn conversation theo từng user
-- shape:
+`hiddenHistory` có shape:
 
 ```ts
 [
-    {
-        userId,
-        isDeleted,
-        deletedAt,
-    },
+  {
+    userId,
+    isHidden,
+    hiddenAt,
+  },
 ];
 ```
 
-`readReceipts`:
-
-- lưu message cuối cùng user đã đọc
-- shape:
+`readReceipts` có shape:
 
 ```ts
 {
-  [userId]: lastReadMessageId
+  [userId]: lastReadMessageId;
 }
 ```
 
 ### Message
+
+Schema: `src/modules/messages/schemas/message.schema.ts:5`
 
 Các field chính:
 
@@ -374,10 +349,17 @@ Các field chính:
 - `senderId`
 - `type`
 - `content`
+- `mediaId`
 - `replyTo`
 - `isDeleted`
+- `deletedAt`
+- `reactions`
+
+`type` hiện có cả message hệ thống (`SYSTEM`), không chỉ text/media.
 
 ## Luồng Conversations
+
+Controller: `src/modules/conversations/conversations.controller.ts:22`
 
 ### 1. Create conversation
 
@@ -385,244 +367,278 @@ Endpoint:
 
 - `POST /conversations`
 
-Flow:
+Flow backend:
 
-1. lấy `currentUserId` từ access token
-2. merge `currentUserId` vào mảng `users`
-3. remove duplicate id
-4. nếu direct chat:
-    - phải đúng 2 user
-5. nếu group:
-    - phải có `name`
-    - ít nhất 3 user tính cả creator
-6. convert toàn bộ sang `ObjectId`
-7. check tất cả user có tồn tại
-8. nếu direct chat:
-    - tìm existing conversation cùng 2 user
-    - nếu đã có:
-        - nếu user hiện tại từng hide room thì restore `deletedHistory`
-        - nếu không thì trả room cũ
-9. nếu chưa có thì tạo room mới
-
-Rule direct chat:
-
-- direct room chỉ có 1 room duy nhất cho đúng cặp user
+1. merge `currentUserId` vào mảng `users`
+2. direct chat phải đúng 2 người
+3. group chat phải có ít nhất 3 user tính cả người tạo và bắt buộc có `name`
+4. validate toàn bộ user id có tồn tại
+5. nếu là direct chat đã tồn tại:
+   - nếu room đang bị ẩn bởi current user thì restore
+   - nếu không thì trả room cũ
+6. nếu là direct chat mới:
+   - `hiddenHistory` mặc định sẽ set hidden cho người còn lại
+7. nếu là group mới:
+   - `adminGroupId = currentUserId`
+   - bắn realtime event `conversation:group-created`
 
 ### 2. Get conversations of current user
 
-Endpoint:
-
-- `GET /conversations`
-
-Flow:
-
-1. lọc room chứa `currentUserId`
-2. loại các room mà `deletedHistory` của user đang là `isDeleted = true`
-3. populate:
-    - `users`
-    - `lastMessageId`
-4. sort `updatedAt desc`
-
-Frontend note:
-
-- đây là API để render chat list
+- Endpoint: `GET /conversations`
+- chỉ trả những room user đang tham gia và không bị user đó ẩn
+- có populate `users`, `lastMessageId`, `avatar`
+- sort `updatedAt desc`
 
 ### 3. Get conversation detail
 
-Endpoint:
+- Endpoint: `GET /conversations/:id`
+- chỉ trả room nếu user là member và room đó không đang hidden với user này
 
-- `GET /conversations/:id`
+### 4. Update group info
 
-Flow:
+- Đổi tên nhóm: `PATCH /conversations/:id/update-name`
+  - chỉ admin nhóm
+- Upload avatar nhóm: `PATCH /conversations/:id/avatar`
+  - form-data `file`, chỉ ảnh, tối đa `5MB`
+  - chỉ admin nhóm
+- Delete avatar nhóm: `DELETE /conversations/:id/avatar`
+  - chỉ admin nhóm
+- Đổi admin: `PATCH /conversations/:conversationId/change-admin`
+  - body `{ newAdminId }`
+  - chỉ admin nhóm hiện tại
 
-1. check room tồn tại
-2. check `currentUserId` là member
-3. check room không bị hide với user đó
-4. populate `users`, `lastMessageId`
+### 5. Manage group members
 
-### 4. Rename group
+- Add members: `PATCH /conversations/:id/add-members`
+  - body `{ members: string[] }`
+  - chỉ admin nhóm
+- Remove member: `PATCH /conversations/:id/remove-member`
+  - body `{ memberId }`
+  - chỉ admin nhóm, trừ trường hợp member tự rời
+- Leave group: `DELETE /conversations/:id/leave-group`
+  - thực chất gọi chung logic remove member với `memberId = currentUserId`
+  - admin hiện tại không được tự leave group
+- Disband group: `DELETE /conversations/:id/disband-group`
+  - chỉ admin nhóm
+  - backend xóa message, media DB, cleanup file R2/Cloudinary rồi xóa conversation
 
-Endpoint:
+### 6. Hide history
 
-- `PATCH /conversations/:id/update-name-conversation`
+- Endpoint: `DELETE /conversations/:id`
 
-Rule:
-
-- chỉ group
-- chỉ admin group
-
-### 5. Add members
-
-Endpoint:
-
-- `PATCH /conversations/:id/add-members`
-
-Rule:
-
-- chỉ group
-- chỉ admin group
-
-Flow:
-
-1. check room tồn tại
-2. check room là group
-3. check current user là admin
-4. check toàn bộ member mới tồn tại
-5. `$addToSet` vào `users`
-
-### 6. Remove member
-
-Endpoint:
-
-- `PATCH /conversations/:id/remove-member`
-
-Rule:
-
-- chỉ group
-- chỉ admin group
-- admin không được remove chính mình bằng API này
-
-Flow:
-
-1. check room tồn tại
-2. check room là group
-3. check current user là admin
-4. check target member thực sự nằm trong room
-5. update:
-    - `$pull users`
-    - `$pull deletedHistory`
-    - `$unset readReceipts.<memberId>`
-
-Rule nghiệp vụ:
-
-- user rời nhóm thì xóa luôn:
-    - trạng thái hide history
-    - trạng thái đã đọc
-
-### 7. Delete history
-
-Endpoint:
-
-- `DELETE /conversations/:id/delete-history`
-
-Ý nghĩa:
+Flow backend:
 
 - không xóa room vật lý
-- chỉ ẩn room với riêng user hiện tại
+- chỉ set `hiddenHistory.isHidden = true` cho user hiện tại
+- khi có tin nhắn mới, room có thể được restore lại tự động
 
-Flow:
+### 7. Mark as read
 
-1. check room tồn tại
-2. check user là member
-3. tìm record `deletedHistory` của user
-4. nếu đã `isDeleted = true` thì báo lỗi
-5. nếu đã có record:
-    - set `isDeleted = true`
-    - set `deletedAt = now`
-6. nếu chưa có record:
-    - push record mới vào `deletedHistory`
+- Endpoint: `PATCH /conversations/:id/read`
+- Body: `{ messageId }`
 
-### 8. Mark as read
+Flow backend:
 
-Endpoint:
+1. check message có thuộc conversation không
+2. chặn mark read lùi về message cũ hơn
+3. set `readReceipts[userId] = messageId`
+4. xóa unseen conversation trong Redis cho user đó
 
-- `PATCH /conversations/:id/read`
+## Luồng Messages
 
-Body:
+Controller: `src/modules/messages/messages.controller.ts:22`
 
-- `messageId`
+### 1. Get messages list
 
-Flow:
+- Endpoint: `GET /conversations/:conversationId/message?cursor=...`
 
-1. check conversation tồn tại
-2. check message tồn tại và thuộc đúng conversation
-3. check user là member của conversation
-4. lấy `lastReadMessageId` hiện tại từ `readReceipts[userId]`
-5. nếu request đang lùi về message cũ hơn mốc đã đọc thì reject
-6. nếu hợp lệ thì:
+Behavior thực tế:
+
+- có hỗ trợ `cursor`, nhưng `cursor` là ngày giờ parse được chứ không phải opaque cursor id
+- limit cố định `20` bản ghi
+- sort `createdAt desc`
+- nếu user từng hide room thì chỉ lấy message từ `hiddenAt` trở đi
+- response hiện tại là trực tiếp `Message[]`
+
+Lưu ý:
+
+- backend hiện không trả `{ messages, nextCursor }`
+
+### 2. Get latest message
+
+- Endpoint: `GET /conversations/:conversationId/latest-message`
+- lấy từ `conversation.lastMessageId`
+
+### 3. Send message qua HTTP
+
+Các endpoint:
+
+- Text: `POST /conversations/:conversationId/message/text`
+- Image: `POST /conversations/:conversationId/message/image`
+- Video: `POST /conversations/:conversationId/message/video`
+- File: `POST /conversations/:conversationId/message/file`
+- Voice: `POST /conversations/:conversationId/message/voice`
+
+Notes:
+
+- media endpoints dùng `form-data` field `file`
+- body có thể kèm `replyTo`
+- image upload lên Cloudinary
+- video/file/voice upload lên R2
+- khi tạo message thành công backend sẽ:
+  - update `lastMessageId`
+  - restore room cho các user đang hidden nếu có
+  - set unseen conversation cho member online khác
+  - emit `chat:new-message`
+
+### 4. Reaction
+
+- Thêm hoặc update reaction: `PATCH /messages/:messageId/reaction`
+  - body `{ conversationId, type }`
+- Xóa reaction: `DELETE /messages/:messageId/reaction`
+  - body `{ conversationId }`
+
+Lưu ý:
+
+- backend không emit event riêng kiểu `message:reaction-updated`
+- reaction update đi chung qua event `message:updated`
+
+### 5. Update/Delete message
+
+Phần này hiện không có HTTP endpoint, mà đi qua socket:
+
+- sửa nội dung text message: event `chat:update-message`
+- thu hồi tin nhắn: event `chat:delete-message`
+
+Rule:
+
+- chỉ owner của message mới sửa/xóa mềm được
+- chỉ sửa được message `TEXT`
+- message bị xóa mềm sẽ set `isDeleted = true`
+
+## Luồng Presence
+
+Controller: `src/modules/presence/presence.controller.ts:5`
+
+- Endpoint: `POST /presence/users-online`
+- Body: `{ userIds: string[] }`
+- dùng để hỏi nhanh user nào đang online theo Redis presence
+
+## Luồng Realtime Socket
+
+Gateway: `src/modules/realtime/chat.gateway.ts:48`
+
+### 1. Connection
+
+Socket connect bằng access token:
 
 ```ts
-readReceipts[userId] = messageId;
+const socket = io('URL_SERVER', {
+  auth: { token: accessToken },
+});
 ```
 
-Rule nghiệp vụ:
+Flow backend:
 
-- cho phép mark tới message mới nhất mà client đang có
-- không bắt buộc phải bằng `conversation.lastMessageId`
-- chặn read lùi
+1. verify JWT access token
+2. check user tồn tại
+3. check `tokenVersion`
+4. check session tồn tại, đúng owner, chưa revoke
+5. join room cá nhân `user:{id}`
+6. set presence Redis
+7. emit `user:online` tới các room conversation liên quan
 
-### 9. Update last message and restore conversation
+### 2. Heartbeat
 
-Method service:
+Event:
 
-- `updateLastMessageAndRestoreConversation(conversationId, messageId)`
+- emit: `user:heartbeat`
 
-Ý nghĩa:
+Behavior thực tế:
 
-- dùng sau khi tạo message mới
+- Redis presence TTL đang là `120s`
+- client nên gửi heartbeat định kỳ để giữ online
 
-Flow:
+### 3. Join conversation room
 
-1. update `lastMessageId`
-2. restore tất cả record `deletedHistory` đang `isDeleted = true`
+Event:
 
-Rule nghiệp vụ:
+- emit: `chat:join-conversation`
 
-- chỉ restore user đã hide conversation
-- user nào đã bị remove khỏi group thì không còn record để restore nữa
+Ack trả về:
 
-## Luồng Messages & Socket/Realtime
+```ts
+{
+  ok: true,
+  data: {
+    conversationId,
+    roomName,
+    joined: true,
+    membersOnline,
+  },
+}
+```
 
-### 1. Connection (Socket Auth)
+### 4. Create text message qua socket
 
-Flow:
-1. Client connect gửi kèm `auth.token` (Access Token).
-2. Server verify JWT token.
-3. Nếu hợp lệ:
-    - Gắn `user` vào `client.data`.
-    - Join user vào room cá nhân `user_room_${userId}`.
-    - Đánh dấu online (`setPresence`) trong Redis.
-    - Lấy danh sách các conversation của user.
-    - Broadcast event `user:online` tới tất cả conversation rooms mà user đang tham gia.
+Event:
 
-### 2. Disconnect & Heartbeat
+- emit: `chat:create-message`
 
-- **Heartbeat (`user:heartbeat`)**: Client định kỳ gửi event để duy trì trạng thái online trong Redis.
-- **Disconnect**: Khi user ngắt kết nối (hoặc TTL trong Redis hết hạn do mất heartbeat), hệ thống sẽ broadcast event `user:offline` tới tất cả các conversation rooms.
+Lưu ý:
 
-### 3. Join Conversation Room
+- tài liệu cũ ghi "socket chỉ notify" không còn đúng hoàn toàn
+- hiện tại socket vẫn tạo được text message
+- HTTP API và socket cùng dùng chung service tạo message
 
-Event: `chat:join-conversation`
+### 5. Typing
 
-Flow:
-1. Nhận `conversationId` từ client.
-2. Kiểm tra user có quyền truy cập (có nằm trong conversation không).
-3. Join socket vào `conversation_room_${conversationId}`.
-4. Lấy và trả về danh sách các thành viên đang online trong conversation đó.
+Events:
 
-### 4. Create Message & Realtime Broadcast
+- emit: `chat:typing-start`
+- emit: `chat:typing-stop`
+- listen: `user:typing-update`
 
-Event: `chat:create-message`
+Typing state được lưu Redis theo từng socket, TTL `4s`.
 
-Flow:
-1. Nhận `conversationId`, `type`, `content`, `replyTo`.
-2. Lưu message mới vào DB thông qua `MessagesService`.
-    - Đồng thời update `lastMessageId` và restore `deletedHistory` (nếu có user từng ẩn conversation).
-3. Broadcast event `chat:new-message` tới `conversation_room_${conversationId}`.
-4. Lấy danh sách các thành viên trong conversation (loại trừ sender).
-5. Tính toán thành viên nào đang online.
-6. Với các thành viên online, set/increment số lượng message chưa đọc (`unseen`) trong Redis.
-7. Emit event `user:unseen-message` tới room cá nhân `user_room_${memberId}` của các thành viên nhận tin nhắn để báo có tin nhắn mới.
+### 6. Mark read qua socket
 
-### 5. Typing Indicators
+Events:
 
-Events: `chat:typing-start`, `chat:typing-stop`
+- emit: `chat:mark-read`
+- listen: `user:mark-read`
+- listen thêm cho chính user: `user:unseen-cleared`
 
-Flow:
-1. Nhận `conversationId`.
-2. Kiểm tra quyền truy cập conversation của user.
-3. Cập nhật trạng thái typing vào Redis.
-4. Broadcast event `user:typing-update` với `typing: true/false` tới `conversation_room_${conversationId}`.
+### 7. Delete/Update message qua socket
 
-Rule nghiệp vụ:
-- Hệ thống hỗ trợ đếm số tab/trình duyệt đang typing của cùng 1 user (thông qua `clientId`), chỉ broadcast `typing: true` khi có socket đầu tiên gõ, và `typing: false` khi tất cả socket đều ngừng gõ.
+Events:
+
+- emit: `chat:delete-message`
+- listen: `chat:message-deleted`
+- emit: `chat:update-message`
+- listen: `message:updated`
+
+### 8. Các realtime event khác đang có
+
+- `chat:new-message`
+- `user:unseen-message`
+- `user:online`
+- `user:offline`
+- `conversation:group-created`
+- `conversation:member-added`
+- `conversation:member-removed`
+- `conversation:disbanded`
+- `conversation:restored`
+- `conversation:name-changed`
+- `conversation:admin-changed`
+
+## Kết luận ngắn
+
+Các chỗ lệch lớn nhất so với tài liệu cũ là:
+
+- file cũ bị lỗi encoding
+- `GET messages` không trả `nextCursor`
+- socket không chỉ notify, vẫn tạo được text message
+- reaction update đi qua `message:updated`
+- có thêm flow presence, update message, soft delete message
+- `delete user` đã được thay bằng flow `disable/enable user` để tránh vỡ dữ liệu chat

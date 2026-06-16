@@ -25,6 +25,9 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
         if (user.isActive === false) {
             throw new BadRequestException('User is not active');
         }
+        if (user.isDisabled === true) {
+            throw new BadRequestException('User has been disabled');
+        }
         return user;
     }
 }

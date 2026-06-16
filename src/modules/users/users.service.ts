@@ -31,7 +31,7 @@ import {
 import * as fs from 'fs';
 import * as path from 'path';
 import handlebars from 'handlebars';
-import { UserResponse } from './types/user';
+import { UserDisableStateResponse, UserResponse } from './types/user';
 import { MediaService } from '../media/media.service';
 import {
     MEDIA_CONSTANTS,
@@ -40,6 +40,7 @@ import {
 import { Media } from '../media/schemas/media.schema';
 import { OwnerTypeEnum } from '../media/types/media';
 import { serializeMedia } from '../media/utils/media.serializer';
+import { SessionService } from '../session/session.service';
 
 @Injectable()
 export class UsersService {
@@ -49,6 +50,7 @@ export class UsersService {
         private configService: ConfigService,
         private readonly redisService: RedisService,
         private readonly mediaService: MediaService,
+        private readonly sessionService: SessionService,
     ) {}
 
     /**
@@ -172,6 +174,50 @@ export class UsersService {
     }
 
     /**
+     * Helper chuyển trạng thái disable/enable và xử lý session liên quan.
+     */
+    private async setDisabledState(
+        userId: string,
+        isDisabled: boolean,
+    ): Promise<UserDisableStateResponse> {
+        validateObjectId(userId, 'user id');
+        const user = await this.userModel.findById(userId);
+        if (!user) {
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
+        }
+
+        if (isDisabled && user.isDisabled) {
+            throw new BadRequestException(USER_MESSAGES.USER_ALREADY_DISABLED);
+        }
+
+        if (!isDisabled && !user.isDisabled) {
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_DISABLED);
+        }
+
+        user.isDisabled = isDisabled;
+        user.disabledAt = isDisabled ? new Date() : undefined;
+
+        if (isDisabled) {
+            user.tokenVersion += 1;
+        }
+
+        await user.save();
+
+        if (isDisabled) {
+            await this.sessionService.revokeAllByUserId(userId);
+            return {
+                message: USER_MESSAGES.DISABLE_SUCCESS,
+                isDisabled: true,
+            };
+        }
+
+        return {
+            message: USER_MESSAGES.ENABLE_SUCCESS,
+            isDisabled: false,
+        };
+    }
+
+    /**
      * Cập nhật thông tin user. Chỉ user chính chủ hoặc Admin mới được phép update.
      */
     async update(
@@ -209,15 +255,33 @@ export class UsersService {
     }
 
     /**
-     * Xóa hoàn toàn một user khỏi Database.
+     * Vô hiệu hóa chính tài khoản của mình.
      */
-    async deleteUser(id: string) {
-        validateObjectId(id, 'user id');
-        const result = await this.userModel.deleteOne({ _id: id });
-        if (result.deletedCount > 0) {
-            return `Deleted user successfully`;
+    async disableSelf(userId: string): Promise<UserDisableStateResponse> {
+        return this.setDisabledState(userId, true);
+    }
+
+    /**
+     * Vô hiệu hóa tài khoản của người khác bởi Admin.
+     */
+    async disableUserByAdmin(
+        userId: string,
+    ): Promise<UserDisableStateResponse> {
+        return this.setDisabledState(userId, true);
+    }
+
+    /**
+     * Kích hoạt lại tài khoản đã bị vô hiệu hóa bởi Admin.
+     */
+    async enableUserByAdmin(
+        userId: string,
+        currentUserId: string,
+    ): Promise<UserDisableStateResponse> {
+        validateObjectId(currentUserId, 'current user id');
+        if (userId === currentUserId) {
+            throw new BadRequestException(USER_MESSAGES.CANNOT_ENABLE_SELF);
         }
-        throw new BadRequestException(USER_MESSAGES.DELETE_FAILED);
+        return this.setDisabledState(userId, false);
     }
 
     /**
@@ -249,9 +313,12 @@ export class UsersService {
     async activateUser(email: string, code: string) {
         const user = await this.userModel
             .findOne({ email })
-            .select('_id isActive email');
+            .select('_id isActive isDisabled email');
         if (!user) {
             throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
+        }
+        if (user.isDisabled) {
+            throw new BadRequestException(USER_MESSAGES.USER_DISABLED);
         }
         if (user.isActive) {
             throw new BadRequestException(USER_MESSAGES.USER_ALREADY_ACTIVE);
@@ -295,10 +362,13 @@ export class UsersService {
     async reSendCodeActive(email: string) {
         const user = await this.userModel
             .findOne({ email })
-            .select('_id isActive email')
+            .select('_id isActive isDisabled email')
             .lean();
         if (!user) {
             throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
+        }
+        if (user.isDisabled === true) {
+            throw new BadRequestException(USER_MESSAGES.USER_DISABLED);
         }
         if (user.isActive === true) {
             throw new BadRequestException(USER_MESSAGES.USER_ALREADY_ACTIVE);
@@ -350,10 +420,13 @@ export class UsersService {
     async sendMailForgotPassword(email: string) {
         const user = await this.userModel
             .findOne({ email })
-            .select('_id')
+            .select('_id isDisabled')
             .lean();
         if (!user) {
             throw new BadRequestException(USER_MESSAGES.EMAIL_NOT_FOUND);
+        }
+        if (user.isDisabled) {
+            throw new BadRequestException(USER_MESSAGES.USER_DISABLED);
         }
 
         await this.checkMailCooldownRedis(
@@ -390,9 +463,12 @@ export class UsersService {
     async resetPassword(email: string, code: string, password: string) {
         const user = await this.userModel
             .findOne({ email })
-            .select('_id password');
+            .select('_id password isDisabled');
         if (!user) {
             throw new BadRequestException(USER_MESSAGES.EMAIL_NOT_FOUND);
+        }
+        if (user.isDisabled) {
+            throw new BadRequestException(USER_MESSAGES.USER_DISABLED);
         }
 
         await this.verifyCodeWithRedis(
@@ -542,6 +618,7 @@ export class UsersService {
     async countUserIdsExist(objectUserIds: Types.ObjectId[]) {
         return await this.userModel.countDocuments({
             _id: { $in: objectUserIds },
+            isDisabled: false,
         });
     }
 

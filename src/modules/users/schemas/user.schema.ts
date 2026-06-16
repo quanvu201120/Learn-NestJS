@@ -32,6 +32,12 @@ export class User {
     @Prop({ default: false })
     isActive: boolean;
 
+    @Prop({ default: false })
+    isDisabled: boolean;
+
+    @Prop()
+    disabledAt?: Date;
+
     @Prop({ default: 0 })
     tokenVersion: number;
 

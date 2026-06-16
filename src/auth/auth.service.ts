@@ -135,6 +135,10 @@ export class AuthService {
             if (!user) {
                 throw new UnauthorizedException(AUTH_MESSAGES.USER_NOT_FOUND);
             }
+            if (user.isDisabled) {
+                await this.sessionService.revokeAllByUserId(payload._id);
+                throw new UnauthorizedException(AUTH_MESSAGES.USER_DISABLED);
+            }
 
             if (payload.tokenVersion !== user.tokenVersion) {
                 await this.sessionService.revokeAllByUserId(payload._id);
@@ -258,6 +262,9 @@ export class AuthService {
             const user = await this.usersService.findOne(userId);
             if (!user) {
                 throw new UnauthorizedException(AUTH_MESSAGES.USER_NOT_FOUND);
+            }
+            if (user.isDisabled) {
+                throw new UnauthorizedException(AUTH_MESSAGES.USER_DISABLED);
             }
             user.tokenVersion += 1;
             await user.save();

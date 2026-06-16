@@ -24,6 +24,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     async validate(payload: any) {
         const user = await this.usersService.findOne(payload._id);
         if (!user) throw new UnauthorizedException('User not found');
+        if (user.isDisabled) {
+            throw new UnauthorizedException('User has been disabled');
+        }
 
         if (payload.tokenVersion !== user.tokenVersion) {
             throw new UnauthorizedException('Token version invalid');

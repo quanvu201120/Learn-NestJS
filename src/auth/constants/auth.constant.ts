@@ -2,6 +2,7 @@ export const AUTH_MESSAGES = {
     LOGIN_FAILED: 'Login failed!',
     REFRESH_TOKEN_NOT_FOUND: 'Refresh Token not found',
     USER_NOT_FOUND: 'User not found',
+    USER_DISABLED: 'User has been disabled',
     INVALID_TOKEN: 'Invalid token',
     SESSION_NOT_FOUND: 'Session not found',
     SESSION_REVOKED: 'Session revoked',

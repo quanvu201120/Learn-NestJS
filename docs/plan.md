@@ -2,36 +2,22 @@
 
 Dựa trên cấu trúc app và các tính năng đã hoàn thiện, dưới đây là các tính năng nên được ưu tiên phát triển để hệ thống hoàn chỉnh hơn:
 
-1. **Quản lý File & Media (Attachments)**
-    - Hỗ trợ gửi hình ảnh, video, tài liệu qua tin nhắn.
-    - Tích hợp Cloud Storage (như AWS S3, Cloudinary hoặc MinIO) thay vì lưu local để dễ scale.
-
-2. **Message Actions Nâng cao**
-    - message create media r2: video, file
-
-3. Conversation disban group
-    - delete all media
-
-4. **Push Notifications (Thông báo nền)**
+2. **Push Notifications (Thông báo nền)**
     - Tích hợp Firebase Cloud Messaging (FCM) hoặc Web Push.
     - Đảm bảo user nhận được thông báo tin nhắn mới ngay cả khi offline hoặc đóng trình duyệt.
 
-5. **Tối ưu Hiệu suất & Scale (Performance)**
+3. **Tối ưu Hiệu suất & Scale (Performance)**
     - **Redis Adapter**: Cài đặt `@socket.io/redis-adapter` để hỗ trợ chạy multi-instance (khi deploy qua Docker Swarm / K8s).
-
-####### 6. Tính năng đã có lõi Backend nhưng chưa có trên Frontend (Test UI)
-Media:
-user, convert avatar: upload delete
-message: create message image cloudinary,
-
-- **Đổi tên & Avatar nhóm**: BE đã có API `PATCH /conversations/:id/update-name-conversation` nhưng FE chưa có UI gọi.
-- **Chuyển quyền Admin**: BE đã có API `PATCH /conversations/:id/change-admin` nhưng FE chưa có UI gọi.
-- **Thu hồi tin nhắn**: BE đã có lõi xử lý `MessagesService.softDeleteMessage` nhưng chưa mở Endpoint API/Socket, và FE có sẵn nút Delete nhưng bấm sẽ không chạy vì Gateway chưa hứng event.
-- **Get Latest Message API**: BE có API `/latest-message` nhưng FE chưa dùng (hiện đang lấy từ mảng messages load về).
 
 #### XONG **\*\***\*\***\*\***\*\***\*\***\*\***\*\***\*\*\*\***\*\***\*\***\*\***\*\***\*\***\*\***\*\***
 
-    upload delete avatar user
+- **Message Actions Nâng cao**
+    - message create media r2: video, file, audio voice
+    - cloudinary: image
+
+Conversation disban group - delete all media
+
+upload avatar: user, conversation
 
 - Pagination: Áp dụng cursor-based pagination cho API load tin nhắn để hỗ trợ Infinite Scroll, thay vì load toàn bộ.
 - Thả cảm xúc (Reactions) cho tin nhắn.

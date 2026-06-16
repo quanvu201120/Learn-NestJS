@@ -96,6 +96,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             if (!user) {
                 throw new UnauthorizedException(USER_MESSAGES.USER_NOT_FOUND);
             }
+            if (user.isDisabled) {
+                throw new UnauthorizedException(AUTH_MESSAGES.USER_DISABLED);
+            }
             if (payload.tokenVersion !== user.tokenVersion) {
                 throw new UnauthorizedException(
                     AUTH_MESSAGES.TOKEN_VERSION_MISMATCH,
@@ -733,6 +736,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         if (!user) {
             client.disconnect();
             throw new UnauthorizedException(USER_MESSAGES.USER_NOT_FOUND);
+        }
+        if (user.isDisabled) {
+            client.disconnect();
+            throw new UnauthorizedException(AUTH_MESSAGES.USER_DISABLED);
         }
 
         if (payload.tokenVersion !== user.tokenVersion) {

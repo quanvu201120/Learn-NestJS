@@ -11,6 +11,7 @@ import {
     Query,
     UseGuards,
     Request,
+    Res,
     UseInterceptors,
     UploadedFile,
     ParseFilePipe,
@@ -19,18 +20,23 @@ import {
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
-import { DeleteUserDto } from './dto/delete-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Roles } from '@/utils/decorator-customize';
 import { RolesGuard } from '@/auth/passport/roles.guard';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
+import * as express from 'express';
+import { ConfigService } from '@nestjs/config';
+import { UserDisableStateResponse } from './types/user';
 
 @ApiTags('Users - Quản lý người dùng')
 @ApiBearerAuth('JWT-auth')
 @Controller('users')
 export class UsersController {
-    constructor(private readonly usersService: UsersService) {}
+    constructor(
+        private readonly usersService: UsersService,
+        private readonly configService: ConfigService,
+    ) {}
 
     @Post()
     @Roles('ADMIN')
@@ -71,6 +77,7 @@ export class UsersController {
             req.user.role,
         );
     }
+
     @Patch('avatar')
     @UseInterceptors(FileInterceptor('file'))
     @ApiOperation({ summary: 'Cập nhật ảnh đại diện của người dùng' })
@@ -95,9 +102,38 @@ export class UsersController {
         return this.usersService.deleteAvatar(req.user._id);
     }
 
-    @Delete(':id')
-    @ApiOperation({ summary: 'Xóa người dùng theo ID' })
-    remove(@Param() deleteDto: DeleteUserDto) {
-        return this.usersService.deleteUser(deleteDto.id);
+    @Patch('me/disable')
+    @ApiOperation({ summary: 'Người dùng tự vô hiệu hóa tài khoản của mình' })
+    async disableSelf(
+        @Request() req,
+        @Res({ passthrough: true }) response: express.Response,
+    ): Promise<UserDisableStateResponse> {
+        response.clearCookie('refreshToken', {
+            httpOnly: true,
+            secure:
+                this.configService.get<string>('NODE_ENV') === 'production',
+            sameSite: 'lax',
+            maxAge: 0,
+        });
+        return this.usersService.disableSelf(req.user._id);
+    }
+
+    @Patch(':id/disable')
+    @Roles('ADMIN')
+    @UseGuards(RolesGuard)
+    @ApiOperation({ summary: 'ADMIN vô hiệu hóa tài khoản user' })
+    disableUser(@Param('id') id: string): Promise<UserDisableStateResponse> {
+        return this.usersService.disableUserByAdmin(id);
+    }
+
+    @Patch(':id/enable')
+    @Roles('ADMIN')
+    @UseGuards(RolesGuard)
+    @ApiOperation({ summary: 'ADMIN gỡ trạng thái vô hiệu hóa user' })
+    enableUser(
+        @Param('id') id: string,
+        @Request() req,
+    ): Promise<UserDisableStateResponse> {
+        return this.usersService.enableUserByAdmin(id, req.user._id);
     }
 }
