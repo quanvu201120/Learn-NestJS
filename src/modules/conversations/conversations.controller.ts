@@ -119,7 +119,10 @@ export class ConversationsController {
             req.user._id,
             readMessageDto.messageId,
         );
-        await this.redisService.removeUnseenConversation(req.user._id, id);
+        await this.redisService.removeUnseenConversationWithCleanup(
+            req.user._id,
+            id,
+        );
         return result;
     }
 

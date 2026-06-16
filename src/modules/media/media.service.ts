@@ -1,7 +1,13 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import { BadRequestException, Injectable, OnModuleInit } from '@nestjs/common';
+import {
+    BadRequestException,
+    forwardRef,
+    Inject,
+    Injectable,
+    OnModuleInit,
+} from '@nestjs/common';
 import { CloudinaryService } from './providers/cloudinary.service';
 import { R2Service } from './providers/r2.service';
 import { Media, MediaDocument } from './schemas/media.schema';
@@ -14,6 +20,19 @@ import {
     OwnerTypeEnum,
 } from './types/media';
 import { toObjectId } from '@/utils/utils';
+import { CleanupJobsService } from '../cleanup-jobs/cleanup-jobs.service';
+import { CreateCleanupJobDto } from '../cleanup-jobs/dto/create-cleanup-job.dto';
+import {
+    CleanupJobActionEnum,
+    CleanupJobEntityEnum,
+    CleanupJobResourceEnum,
+} from '../cleanup-jobs/types/cleanup-job';
+
+type MediaCleanupContext = {
+    resourceType: CleanupJobResourceEnum;
+    entityType: CleanupJobEntityEnum;
+    entityId?: string;
+};
 
 @Injectable()
 export class MediaService implements OnModuleInit {
@@ -21,6 +40,8 @@ export class MediaService implements OnModuleInit {
         @InjectModel(Media.name) private mediaModel: Model<MediaDocument>,
         private readonly cloudinaryService: CloudinaryService,
         private readonly r2Service: R2Service,
+        @Inject(forwardRef(() => CleanupJobsService))
+        private readonly cleanupJobsService: CleanupJobsService,
     ) {}
 
     async onModuleInit() {
@@ -133,15 +154,57 @@ export class MediaService implements OnModuleInit {
     /**
      * Xóa một ảnh trên Cloudinary theo `publicId`.
      */
-    async deleteImageFromCloudinary(publicId: string) {
+    private async deleteImageFromCloudinary(publicId: string) {
         return await this.cloudinaryService.deleteResource(publicId);
+    }
+
+    async deleteImageFromCloudinaryWithCleanup(
+        publicId: string,
+        cleanup: MediaCleanupContext,
+    ) {
+        try {
+            return await this.deleteImageFromCloudinary(publicId);
+        } catch (error) {
+            await this.createCleanupJob({
+                resourceType: cleanup.resourceType,
+                action: CleanupJobActionEnum.CLOUDINARY_DELETE_ONE,
+                entityType: cleanup.entityType,
+                entityId: cleanup.entityId,
+                payload: {
+                    publicId,
+                },
+                error: (error as Error)?.message,
+            });
+            return null;
+        }
     }
 
     /**
      * Xóa nhiều ảnh trên Cloudinary theo dạng batch.
      */
-    async deleteImagesFromCloudinary(publicIds: string[]) {
+    private async deleteImagesFromCloudinary(publicIds: string[]) {
         return await this.cloudinaryService.deleteResources(publicIds);
+    }
+
+    async deleteImagesFromCloudinaryWithCleanup(
+        publicIds: string[],
+        cleanup: MediaCleanupContext,
+    ) {
+        try {
+            return await this.deleteImagesFromCloudinary(publicIds);
+        } catch (error) {
+            await this.createCleanupJob({
+                resourceType: cleanup.resourceType,
+                action: CleanupJobActionEnum.CLOUDINARY_DELETE_MANY,
+                entityType: cleanup.entityType,
+                entityId: cleanup.entityId,
+                payload: {
+                    publicIds,
+                },
+                error: (error as Error)?.message,
+            });
+            return null;
+        }
     }
 
     /**
@@ -176,15 +239,57 @@ export class MediaService implements OnModuleInit {
     /**
      * Xóa một file trên R2 theo `objectKey`.
      */
-    async deleteFileFromR2(objectKey: string) {
+    private async deleteFileFromR2(objectKey: string) {
         return await this.r2Service.deleteObject(objectKey);
+    }
+
+    async deleteFileFromR2WithCleanup(
+        objectKey: string,
+        cleanup: MediaCleanupContext,
+    ) {
+        try {
+            return await this.deleteFileFromR2(objectKey);
+        } catch (error) {
+            await this.createCleanupJob({
+                resourceType: cleanup.resourceType,
+                action: CleanupJobActionEnum.R2_DELETE_ONE,
+                entityType: cleanup.entityType,
+                entityId: cleanup.entityId,
+                payload: {
+                    objectKey,
+                },
+                error: (error as Error)?.message,
+            });
+            return null;
+        }
     }
 
     /**
      * Xóa nhiều file trên R2 theo danh sách `objectKey`.
      */
-    async deleteFilesFromR2(objectKeys: string[]) {
+    private async deleteFilesFromR2(objectKeys: string[]) {
         return await this.r2Service.deleteObjects(objectKeys);
+    }
+
+    async deleteFilesFromR2WithCleanup(
+        objectKeys: string[],
+        cleanup: MediaCleanupContext,
+    ) {
+        try {
+            return await this.deleteFilesFromR2(objectKeys);
+        } catch (error) {
+            await this.createCleanupJob({
+                resourceType: cleanup.resourceType,
+                action: CleanupJobActionEnum.R2_DELETE_MANY,
+                entityType: cleanup.entityType,
+                entityId: cleanup.entityId,
+                payload: {
+                    objectKeys,
+                },
+                error: (error as Error)?.message,
+            });
+            return null;
+        }
     }
 
     /**
@@ -227,5 +332,13 @@ export class MediaService implements OnModuleInit {
             },
         );
         return { listPublicId, listObjectKey };
+    }
+
+    private async createCleanupJob(createDto: CreateCleanupJobDto) {
+        try {
+            await this.cleanupJobsService.createCleanupJob(createDto);
+        } catch (error) {
+            console.error('Failed to create cleanup job: ', error);
+        }
     }
 }

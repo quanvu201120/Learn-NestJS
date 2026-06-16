@@ -41,6 +41,10 @@ import { Media } from '../media/schemas/media.schema';
 import { OwnerTypeEnum } from '../media/types/media';
 import { serializeMedia } from '../media/utils/media.serializer';
 import { SessionService } from '../session/session.service';
+import {
+    CleanupJobEntityEnum,
+    CleanupJobResourceEnum,
+} from '../cleanup-jobs/types/cleanup-job';
 
 @Injectable()
 export class UsersService {
@@ -204,7 +208,7 @@ export class UsersService {
         await user.save();
 
         if (isDisabled) {
-            await this.sessionService.revokeAllByUserId(userId);
+            await this.sessionService.revokeAllByUserIdWithCleanup(userId);
             return {
                 message: USER_MESSAGES.DISABLE_SUCCESS,
                 isDisabled: true,
@@ -710,7 +714,11 @@ export class UsersService {
             isUpdatedUser = true;
             if (avatarOld?.publicId) {
                 await this.mediaService
-                    .deleteImageFromCloudinary(avatarOld.publicId)
+                    .deleteImageFromCloudinaryWithCleanup(avatarOld.publicId, {
+                        entityId: user._id.toString(),
+                        entityType: CleanupJobEntityEnum.USER,
+                        resourceType: CleanupJobResourceEnum.USER_AVATAR,
+                    })
                     .catch((error) => {
                         console.error('Failed to delete old avatar:', error);
                     });
@@ -719,7 +727,14 @@ export class UsersService {
         } catch (error) {
             if (uploadedAvatar && uploadedAvatar.publicId && !isUpdatedUser) {
                 await this.mediaService
-                    .deleteImageFromCloudinary(uploadedAvatar.publicId)
+                    .deleteImageFromCloudinaryWithCleanup(
+                        uploadedAvatar.publicId,
+                        {
+                            entityId: objectUserId.toString(),
+                            entityType: CleanupJobEntityEnum.USER,
+                            resourceType: CleanupJobResourceEnum.USER_AVATAR,
+                        },
+                    )
                     .catch((cleanupError) => {
                         console.error(
                             'Failed to cleanup uploaded avatar:',
@@ -794,7 +809,11 @@ export class UsersService {
             }
             if (avatarOld?.publicId) {
                 await this.mediaService
-                    .deleteImageFromCloudinary(avatarOld.publicId)
+                    .deleteImageFromCloudinaryWithCleanup(avatarOld.publicId, {
+                        entityId: objectUserId.toString(),
+                        entityType: CleanupJobEntityEnum.USER,
+                        resourceType: CleanupJobResourceEnum.USER_AVATAR,
+                    })
                     .catch((error) => {
                         console.error('Failed to delete old avatar:', error);
                     });

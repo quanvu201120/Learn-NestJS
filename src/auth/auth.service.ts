@@ -95,7 +95,10 @@ export class AuthService {
             };
         } catch (error) {
             if (sessionId) {
-                await this.sessionService.revoke(sessionId, user._id);
+                await this.sessionService.revokeWithCleanup(
+                    sessionId,
+                    user._id,
+                );
             }
             console.log(error);
 
@@ -136,12 +139,16 @@ export class AuthService {
                 throw new UnauthorizedException(AUTH_MESSAGES.USER_NOT_FOUND);
             }
             if (user.isDisabled) {
-                await this.sessionService.revokeAllByUserId(payload._id);
+                await this.sessionService.revokeAllByUserIdWithCleanup(
+                    payload._id,
+                );
                 throw new UnauthorizedException(AUTH_MESSAGES.USER_DISABLED);
             }
 
             if (payload.tokenVersion !== user.tokenVersion) {
-                await this.sessionService.revokeAllByUserId(payload._id);
+                await this.sessionService.revokeAllByUserIdWithCleanup(
+                    payload._id,
+                );
                 throw new UnauthorizedException(AUTH_MESSAGES.INVALID_TOKEN);
             }
 
@@ -160,7 +167,7 @@ export class AuthService {
             }
 
             if (session.expiresAt && session.expiresAt < new Date()) {
-                await this.sessionService.revoke(
+                await this.sessionService.revokeWithCleanup(
                     session._id.toString(),
                     payload._id,
                 );
@@ -204,7 +211,7 @@ export class AuthService {
                     const decoded: PayloadJWT =
                         this.jwtService.decode(refreshTokenOld);
                     if (decoded && decoded._id) {
-                        await this.sessionService.revoke(
+                        await this.sessionService.revokeWithCleanup(
                             decoded.sessionId,
                             decoded._id,
                         );
@@ -246,7 +253,10 @@ export class AuthService {
                 throw new UnauthorizedException(AUTH_MESSAGES.INVALID_TOKEN);
             }
 
-            await this.sessionService.revoke(payload.sessionId, userId);
+            await this.sessionService.revokeWithCleanup(
+                payload.sessionId,
+                userId,
+            );
             return null;
         } catch (error) {
             console.log(error);
@@ -268,7 +278,7 @@ export class AuthService {
             }
             user.tokenVersion += 1;
             await user.save();
-            await this.sessionService.revokeAllByUserId(userId);
+            await this.sessionService.revokeAllByUserIdWithCleanup(userId);
             return {
                 message: AUTH_MESSAGES.LOGOUT_ALL_SUCCESS,
             };

@@ -7,11 +7,12 @@ File này là bản đồ flow tổng thể của backend hiện tại để:
 - nhìn nhanh luồng app đang chạy theo code thật
 - giúp FE gọi đúng API, đúng event socket
 - tránh nhầm giữa behavior mong muốn và behavior đang implement
+- ghi lại các quy ước nội bộ dễ quên, đặc biệt là `cleanup-jobs`
 
 ## Tổng quan module
 
 - `auth`: đăng ký, kích hoạt tài khoản, login, refresh token, logout, logout all, đổi mật khẩu, quên mật khẩu
-- `users`: CRUD user cơ bản, cập nhật avatar user
+- `users`: CRUD user cơ bản, cập nhật avatar user, disable/enable user
 - `session`: lưu session đăng nhập cho access token và refresh token, không có controller public
 - `conversations`: tạo direct/group chat, đổi tên nhóm, thêm/xóa thành viên, rời nhóm, giải tán nhóm, đổi admin, ẩn lịch sử, mark as read, avatar nhóm
 - `messages`: gửi/lấy tin nhắn, reaction, sửa nội dung tin nhắn text, thu hồi tin nhắn
@@ -19,16 +20,17 @@ File này là bản đồ flow tổng thể của backend hiện tại để:
 - `presence`: API kiểm tra user nào đang online
 - `media`: layer upload media/avatar dùng nội bộ cho user, conversation, message
 - `redis`: OTP active/forgot password, cooldown gửi mail, presence, typing, unseen conversation
+- `cleanup-jobs`: lưu các job dọn dẹp thất bại để retry hoặc truy vết sau
 
 ## Guard mặc định
 
-App đang dùng `APP_GUARD` với `JwtAuthGuard` trong `src/app.module.ts:34`.
+App đang dùng `APP_GUARD` với `JwtAuthGuard` trong `src/app.module.ts`.
 
 - mọi API mặc định đều cần access token
 - chỉ route có `@Public()` mới không cần login
 - access token được truyền qua `Authorization: Bearer <token>`
 
-Flow validate access token trong `src/auth/passport/jwt.strategy.ts:23`:
+Flow validate access token trong `src/auth/passport/jwt.strategy.ts`:
 
 1. verify JWT access token
 2. lấy user theo `_id`
@@ -43,7 +45,7 @@ Flow validate access token trong `src/auth/passport/jwt.strategy.ts:23`:
 - `refreshToken` đi qua cookie `refreshToken` dạng `HttpOnly`, `sameSite=lax`
 - login tạo `session` mới trong MongoDB
 - session lưu `userId`, `refreshTokenHash`, `expiresAt`, `userAgent`, `deviceName`, `lastUsedAt`, `isRevoked`
-- `tokenVersion` nằm ở user, dùng để vô hiệu toàn bộ token cũ khi logout all devices
+- `tokenVersion` nằm ở user, dùng để vô hiệu toàn bộ token cũ khi logout all devices hoặc disable account
 
 ## Luồng Auth
 
@@ -53,13 +55,13 @@ Endpoint:
 
 - `POST /auth/register`
 
-Flow backend trong `src/auth/auth.controller.ts:144` và `src/modules/users/users.service.ts:53`:
+Flow backend:
 
 1. nhận `email`, `password`
 2. tạo user mới với:
-   - `isActive = false`
-   - `role = USER`
-   - `name = phần trước @ của email`
+    - `isActive = false`
+    - `role = USER`
+    - `name = phần trước @ của email`
 3. sinh activation code dạng `uuid`
 4. hash code rồi lưu Redis với TTL
 5. gửi mail kích hoạt
@@ -89,7 +91,7 @@ Flow backend:
 
 1. nhận `email`
 2. check user tồn tại và chưa active
-3. check cooldown Redis, hiện tại cooldown là `60s`
+3. check cooldown Redis, hiện tại là `60s`
 4. sinh code mới, lưu lại Redis, gửi mail
 5. response hiện tại là chuỗi `'OK'`
 
@@ -107,13 +109,14 @@ Flow backend:
 4. hash `refreshToken` rồi lưu vào session
 5. set cookie `refreshToken`
 6. trả:
-   - `accessToken`
-   - `user`
+    - `accessToken`
+    - `user`
 
 Lưu ý:
 
 - response hiện tại không trả `message`
 - FE không cần tự lưu refresh token
+- nếu có lỗi sau khi đã tạo session, backend sẽ cố `revokeWithCleanup`
 
 ### 5. Refresh token
 
@@ -131,12 +134,13 @@ Flow backend:
 6. rotate refresh token trong session
 7. set lại cookie `refreshToken`
 8. trả:
-   - `accessToken`
+    - `accessToken`
 
 Lưu ý:
 
 - response hiện tại chỉ trả `accessToken`
-- nếu refresh token đã hết hạn, service sẽ cố revoke session cũ
+- nếu refresh token đã hết hạn, service sẽ cố `revokeWithCleanup` session cũ từ payload decode được
+- nếu `tokenVersion` lệch hoặc user bị disable, service sẽ cố `revokeAllByUserIdWithCleanup`
 
 ### 6. Logout
 
@@ -148,12 +152,9 @@ Flow backend:
 
 1. route này cần access token
 2. backend cố đọc `refreshToken` từ cookie để revoke session hiện tại
-3. dù revoke thành công hay không vẫn clear cookie `refreshToken`
-4. trả message logout success
-
-Lưu ý:
-
-- nếu client không gửi cookie thì cookie vẫn bị clear, nhưng session có thể không được revoke
+3. dùng `revokeWithCleanup` để tránh mất dấu nếu revoke lỗi
+4. dù revoke thành công hay không vẫn clear cookie `refreshToken`
+5. trả message logout success
 
 ### 7. Logout all devices
 
@@ -165,7 +166,7 @@ Flow backend:
 
 1. cần access token
 2. tăng `tokenVersion` của user
-3. revoke toàn bộ session chưa revoke của user
+3. revoke toàn bộ session chưa revoke của user bằng `revokeAllByUserIdWithCleanup`
 4. clear cookie `refreshToken`
 5. trả message thành công
 
@@ -219,7 +220,7 @@ Lưu ý:
 
 ## Luồng Users
 
-Controller: `src/modules/users/users.controller.ts:25`
+Controller: `src/modules/users/users.controller.ts`
 
 ### 1. Create user
 
@@ -230,12 +231,12 @@ Controller: `src/modules/users/users.controller.ts:25`
 
 - Endpoint: `GET /users`
 - Query:
-  - `current`
-  - `pageSize`
-  - ngoài ra service còn parse filter/sort qua `api-query-params`
+    - `current`
+    - `pageSize`
+    - ngoài ra service còn parse filter/sort qua `api-query-params`
 - Response:
-  - `totalPages`
-  - `users`
+    - `totalPages`
+    - `users`
 
 ### 3. Get user detail
 
@@ -244,32 +245,40 @@ Controller: `src/modules/users/users.controller.ts:25`
 ### 4. Update user
 
 - Endpoint: `PATCH /users`
-- Rule thực tế trong `src/modules/users/users.service.ts:154`:
-  - `ADMIN` cập nhật được user bất kỳ
-  - user thường chỉ cập nhật được chính mình
-  - body phải có `_id`
+- Rule thực tế trong `UsersService`:
+    - `ADMIN` cập nhật được user bất kỳ
+    - user thường chỉ cập nhật được chính mình
+    - body phải có `_id`
 
 ### 5. Upload/Delete avatar user
 
 - `PATCH /users/avatar`
-  - form-data field `file`
-  - chỉ nhận ảnh, tối đa `5MB`
+    - form-data field `file`
+    - chỉ nhận ảnh, tối đa `5MB`
 - `DELETE /users/avatar`
+
+Flow cleanup liên quan:
+
+- nếu xóa file cũ trên Cloudinary lỗi sau khi DB đã commit, backend tạo `cleanup-job`
+- job này có:
+    - `resourceType = USER_AVATAR`
+    - `entityType = USER`
+    - `entityId = userId`
 
 ### 6. Disable/Enable user
 
 - User tự vô hiệu hóa:
-  - Endpoint: `PATCH /users/me/disable`
-  - một chiều, sau khi gọi xong backend sẽ:
-    - set `isDisabled = true`
-    - set `disabledAt`
-    - tăng `tokenVersion`
-    - revoke toàn bộ session
-    - clear cookie `refreshToken` ở request hiện tại
+    - Endpoint: `PATCH /users/me/disable`
+    - sau khi gọi xong backend sẽ:
+        - set `isDisabled = true`
+        - set `disabledAt`
+        - tăng `tokenVersion`
+        - revoke toàn bộ session bằng `revokeAllByUserIdWithCleanup`
+        - clear cookie `refreshToken`
 - Admin vô hiệu hóa user:
-  - Endpoint: `PATCH /users/:id/disable`
+    - Endpoint: `PATCH /users/:id/disable`
 - Admin gỡ trạng thái vô hiệu hóa:
-  - Endpoint: `PATCH /users/:id/enable`
+    - Endpoint: `PATCH /users/:id/enable`
 
 Rule:
 
@@ -278,35 +287,127 @@ Rule:
 - admin không enable chính mình qua endpoint admin
 - hệ thống giữ nguyên message, conversation, reaction cũ; không hard delete user nữa
 
-Gợi ý FE:
-
-- với hành động self-disable nên làm 2 bước xác nhận
-- có thể thêm countdown 5-10s trước nút confirm cuối
-- không cần email xác nhận vì backend xử lý theo access token hiện tại
-
 ## Luồng Session
 
 `session` hiện là persistence layer nội bộ, chưa có public API riêng.
 
-Các thao tác chính trong `src/modules/session/session.service.ts:17`:
+Các thao tác chính trong `src/modules/session/session.service.ts`:
 
 - `create`: tạo session mới lúc login
 - `rotateSession`: cập nhật refresh token hash và `expiresAt`
-- `revoke`: logout 1 session
-- `revokeAllByUserId`: logout tất cả session
+- `revokeWithCleanup`: logout 1 session, nếu revoke lỗi thì tạo `cleanup-job`
+- `revokeAllByUserIdWithCleanup`: logout tất cả session của user, nếu lỗi thì tạo `cleanup-job`
 
 Rule hiện tại:
 
 - `JwtStrategy` check session tồn tại và chưa revoke
 - socket write actions cũng re-check session qua `validateActiveSession`
 - khi disable account, service sẽ tăng `tokenVersion` và revoke toàn bộ session
-- document không thấy check `expiresAt` ở `JwtStrategy`, chỉ check khi refresh token và socket revalidation theo session existence/revoked
+- `expiresAt` được check rõ ở flow refresh token
+
+## Cleanup Jobs
+
+### 1. Mục đích
+
+`cleanup-jobs` dùng để lưu lại các tác vụ dọn dẹp bên ngoài DB khi thao tác chính đã xong nhưng bước cleanup bị lỗi, ví dụ:
+
+- xóa avatar cũ trên Cloudinary
+- xóa file trên R2
+- xóa unseen conversation trong Redis
+- revoke session khi cần thu hồi token
+
+### 2. Ý nghĩa của `entityType` và `entityId`
+
+Quy ước hiện tại:
+
+- `entityType` cho biết job này phát sinh từ thực thể nào
+- `entityId` là id của thực thể đó nếu tại thời điểm tạo job đã có id
+- `entityId` có thể vắng mặt nếu flow lỗi xảy ra trước khi thực thể được tạo xong
+
+Ví dụ:
+
+- avatar user bị lỗi cleanup:
+    - `entityType = USER`
+    - `entityId = userId`
+- avatar conversation bị lỗi cleanup:
+    - `entityType = CONVERSATION`
+    - `entityId = conversationId`
+- message upload lỗi trước khi message được persist:
+    - `entityType = MESSAGE`
+    - `entityId` có thể không có vì message chưa được tạo thành công
+
+### 3. Action và payload
+
+Các action hiện tại:
+
+- `CLOUDINARY_DELETE_ONE`
+- `CLOUDINARY_DELETE_MANY`
+- `R2_DELETE_ONE`
+- `R2_DELETE_MANY`
+- `REDIS_REMOVE_UNSEEN_ONE`
+- `REDIS_REMOVE_UNSEEN_MANY`
+- `SESSION_REVOKE`
+- `SESSION_REVOKE_ALL`
+
+Payload bắt buộc theo action:
+
+- `CLOUDINARY_DELETE_ONE`: `publicId`
+- `CLOUDINARY_DELETE_MANY`: `publicIds`
+- `R2_DELETE_ONE`: `objectKey`
+- `R2_DELETE_MANY`: `objectKeys`
+- `REDIS_REMOVE_UNSEEN_ONE`: `userId`, `conversationId`
+- `REDIS_REMOVE_UNSEEN_MANY`: `userIds`, `conversationId`
+- `SESSION_REVOKE`: `userId`, `sessionId`
+- `SESSION_REVOKE_ALL`: `userId`
+
+### 4. Resource type đang dùng
+
+- `USER_AVATAR`: cleanup avatar user
+- `CONVERSATION_AVATAR`: cleanup avatar conversation
+- `MESSAGE_MEDIA`: cleanup media phát sinh trong flow tạo message
+- `CONVERSATION_MEDIA`: cleanup toàn bộ media của conversation, ví dụ lúc giải tán nhóm
+- `UNSEEN_CONVERSATION`: cleanup cờ unseen trong Redis
+- `SESSION`: cleanup/revoke session
+
+### 5. Mapping hiện tại đã chốt
+
+- User avatar:
+    - `resourceType = USER_AVATAR`
+    - `entityType = USER`
+    - `entityId = userId`
+- Conversation avatar:
+    - `resourceType = CONVERSATION_AVATAR`
+    - `entityType = CONVERSATION`
+    - `entityId = conversationId`
+- Conversation media:
+    - `resourceType = CONVERSATION_MEDIA`
+    - `entityType = CONVERSATION`
+    - `entityId = conversationId`
+- Unseen conversation:
+    - `resourceType = UNSEEN_CONVERSATION`
+    - `entityType = CONVERSATION`
+    - `entityId = conversationId`
+- Session revoke:
+    - `resourceType = SESSION`
+    - `entityType = USER`
+    - `entityId = userId`
+    - `sessionId` nằm trong `payload`
+- Message media:
+    - `resourceType = MESSAGE_MEDIA`
+    - `entityType = MESSAGE`
+    - `entityId` có thể không có nếu message lỗi trước khi tạo xong
+
+### 6. Ghi chú quan trọng để khỏi quên
+
+- `entityType/entityId` không phải lúc nào cũng là “đối tượng bị xóa”
+- trong codebase hiện tại, nó được hiểu là “thực thể tạo ra cleanup job”
+- với `MESSAGE_MEDIA`, không có `entityId` vẫn là đúng ngữ cảnh nếu message chưa được persist
 
 ## Data model chat hiện tại
 
 ### Conversation
 
-Schema: `src/modules/conversations/schemas/conversation.schema.ts:7`
+Schema: `src/modules/conversations/schemas/conversation.schema.ts`
 
 Các field chính:
 
@@ -323,11 +424,11 @@ Các field chính:
 
 ```ts
 [
-  {
-    userId,
-    isHidden,
-    hiddenAt,
-  },
+    {
+        userId,
+        isHidden,
+        hiddenAt,
+    },
 ];
 ```
 
@@ -341,7 +442,7 @@ Các field chính:
 
 ### Message
 
-Schema: `src/modules/messages/schemas/message.schema.ts:5`
+Schema: `src/modules/messages/schemas/message.schema.ts`
 
 Các field chính:
 
@@ -357,9 +458,31 @@ Các field chính:
 
 `type` hiện có cả message hệ thống (`SYSTEM`), không chỉ text/media.
 
+### Media
+
+Schema: `src/modules/media/schemas/media.schema.ts`
+
+Các field chính:
+
+- `uploadedBy`
+- `ownerType`
+- `ownerId`
+- `provider`
+- `resourceType`
+- `publicId`
+- `objectKey`
+- `fileName`
+- `mimeType`
+- `size`
+
+Lưu ý:
+
+- media của avatar user có `ownerType = USER`
+- media của avatar conversation và message media hiện lưu với `ownerType = CONVERSATION`
+
 ## Luồng Conversations
 
-Controller: `src/modules/conversations/conversations.controller.ts:22`
+Controller: `src/modules/conversations/conversations.controller.ts`
 
 ### 1. Create conversation
 
@@ -374,13 +497,13 @@ Flow backend:
 3. group chat phải có ít nhất 3 user tính cả người tạo và bắt buộc có `name`
 4. validate toàn bộ user id có tồn tại
 5. nếu là direct chat đã tồn tại:
-   - nếu room đang bị ẩn bởi current user thì restore
-   - nếu không thì trả room cũ
+    - nếu room đang bị ẩn bởi current user thì restore
+    - nếu không thì trả room cũ
 6. nếu là direct chat mới:
-   - `hiddenHistory` mặc định sẽ set hidden cho người còn lại
+    - `hiddenHistory` mặc định sẽ set hidden cho người còn lại
 7. nếu là group mới:
-   - `adminGroupId = currentUserId`
-   - bắn realtime event `conversation:group-created`
+    - `adminGroupId = currentUserId`
+    - bắn realtime event `conversation:group-created`
 
 ### 2. Get conversations of current user
 
@@ -397,30 +520,48 @@ Flow backend:
 ### 4. Update group info
 
 - Đổi tên nhóm: `PATCH /conversations/:id/update-name`
-  - chỉ admin nhóm
+    - chỉ admin nhóm
 - Upload avatar nhóm: `PATCH /conversations/:id/avatar`
-  - form-data `file`, chỉ ảnh, tối đa `5MB`
-  - chỉ admin nhóm
+    - form-data `file`, chỉ ảnh, tối đa `5MB`
+    - chỉ admin nhóm
 - Delete avatar nhóm: `DELETE /conversations/:id/avatar`
-  - chỉ admin nhóm
+    - chỉ admin nhóm
 - Đổi admin: `PATCH /conversations/:conversationId/change-admin`
-  - body `{ newAdminId }`
-  - chỉ admin nhóm hiện tại
+    - body `{ newAdminId }`
+    - chỉ admin nhóm hiện tại
+
+Flow cleanup liên quan:
+
+- nếu xóa avatar cũ trên Cloudinary lỗi:
+    - `resourceType = CONVERSATION_AVATAR`
+    - `entityType = CONVERSATION`
+    - `entityId = conversationId`
 
 ### 5. Manage group members
 
 - Add members: `PATCH /conversations/:id/add-members`
-  - body `{ members: string[] }`
-  - chỉ admin nhóm
+    - body `{ members: string[] }`
+    - chỉ admin nhóm
 - Remove member: `PATCH /conversations/:id/remove-member`
-  - body `{ memberId }`
-  - chỉ admin nhóm, trừ trường hợp member tự rời
+    - body `{ memberId }`
+    - chỉ admin nhóm, trừ trường hợp member tự rời
 - Leave group: `DELETE /conversations/:id/leave-group`
-  - thực chất gọi chung logic remove member với `memberId = currentUserId`
-  - admin hiện tại không được tự leave group
+    - thực chất gọi chung logic remove member với `memberId = currentUserId`
+    - admin hiện tại không được tự leave group
 - Disband group: `DELETE /conversations/:id/disband-group`
-  - chỉ admin nhóm
-  - backend xóa message, media DB, cleanup file R2/Cloudinary rồi xóa conversation
+    - chỉ admin nhóm
+    - backend xóa message, media DB, cleanup file R2/Cloudinary rồi xóa conversation
+
+Flow cleanup liên quan khi giải tán nhóm:
+
+- Redis unseen cleanup:
+    - `resourceType = UNSEEN_CONVERSATION`
+    - `entityType = CONVERSATION`
+    - `entityId = conversationId`
+- Media cleanup:
+    - `resourceType = CONVERSATION_MEDIA`
+    - `entityType = CONVERSATION`
+    - `entityId = conversationId`
 
 ### 6. Hide history
 
@@ -442,11 +583,11 @@ Flow backend:
 1. check message có thuộc conversation không
 2. chặn mark read lùi về message cũ hơn
 3. set `readReceipts[userId] = messageId`
-4. xóa unseen conversation trong Redis cho user đó
+4. xóa unseen conversation trong Redis cho user đó bằng `removeUnseenConversationWithCleanup`
 
 ## Luồng Messages
 
-Controller: `src/modules/messages/messages.controller.ts:22`
+Controller: `src/modules/messages/messages.controller.ts`
 
 ### 1. Get messages list
 
@@ -486,17 +627,36 @@ Notes:
 - image upload lên Cloudinary
 - video/file/voice upload lên R2
 - khi tạo message thành công backend sẽ:
-  - update `lastMessageId`
-  - restore room cho các user đang hidden nếu có
-  - set unseen conversation cho member online khác
-  - emit `chat:new-message`
+    - update `lastMessageId`
+    - restore room cho các user đang hidden nếu có
+    - set unseen conversation cho member online khác
+    - emit `chat:new-message`
+
+Flow cleanup liên quan:
+
+- nếu upload file thành công nhưng transaction tạo message lỗi:
+    - image:
+        - `resourceType = MESSAGE_MEDIA`
+        - `entityType = MESSAGE`
+        - `entityId` có thể không có
+        - action cleanup dùng `CLOUDINARY_DELETE_ONE`
+    - video/file/voice:
+        - `resourceType = MESSAGE_MEDIA`
+        - `entityType = MESSAGE`
+        - `entityId` có thể không có
+        - action cleanup dùng `R2_DELETE_ONE`
+
+Lý do `entityId` có thể không có:
+
+- message lỗi trước khi được persist nên chưa tồn tại id
+- nhưng vẫn biết job này phát sinh từ flow tạo message
 
 ### 4. Reaction
 
 - Thêm hoặc update reaction: `PATCH /messages/:messageId/reaction`
-  - body `{ conversationId, type }`
+    - body `{ conversationId, type }`
 - Xóa reaction: `DELETE /messages/:messageId/reaction`
-  - body `{ conversationId }`
+    - body `{ conversationId }`
 
 Lưu ý:
 
@@ -518,7 +678,7 @@ Rule:
 
 ## Luồng Presence
 
-Controller: `src/modules/presence/presence.controller.ts:5`
+Controller: `src/modules/presence/presence.controller.ts`
 
 - Endpoint: `POST /presence/users-online`
 - Body: `{ userIds: string[] }`
@@ -526,7 +686,7 @@ Controller: `src/modules/presence/presence.controller.ts:5`
 
 ## Luồng Realtime Socket
 
-Gateway: `src/modules/realtime/chat.gateway.ts:48`
+Gateway: `src/modules/realtime/chat.gateway.ts`
 
 ### 1. Connection
 
@@ -534,7 +694,7 @@ Socket connect bằng access token:
 
 ```ts
 const socket = io('URL_SERVER', {
-  auth: { token: accessToken },
+    auth: { token: accessToken },
 });
 ```
 
@@ -609,6 +769,11 @@ Events:
 - listen: `user:mark-read`
 - listen thêm cho chính user: `user:unseen-cleared`
 
+Backend sẽ:
+
+1. cập nhật `readReceipts`
+2. gọi `removeUnseenConversationWithCleanup`
+
 ### 7. Delete/Update message qua socket
 
 Events:
@@ -631,14 +796,3 @@ Events:
 - `conversation:restored`
 - `conversation:name-changed`
 - `conversation:admin-changed`
-
-## Kết luận ngắn
-
-Các chỗ lệch lớn nhất so với tài liệu cũ là:
-
-- file cũ bị lỗi encoding
-- `GET messages` không trả `nextCursor`
-- socket không chỉ notify, vẫn tạo được text message
-- reaction update đi qua `message:updated`
-- có thêm flow presence, update message, soft delete message
-- `delete user` đã được thay bằng flow `disable/enable user` để tránh vỡ dữ liệu chat

@@ -1,13 +1,31 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+    forwardRef,
+    Inject,
+    Injectable,
+    OnModuleDestroy,
+    OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { Types } from 'mongoose';
 import { Subject } from 'rxjs';
+import { CleanupJobsService } from '@/modules/cleanup-jobs/cleanup-jobs.service';
+import { CreateCleanupJobDto } from '@/modules/cleanup-jobs/dto/create-cleanup-job.dto';
+import {
+    CleanupJobActionEnum,
+    CleanupJobEntityEnum,
+    CleanupJobResourceEnum,
+} from '@/modules/cleanup-jobs/types/cleanup-job';
+
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
-    constructor(private configService: ConfigService) {}
+    constructor(
+        private configService: ConfigService,
+        @Inject(forwardRef(() => CleanupJobsService))
+        private readonly cleanupJobsService: CleanupJobsService,
+    ) {}
 
     public readonly userOffline$ = new Subject<string>();
     public readonly userTypingStop$ = new Subject<{
@@ -130,17 +148,42 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     /**
      * Gỡ bỏ cờ Unseen của một conversation cho một user (khi user đã đọc tin nhắn).
      */
-    async removeUnseenConversation(userId: string, conversationId: string) {
+    private async removeUnseenConversation(
+        userId: string,
+        conversationId: string,
+    ) {
         return await this.redis.srem(
             `unseen:conversations:${userId}`,
             conversationId,
         );
     }
 
+    async removeUnseenConversationWithCleanup(
+        userId: string,
+        conversationId: string,
+    ) {
+        try {
+            return await this.removeUnseenConversation(userId, conversationId);
+        } catch (error) {
+            await this.createCleanupJob({
+                resourceType: CleanupJobResourceEnum.UNSEEN_CONVERSATION,
+                action: CleanupJobActionEnum.REDIS_REMOVE_UNSEEN_ONE,
+                entityType: CleanupJobEntityEnum.CONVERSATION,
+                entityId: conversationId,
+                payload: {
+                    userId,
+                    conversationId,
+                },
+                error: (error as Error).message,
+            });
+            return null;
+        }
+    }
+
     /**
      * Xóa toàn bộ cờ Unseen của một conversation cho tất cả user (khi user đã đọc tin nhắn).
      */
-    async removeAllUnseenConversation(
+    private async removeAllUnseenConversation(
         userIds: (string | Types.ObjectId)[],
         conversationId: string,
     ) {
@@ -176,6 +219,31 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
             ok: failed.length === 0,
             failedCount: failed.length,
         };
+    }
+
+    async removeAllUnseenConversationWithCleanup(
+        userIds: (string | Types.ObjectId)[],
+        conversationId: string,
+    ) {
+        try {
+            return await this.removeAllUnseenConversation(
+                userIds,
+                conversationId,
+            );
+        } catch (error) {
+            await this.createCleanupJob({
+                resourceType: CleanupJobResourceEnum.UNSEEN_CONVERSATION,
+                action: CleanupJobActionEnum.REDIS_REMOVE_UNSEEN_MANY,
+                entityType: CleanupJobEntityEnum.CONVERSATION,
+                entityId: conversationId,
+                payload: {
+                    userIds: userIds.map((userId) => userId.toString()),
+                    conversationId,
+                },
+                error: (error as Error).message,
+            });
+            return null;
+        }
     }
 
     /**
@@ -303,5 +371,13 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
      */
     private getTypingPattern(conversationId: string, userId: string) {
         return `typing:conversation:${conversationId}:user:${userId}:socket:*`;
+    }
+
+    private async createCleanupJob(createDto: CreateCleanupJobDto) {
+        try {
+            await this.cleanupJobsService.createCleanupJob(createDto);
+        } catch (error) {
+            console.error('Failed to create cleanup job: ', error);
+        }
     }
 }

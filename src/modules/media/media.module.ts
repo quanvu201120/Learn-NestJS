@@ -1,13 +1,15 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { MediaService } from './media.service';
 import { CloudinaryService } from './providers/cloudinary.service';
 import { R2Service } from './providers/r2.service';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Media, MediaSchema } from './schemas/media.schema';
+import { CleanupJobsModule } from '../cleanup-jobs/cleanup-jobs.module';
 
 @Module({
     imports: [
         MongooseModule.forFeature([{ name: Media.name, schema: MediaSchema }]),
+        forwardRef(() => CleanupJobsModule),
     ],
     providers: [MediaService, CloudinaryService, R2Service],
     exports: [MediaService, CloudinaryService, R2Service],

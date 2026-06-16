@@ -41,6 +41,10 @@ import {
 import { MediaProviderEnum, OwnerTypeEnum } from '../media/types/media';
 import { MessageEnumType } from '../messages/types/message';
 import { serializeMedia } from '../media/utils/media.serializer';
+import {
+    CleanupJobEntityEnum,
+    CleanupJobResourceEnum,
+} from '../cleanup-jobs/types/cleanup-job';
 
 @Injectable()
 export class ConversationsService {
@@ -523,7 +527,10 @@ export class ConversationsService {
             messageContent,
         );
 
-        await this.redisService.removeUnseenConversation(memberId, id);
+        await this.redisService.removeUnseenConversationWithCleanup(
+            memberId,
+            id,
+        );
 
         this.memberRemoved$.next({
             conversationId: id,
@@ -592,26 +599,32 @@ export class ConversationsService {
 
         //Kiểm tra và xóa unseen conversation trong redis, không throw lỗi
         await this.redisService
-            .removeAllUnseenConversation(conversation.users, id)
+            .removeAllUnseenConversationWithCleanup(conversation.users, id)
             .catch((error) => {
                 console.error('Remove all unseen conversation failed', error);
             });
 
         // Xóa toàn bộ media thuộc conversation trong r2
         if (mediaList.objectKeys && mediaList.objectKeys.length > 0) {
-            await this.mediaService
-                .deleteFilesFromR2(mediaList.objectKeys)
-                .catch((error) => {
-                    console.error('Delete files from R2 failed', error);
-                });
+            await this.mediaService.deleteFilesFromR2WithCleanup(
+                mediaList.objectKeys,
+                {
+                    entityType: CleanupJobEntityEnum.CONVERSATION,
+                    entityId: conversation._id.toString(),
+                    resourceType: CleanupJobResourceEnum.CONVERSATION_MEDIA,
+                },
+            );
         }
         // Xóa toàn bộ media thuộc conversation trong cloudinary
         if (mediaList.publicIds && mediaList.publicIds.length > 0) {
-            await this.mediaService
-                .deleteImagesFromCloudinary(mediaList.publicIds)
-                .catch((error) => {
-                    console.error('Delete files from cloudinary failed', error);
-                });
+            await this.mediaService.deleteImagesFromCloudinaryWithCleanup(
+                mediaList.publicIds,
+                {
+                    entityType: CleanupJobEntityEnum.CONVERSATION,
+                    entityId: conversation._id.toString(),
+                    resourceType: CleanupJobResourceEnum.CONVERSATION_MEDIA,
+                },
+            );
         }
 
         this.conversationDisbanded$.next({
@@ -853,9 +866,17 @@ export class ConversationsService {
             );
             if (avatarOld && avatarOld.publicId) {
                 await this.mediaService
-                    .deleteImageFromCloudinary(avatarOld.publicId)
-                    .catch((error) => {
-                        console.error('Failed to delete old avatar:', error);
+                    .deleteImageFromCloudinaryWithCleanup(avatarOld.publicId, {
+                        entityType: CleanupJobEntityEnum.CONVERSATION,
+                        entityId: conversation._id.toString(),
+                        resourceType:
+                            CleanupJobResourceEnum.CONVERSATION_AVATAR,
+                    })
+                    .catch((cleanupError) => {
+                        console.error(
+                            'Failed to cleanup uploaded avatar:',
+                            cleanupError,
+                        );
                     });
             }
 
@@ -863,14 +884,15 @@ export class ConversationsService {
             return this.serializeConversation(conversationUpdated);
         } catch (error) {
             if (uploadedAvatar && uploadedAvatar.publicId && !isUpdatedUser) {
-                await this.mediaService
-                    .deleteImageFromCloudinary(uploadedAvatar.publicId)
-                    .catch((cleanupError) => {
-                        console.error(
-                            'Failed to cleanup uploaded avatar:',
-                            cleanupError,
-                        );
-                    });
+                await this.mediaService.deleteImageFromCloudinaryWithCleanup(
+                    uploadedAvatar.publicId,
+                    {
+                        entityType: CleanupJobEntityEnum.CONVERSATION,
+                        entityId: conversation._id.toString(),
+                        resourceType:
+                            CleanupJobResourceEnum.CONVERSATION_AVATAR,
+                    },
+                );
             }
             throw error;
         } finally {
@@ -928,11 +950,15 @@ export class ConversationsService {
                 },
             );
             if (avatarOld?.publicId) {
-                await this.mediaService
-                    .deleteImageFromCloudinary(avatarOld.publicId)
-                    .catch((error) => {
-                        console.error('Failed to delete old avatar:', error);
-                    });
+                await this.mediaService.deleteImageFromCloudinaryWithCleanup(
+                    avatarOld.publicId,
+                    {
+                        entityType: CleanupJobEntityEnum.CONVERSATION,
+                        entityId: conversation._id.toString(),
+                        resourceType:
+                            CleanupJobResourceEnum.CONVERSATION_AVATAR,
+                    },
+                );
             }
             return this.serializeConversation(conversationUpdated);
         } finally {

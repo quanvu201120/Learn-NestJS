@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unused-vars */
@@ -36,6 +37,10 @@ import {
     MEDIA_MESSAGES,
 } from '../media/constants/media.constant';
 import { RedisService } from '@/redis/redis.service';
+import {
+    CleanupJobEntityEnum,
+    CleanupJobResourceEnum,
+} from '../cleanup-jobs/types/cleanup-job';
 
 @Injectable()
 export class MessagesService {
@@ -282,28 +287,26 @@ export class MessagesService {
                 uploadedFile.publicId &&
                 uploadedFile.provider === MediaProviderEnum.CLOUDINARY
             ) {
-                await this.mediaService
-                    .deleteImageFromCloudinary(uploadedFile.publicId)
-                    .catch((cleanupError) => {
-                        console.error(
-                            'Failed to cleanup uploaded media:',
-                            cleanupError,
-                        );
-                    });
+                await this.mediaService.deleteImageFromCloudinaryWithCleanup(
+                    uploadedFile.publicId,
+                    {
+                        entityType: CleanupJobEntityEnum.MESSAGE,
+                        resourceType: CleanupJobResourceEnum.MESSAGE_MEDIA,
+                    },
+                );
             }
             if (
                 uploadedFile &&
                 uploadedFile.objectKey &&
                 uploadedFile.provider === MediaProviderEnum.R2
             ) {
-                await this.mediaService
-                    .deleteFileFromR2(uploadedFile.objectKey)
-                    .catch((cleanupError) => {
-                        console.error(
-                            'Failed to cleanup uploaded media:',
-                            cleanupError,
-                        );
-                    });
+                await this.mediaService.deleteFileFromR2WithCleanup(
+                    uploadedFile.objectKey,
+                    {
+                        entityType: CleanupJobEntityEnum.MESSAGE,
+                        resourceType: CleanupJobResourceEnum.MESSAGE_MEDIA,
+                    },
+                );
             }
             throw error;
         } finally {

@@ -598,7 +598,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 payload._id,
                 body.messageId,
             );
-            await this.redisService.removeUnseenConversation(
+            await this.redisService.removeUnseenConversationWithCleanup(
                 payload._id,
                 body.conversationId,
             );
