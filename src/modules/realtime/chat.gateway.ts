@@ -439,7 +439,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         @Ack() ack: (response: any) => void,
     ) {
         try {
-            const payload = this.validateUse(client);
+            const payload = await this.validateUse(client);
             await this.redisService.setPresence(payload._id);
             const res: SocketResponse<HeartbeatResult> = {
                 ok: true,
@@ -470,7 +470,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         @MessageBody() body: TypingSocketDto,
     ) {
         try {
-            const payload = this.validateUse(client);
+            const payload = await this.validateUse(client);
             const { conversation } =
                 await this.conversationService.getConversationOrThrow(
                     body.conversationId,
@@ -531,7 +531,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         @MessageBody() body: TypingSocketDto,
     ) {
         try {
-            const payload = this.validateUse(client);
+            const payload = await this.validateUse(client);
             const { conversation } =
                 await this.conversationService.getConversationOrThrow(
                     body.conversationId,
@@ -716,13 +716,26 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     /**
      * Helper: Xác thực và lấy payload JWT từ Socket.
      */
-    private validateUse(client: Socket) {
+    private async validateUse(client: Socket) {
         const payload = client.data.user as PayloadJWT | undefined;
-        if (!payload?._id) {
+        if (payload?._id) {
+            return payload;
+        }
+
+        const token = client.handshake.auth?.token as string | undefined;
+        if (!token) {
             throw new UnauthorizedException(REALTIME_MESSAGES.MISSING_TOKEN);
         }
 
-        return payload;
+        const verifiedPayload: PayloadJWT = await this.jwtService.verifyAsync(
+            token,
+            {
+                secret: this.configService.get<string>('JWT_SECRET'),
+            },
+        );
+        client.data.user = verifiedPayload;
+
+        return verifiedPayload;
     }
 
     /**
@@ -730,7 +743,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
      * mutating data after logout, logout-all, or session revocation.
      */
     private async validateActiveSession(client: Socket) {
-        const payload = this.validateUse(client);
+        const payload = await this.validateUse(client);
 
         const user = await this.usersService.findOne(payload._id);
         if (!user) {

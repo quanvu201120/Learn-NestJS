@@ -7,6 +7,7 @@ export const USER_MESSAGES = {
     USER_NOT_DISABLED: 'User is not disabled',
     DISABLE_SUCCESS: 'User disabled successfully',
     ENABLE_SUCCESS: 'User enabled successfully',
+    CANNOT_DISABLE_ADMIN: 'Cannot disable an admin account',
     CANNOT_ENABLE_SELF: 'You cannot enable yourself from this endpoint',
     USER_ALREADY_ACTIVE: 'User is already active',
     ACTIVE_SUCCESS: 'Active user successfully',

@@ -1,11 +1,15 @@
+/* eslint-disable prettier/prettier */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
     BadRequestException,
+    ForbiddenException,
     forwardRef,
     Inject,
     Injectable,
+    NotFoundException,
     OnModuleInit,
 } from '@nestjs/common';
 import { CloudinaryService } from './providers/cloudinary.service';
@@ -27,6 +31,10 @@ import {
     CleanupJobEntityEnum,
     CleanupJobResourceEnum,
 } from '../cleanup-jobs/types/cleanup-job';
+import {
+    Conversation,
+    ConversationDocument,
+} from '../conversations/schemas/conversation.schema';
 
 type MediaCleanupContext = {
     resourceType: CleanupJobResourceEnum;
@@ -38,6 +46,8 @@ type MediaCleanupContext = {
 export class MediaService implements OnModuleInit {
     constructor(
         @InjectModel(Media.name) private mediaModel: Model<MediaDocument>,
+        @InjectModel(Conversation.name)
+        private conversationModel: Model<ConversationDocument>,
         private readonly cloudinaryService: CloudinaryService,
         private readonly r2Service: R2Service,
         @Inject(forwardRef(() => CleanupJobsService))
@@ -71,6 +81,33 @@ export class MediaService implements OnModuleInit {
         return await this.mediaModel.findById(objectId, null, {
             session,
         });
+    }
+
+    async downloadR2Media(id: string, userId: string) {
+        const media = await this.findById(id);
+
+        if (!media) {
+            throw new NotFoundException(MEDIA_MESSAGES.MEDIA_NOT_FOUND);
+        }
+
+        await this.assertMediaAccess(media, userId);
+
+        if (media.provider !== MediaProviderEnum.R2 || !media.objectKey) {
+            throw new BadRequestException(MEDIA_MESSAGES.MEDIA_NOT_STORED_IN_R2);
+        }
+
+        const result = await this.r2Service.getObject(media.objectKey);
+        const bytes = await result.Body?.transformToByteArray();
+
+        if (!bytes) {
+            throw new NotFoundException(MEDIA_MESSAGES.MEDIA_CONTENT_NOT_FOUND);
+        }
+
+        return {
+            buffer: Buffer.from(bytes),
+            fileName: media.fileName || 'download',
+            mimeType: media.mimeType || 'application/octet-stream',
+        };
     }
 
     /**
@@ -339,6 +376,30 @@ export class MediaService implements OnModuleInit {
             await this.cleanupJobsService.createCleanupJob(createDto);
         } catch (error) {
             console.error('Failed to create cleanup job: ', error);
+        }
+    }
+
+    private async assertMediaAccess(media: MediaDocument, userId: string) {
+        const objectUserId = toObjectId(userId, 'user id');
+
+        if (media.ownerType === OwnerTypeEnum.USER) {
+            const ownerId = media.ownerId?.toString();
+            const uploadedBy = media.uploadedBy?.toString();
+            if (ownerId !== objectUserId.toString() && uploadedBy !== objectUserId.toString()) {
+                throw new ForbiddenException(MEDIA_MESSAGES.MEDIA_ACCESS_DENIED);
+            }
+            return;
+        }
+
+        if (media.ownerType === OwnerTypeEnum.CONVERSATION) {
+            const hasAccess = await this.conversationModel.exists({
+                _id: media.ownerId,
+                users: objectUserId,
+            });
+
+            if (!hasAccess) {
+                throw new ForbiddenException(MEDIA_MESSAGES.MEDIA_ACCESS_DENIED);
+            }
         }
     }
 }

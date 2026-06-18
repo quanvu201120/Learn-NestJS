@@ -33,7 +33,7 @@ import {
     ResetPasswordAuthDto,
 } from './dto/password-auth.dto';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { buildDeviceNameFromUA } from '@/utils/utils';
+import { buildDeviceNameFromUA } from '../utils/utils';
 import { LoginResponse, RefreshTokenResponse } from './types/auth';
 
 @ApiTags('Auth - Xác thực')
@@ -43,6 +43,18 @@ export class AuthController {
         private readonly authService: AuthService,
         private readonly configService: ConfigService,
     ) {}
+
+    private getRefreshCookieOptions(maxAge?: number) {
+        const isProduction =
+            this.configService.get<string>('NODE_ENV') === 'production';
+
+        return {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? ('none' as const) : ('lax' as const),
+            ...(maxAge !== undefined ? { maxAge } : {}),
+        };
+    }
 
     @HttpCode(HttpStatus.OK)
     @Public()
@@ -62,19 +74,17 @@ export class AuthController {
             deviceName,
         );
 
-        response.cookie('refreshToken', data.refreshToken, {
-            httpOnly: true,
-            secure:
-                this.configService.get<string>('NODE_ENV') === 'production'
-                    ? true
-                    : false,
-            sameSite: 'lax',
-            maxAge: ms(
-                this.configService.get<string>(
-                    'COOKIE_EXPIRES_IN',
-                ) as StringValue,
+        response.cookie(
+            'refreshToken',
+            data.refreshToken,
+            this.getRefreshCookieOptions(
+                ms(
+                    this.configService.get<string>(
+                        'COOKIE_EXPIRES_IN',
+                    ) as StringValue,
+                ),
             ),
-        });
+        );
 
         return {
             accessToken: data.accessToken,
@@ -91,19 +101,17 @@ export class AuthController {
     ) {
         const data = await this.authService.refreshToken(refreshTokenOld);
 
-        response.cookie('refreshToken', data.refreshToken, {
-            httpOnly: true,
-            secure:
-                this.configService.get<string>('NODE_ENV') === 'production'
-                    ? true
-                    : false,
-            sameSite: 'lax',
-            maxAge: ms(
-                this.configService.get<string>(
-                    'COOKIE_EXPIRES_IN',
-                ) as StringValue,
+        response.cookie(
+            'refreshToken',
+            data.refreshToken,
+            this.getRefreshCookieOptions(
+                ms(
+                    this.configService.get<string>(
+                        'COOKIE_EXPIRES_IN',
+                    ) as StringValue,
+                ),
             ),
-        });
+        );
         const res: RefreshTokenResponse = {
             accessToken: data.accessToken,
         };
@@ -125,15 +133,10 @@ export class AuthController {
             /* empty */
         }
 
-        response.clearCookie('refreshToken', {
-            httpOnly: true,
-            secure:
-                this.configService.get<string>('NODE_ENV') === 'production'
-                    ? true
-                    : false,
-            sameSite: 'lax',
-            maxAge: 0,
-        });
+        response.clearCookie(
+            'refreshToken',
+            this.getRefreshCookieOptions(0),
+        );
 
         return AUTH_MESSAGES.LOGOUT_SUCCESS;
     }
@@ -148,15 +151,10 @@ export class AuthController {
     ) {
         try {
             await this.authService.logoutAllDevices(req.user._id);
-            response.clearCookie('refreshToken', {
-                httpOnly: true,
-                secure:
-                    this.configService.get<string>('NODE_ENV') === 'production'
-                        ? true
-                        : false,
-                sameSite: 'lax',
-                maxAge: 0,
-            });
+            response.clearCookie(
+                'refreshToken',
+                this.getRefreshCookieOptions(0),
+            );
             return AUTH_MESSAGES.LOGOUT_ALL_SUCCESS;
         } catch (error) {
             throw new InternalServerErrorException(

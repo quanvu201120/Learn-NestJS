@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 import {
@@ -37,6 +38,18 @@ export class UsersController {
         private readonly usersService: UsersService,
         private readonly configService: ConfigService,
     ) {}
+
+    private getRefreshCookieOptions(maxAge?: number) {
+        const isProduction =
+            this.configService.get<string>('NODE_ENV') === 'production';
+
+        return {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? ('none' as const) : ('lax' as const),
+            ...(maxAge !== undefined ? { maxAge } : {}),
+        };
+    }
 
     @Post()
     @Roles('ADMIN')
@@ -108,13 +121,10 @@ export class UsersController {
         @Request() req,
         @Res({ passthrough: true }) response: express.Response,
     ): Promise<UserDisableStateResponse> {
-        response.clearCookie('refreshToken', {
-            httpOnly: true,
-            secure:
-                this.configService.get<string>('NODE_ENV') === 'production',
-            sameSite: 'lax',
-            maxAge: 0,
-        });
+        response.clearCookie(
+            'refreshToken',
+            this.getRefreshCookieOptions(0),
+        );
         return this.usersService.disableSelf(req.user._id);
     }
 

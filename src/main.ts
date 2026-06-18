@@ -15,7 +15,17 @@ async function bootstrap() {
     const configService = app.get(ConfigService);
     const port = configService.get<number>('PORT');
     app.setGlobalPrefix('api/v1', { exclude: [''] });
-    app.enableCors();
+    app.enableCors({
+        origin: (origin, callback) => {
+            if (!origin) {
+                callback(null, true);
+                return;
+            }
+
+            callback(null, origin);
+        },
+        credentials: true,
+    });
     app.useGlobalPipes(
         new ValidationPipe({
             whitelist: true,

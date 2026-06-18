@@ -5,12 +5,21 @@ import { R2Service } from './providers/r2.service';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Media, MediaSchema } from './schemas/media.schema';
 import { CleanupJobsModule } from '../cleanup-jobs/cleanup-jobs.module';
+import {
+    Conversation,
+    ConversationSchema,
+} from '../conversations/schemas/conversation.schema';
+import { MediaController } from './media.controller';
 
 @Module({
     imports: [
-        MongooseModule.forFeature([{ name: Media.name, schema: MediaSchema }]),
+        MongooseModule.forFeature([
+            { name: Media.name, schema: MediaSchema },
+            { name: Conversation.name, schema: ConversationSchema },
+        ]),
         forwardRef(() => CleanupJobsModule),
     ],
+    controllers: [MediaController],
     providers: [MediaService, CloudinaryService, R2Service],
     exports: [MediaService, CloudinaryService, R2Service],
 })

@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
@@ -74,7 +75,7 @@ export class MessagesService {
         const objectMessageId = toObjectId(messageId, 'message id');
         const message = await this.messageModel
             .findById(objectMessageId)
-            .populate('senderId', '-password -__v')
+            .populate({ path: 'senderId', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
             .populate('replyTo', '-__v')
             .populate('mediaId', '-__v')
             .lean();
@@ -330,7 +331,7 @@ export class MessagesService {
         }
         const lastMessage = await this.messageModel
             .findById(conversation.lastMessageId)
-            .populate('senderId', '-password -__v')
+            .populate({ path: 'senderId', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
             .populate('replyTo', '-__v')
             .populate('mediaId', '-__v')
             .lean();
@@ -377,7 +378,7 @@ export class MessagesService {
                     : {}),
             })
             .select('-__v')
-            .populate('senderId', '-password -__v')
+            .populate({ path: 'senderId', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
             .populate('replyTo', '-__v')
             .populate('mediaId', '-__v')
             .sort({ createdAt: -1 })
@@ -489,7 +490,7 @@ export class MessagesService {
                 isDeleted: false,
                 type: MessageEnumType.TEXT,
             })
-            .populate('senderId', '-password -__v')
+            .populate({ path: 'senderId', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
             .populate('replyTo', '-__v')
             .populate('mediaId', '-__v')
             .lean();
@@ -516,7 +517,7 @@ export class MessagesService {
                 },
                 { new: true },
             )
-            .populate('senderId', '-password -__v')
+            .populate({ path: 'senderId', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
             .populate('replyTo', '-__v')
             .populate('mediaId', '-__v')
             .lean();
@@ -605,7 +606,7 @@ export class MessagesService {
                       },
                       { new: true, runValidators: true },
                   )
-                  .populate('senderId', '-password -__v')
+                  .populate({ path: 'senderId', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
                   .populate('replyTo', '-__v')
                   .populate('mediaId', '-__v')
                   .lean()
@@ -621,7 +622,7 @@ export class MessagesService {
                           runValidators: true,
                       },
                   )
-                  .populate('senderId', '-password -__v')
+                  .populate({ path: 'senderId', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
                   .populate('replyTo', '-__v')
                   .populate('mediaId', '-__v')
                   .lean();
@@ -666,7 +667,7 @@ export class MessagesService {
                 },
                 { new: true, runValidators: true },
             )
-            .populate('senderId', '-password -__v')
+            .populate({ path: 'senderId', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
             .populate('replyTo', '-__v')
             .populate('mediaId', '-__v')
             .lean();

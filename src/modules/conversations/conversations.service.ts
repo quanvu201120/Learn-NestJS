@@ -105,10 +105,16 @@ export class ConversationsService {
      * Chuyển đổi ID của lastMessage thành object nếu đã được populate.
      */
     private serializeConversation(conversation: any): ConversationResponse {
-        const { lastMessageId, avatar, ...rest } = conversation;
+        const { lastMessageId, avatar, users, ...rest } = conversation;
 
         return {
             ...rest,
+            users: users?.map(user => {
+                if (user && typeof user === 'object' && '_id' in user && user.avatar && typeof user.avatar === 'object' && '_id' in user.avatar) {
+                    return { ...user, avatar: serializeMedia(user.avatar) };
+                }
+                return user;
+            }),
             avatar: avatar ? serializeMedia(avatar) : avatar,
             lastMessage: lastMessageId
                 ? typeof lastMessageId === 'object' && '_id' in lastMessageId
@@ -176,7 +182,7 @@ export class ConversationsService {
                     },
                 })
                 .select('-__v')
-                .populate('users', '-password -__v')
+                .populate({ path: 'users', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
                 .populate('lastMessageId', '-__v')
                 .lean();
 
@@ -207,7 +213,7 @@ export class ConversationsService {
                             },
                         )
                         .select('-__v')
-                        .populate('users', '-password -__v')
+                        .populate({ path: 'users', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
                         .populate('lastMessageId', '-__v')
                         .lean();
 
@@ -270,7 +276,7 @@ export class ConversationsService {
                 },
             })
             .select('-__v')
-            .populate('users', '-password -__v')
+            .populate({ path: 'users', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
             .populate('lastMessageId', '-__v')
             .populate('avatar', '-__v')
             .sort({ updatedAt: -1 })
@@ -303,7 +309,7 @@ export class ConversationsService {
                 },
             })
             .select('-__v')
-            .populate('users', '-password -__v')
+            .populate({ path: 'users', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
             .populate('lastMessageId', '-__v')
             .populate('avatar', '-__v')
             .lean();
@@ -428,7 +434,7 @@ export class ConversationsService {
                 { new: true },
             )
             .select('-__v')
-            .populate('users', '-password -__v')
+            .populate({ path: 'users', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
             .populate('lastMessageId', '-__v')
             .populate('avatar', '-__v')
             .lean();
@@ -500,7 +506,7 @@ export class ConversationsService {
                 { new: true },
             )
             .select('-__v')
-            .populate('users', '-password -__v')
+            .populate({ path: 'users', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
             .populate('lastMessageId', '-__v')
             .populate('avatar', '-__v')
             .lean();
@@ -846,7 +852,7 @@ export class ConversationsService {
                             { new: true, session },
                         )
                         .select('-__v')
-                        .populate('users', '-password -__v')
+                        .populate({ path: 'users', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
                         .populate('lastMessageId', '-__v')
                         .populate('avatar', '-__v')
                         .lean();
@@ -931,7 +937,7 @@ export class ConversationsService {
                             { new: true, session },
                         )
                         .select('-__v')
-                        .populate('users', '-password -__v')
+                        .populate({ path: 'users', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
                         .populate('lastMessageId', '-__v')
                         .populate('avatar', '-__v')
                         .lean();

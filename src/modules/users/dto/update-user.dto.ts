@@ -1,23 +1,22 @@
-import { IsEmail, IsMongoId, IsNotEmpty, IsOptional } from 'class-validator';
+import { IsEmail, IsMongoId, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class UpdateUserDto {
     @IsMongoId({ message: 'Id must be a mongoId' })
-    @IsNotEmpty({ message: 'Id is required' })
     _id: string;
 
-    @IsOptional()
-    @IsNotEmpty({ message: 'Name is not empty' })
-    name?: string;
+    @IsNotEmpty({ message: 'Name must not be empty' })
+    @IsString({ message: 'Name must be a string' })
+    name: string;
 
     @IsOptional()
     @IsEmail({}, { message: 'Email must be a valid email' })
     email?: string;
 
     @IsOptional()
-    @IsNotEmpty({ message: 'Phone is not empty' })
-    phone?: string;
+    @IsString({ message: 'Phone must be a string' })
+    phone?: string | null;
 
     @IsOptional()
-    @IsNotEmpty({ message: 'Address is not empty' })
-    address?: string;
+    @IsString({ message: 'Address must be a string' })
+    address?: string | null;
 }

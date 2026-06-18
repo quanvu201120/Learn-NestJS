@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+    GetObjectCommand,
     DeleteObjectCommand,
     DeleteObjectsCommand,
     PutObjectCommand,
@@ -97,6 +98,15 @@ export class R2Service {
                     })),
                     Quiet: true,
                 },
+            }),
+        );
+    }
+
+    async getObject(objectKey: string) {
+        return await this.client.send(
+            new GetObjectCommand({
+                Bucket: this.bucketName,
+                Key: objectKey,
             }),
         );
     }

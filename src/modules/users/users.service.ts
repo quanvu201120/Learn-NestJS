@@ -198,6 +198,10 @@ export class UsersService {
             throw new BadRequestException(USER_MESSAGES.USER_NOT_DISABLED);
         }
 
+        if (isDisabled && user.role === 'ADMIN') {
+            throw new BadRequestException(USER_MESSAGES.CANNOT_DISABLE_ADMIN);
+        }
+
         user.isDisabled = isDisabled;
         user.disabledAt = isDisabled ? new Date() : undefined;
 
@@ -244,9 +248,38 @@ export class UsersService {
         }
 
         const { _id, ...updateData } = updateUserDto;
+        const normalizedEntries = Object.entries(updateData).filter(
+            ([, value]) => value !== undefined,
+        );
+        const $set = Object.fromEntries(
+            normalizedEntries.filter(
+                ([key, value]) =>
+                    value !== null || key === 'email' || key === 'name',
+            ),
+        );
+        const $unset = Object.fromEntries(
+            normalizedEntries
+                .filter(
+                    ([key, value]) =>
+                        value === null && key !== 'email' && key !== 'name',
+                )
+                .map(([key]) => [key, '']),
+        );
+        const updateQuery: {
+            $set?: Record<string, unknown>;
+            $unset?: Record<string, unknown>;
+        } = {};
+
+        if (Object.keys($set).length > 0) {
+            updateQuery.$set = $set;
+        }
+
+        if (Object.keys($unset).length > 0) {
+            updateQuery.$unset = $unset;
+        }
 
         const user = (await this.userModel
-            .findOneAndUpdate({ _id }, { ...updateData }, { new: true })
+            .findOneAndUpdate({ _id }, updateQuery, { new: true })
             .select('-password -__v')
             .populate('avatar', '-__v')
             .lean()) as UserResponse;

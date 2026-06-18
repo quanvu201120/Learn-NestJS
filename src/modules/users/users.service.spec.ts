@@ -317,6 +317,7 @@ describe('UsersService', () => {
         it('Case: cập nhật user thất bại khi email mới đã tồn tại', async () => {
             const updateDto: UpdateUserDto = {
                 _id: userId,
+                name: 'Quan Vu',
                 email: 'dup@example.com',
             };
             userModel.exists.mockResolvedValue(true);
