@@ -4,9 +4,11 @@ import { HydratedDocument, Types } from 'mongoose';
 import {
     CleanupJobActionEnum,
     CleanupJobEntityEnum,
+    CleanupJobLockedBy,
     CleanupJobResourceEnum,
     CleanupJobStatusEnum,
 } from '../types/cleanup-job';
+import { CLEANUP_JOB_CONSTANTS } from '../constants/cleanup-job.constant';
 
 export type CleanupJobDocument = HydratedDocument<CleanupJob>;
 
@@ -82,14 +84,15 @@ export class CleanupJob {
 
     @Prop({
         type: Number,
+        default: 0,
     })
-    retryCount?: number;
+    retryCount: number;
 
     @Prop({
         type: Number,
-        default: 10,
+        default: CLEANUP_JOB_CONSTANTS.DEFAULT_MAX_RETRIES,
     })
-    maxRetries?: number;
+    maxRetries: number;
 
     @Prop({
         type: Date,
@@ -104,7 +107,23 @@ export class CleanupJob {
     @Prop({
         type: String,
     })
-    error: string;
+    error?: string;
+
+    @Prop({
+        type: Date,
+    })
+    lockedAt?: Date;
+
+    @Prop({
+        type: String,
+        enum: CleanupJobLockedBy,
+    })
+    lockedBy?: CleanupJobLockedBy;
+
+    @Prop({
+        type: Date,
+    })
+    lockedUntil?: Date;
 }
 
 export const CleanupJobSchema = SchemaFactory.createForClass(CleanupJob);

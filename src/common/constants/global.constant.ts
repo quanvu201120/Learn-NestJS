@@ -1,4 +1,4 @@
-export type ActionRedis = 'NEW' | 'RESEND' | 'FORGOT';
+export type ActionRedis = 'NEW' | 'RESEND' | 'FORGOT' | 'UPDATE_EMAIL';
 
 export const GLOBAL_CONSTANTS = {
     COOLDOWN_SECONDS: 60,

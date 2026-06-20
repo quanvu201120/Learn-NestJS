@@ -109,8 +109,15 @@ export class ConversationsService {
 
         return {
             ...rest,
-            users: users?.map(user => {
-                if (user && typeof user === 'object' && '_id' in user && user.avatar && typeof user.avatar === 'object' && '_id' in user.avatar) {
+            users: users?.map((user) => {
+                if (
+                    user &&
+                    typeof user === 'object' &&
+                    '_id' in user &&
+                    user.avatar &&
+                    typeof user.avatar === 'object' &&
+                    '_id' in user.avatar
+                ) {
                     return { ...user, avatar: serializeMedia(user.avatar) };
                 }
                 return user;
@@ -182,7 +189,11 @@ export class ConversationsService {
                     },
                 })
                 .select('-__v')
-                .populate({ path: 'users', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
+                .populate({
+                    path: 'users',
+                    select: '-password -__v',
+                    populate: { path: 'avatar', select: '-__v' },
+                })
                 .populate('lastMessageId', '-__v')
                 .lean();
 
@@ -213,7 +224,11 @@ export class ConversationsService {
                             },
                         )
                         .select('-__v')
-                        .populate({ path: 'users', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
+                        .populate({
+                            path: 'users',
+                            select: '-password -__v',
+                            populate: { path: 'avatar', select: '-__v' },
+                        })
                         .populate('lastMessageId', '-__v')
                         .lean();
 
@@ -276,7 +291,11 @@ export class ConversationsService {
                 },
             })
             .select('-__v')
-            .populate({ path: 'users', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
+            .populate({
+                path: 'users',
+                select: '-password -__v',
+                populate: { path: 'avatar', select: '-__v' },
+            })
             .populate('lastMessageId', '-__v')
             .populate('avatar', '-__v')
             .sort({ updatedAt: -1 })
@@ -309,7 +328,11 @@ export class ConversationsService {
                 },
             })
             .select('-__v')
-            .populate({ path: 'users', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
+            .populate({
+                path: 'users',
+                select: '-password -__v',
+                populate: { path: 'avatar', select: '-__v' },
+            })
             .populate('lastMessageId', '-__v')
             .populate('avatar', '-__v')
             .lean();
@@ -434,7 +457,11 @@ export class ConversationsService {
                 { new: true },
             )
             .select('-__v')
-            .populate({ path: 'users', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
+            .populate({
+                path: 'users',
+                select: '-password -__v',
+                populate: { path: 'avatar', select: '-__v' },
+            })
             .populate('lastMessageId', '-__v')
             .populate('avatar', '-__v')
             .lean();
@@ -450,7 +477,7 @@ export class ConversationsService {
                 currentUserId,
                 id,
                 MessageEnumType.SYSTEM,
-                `Đã thêm ${addedNames} vào nhóm`,
+                `Quản trị viên đã thêm ${addedNames} vào nhóm`,
             );
 
             this.memberAdded$.next({
@@ -506,7 +533,11 @@ export class ConversationsService {
                 { new: true },
             )
             .select('-__v')
-            .populate({ path: 'users', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
+            .populate({
+                path: 'users',
+                select: '-password -__v',
+                populate: { path: 'avatar', select: '-__v' },
+            })
             .populate('lastMessageId', '-__v')
             .populate('avatar', '-__v')
             .lean();
@@ -524,7 +555,7 @@ export class ConversationsService {
         const messageContent =
             currentUserId === memberId
                 ? `${removedName} đã rời khỏi nhóm`
-                : `Đã xóa ${removedName} khỏi nhóm`;
+                : `Quản trị viên đã xóa ${removedName} khỏi nhóm`;
 
         await this.messageService.createMessage(
             currentUserId,
@@ -664,19 +695,49 @@ export class ConversationsService {
 
         const objectNewAdminId = toObjectId(newAdminId, 'new admin id');
 
-        const result = await this.conversationModel
-            .findByIdAndUpdate(
-                objectConversationId,
-                { $set: { adminGroupId: objectNewAdminId } },
-                { new: true },
-            )
-            .lean();
+        const session = await this.connection.startSession();
+        let result: any = null;
+        try {
+            await session.withTransaction(async () => {
+                result = await this.conversationModel
+                    .findByIdAndUpdate(
+                        objectConversationId,
+                        { $set: { adminGroupId: objectNewAdminId } },
+                        { new: true, session },
+                    )
+                    .populate('users', 'name email')
+                    .lean();
 
-        if (!result) {
-            throw new BadRequestException(
-                CONVERSATION_MESSAGES.CONVERSATION_NOT_FOUND,
-            );
+                if (!result) {
+                    throw new BadRequestException(
+                        CONVERSATION_MESSAGES.CONVERSATION_NOT_FOUND,
+                    );
+                }
+
+                const currentUserObj = result.users.find(
+                    (u: any) => u._id.toString() === currentUserId,
+                );
+                const newAdminObj = result.users.find(
+                    (u: any) => u._id.toString() === newAdminId,
+                );
+                const currentName =
+                    (currentUserObj as any)?.name || 'Quản trị viên';
+                const newName = (newAdminObj as any)?.name || 'một thành viên';
+
+                await this.messageService.createMessage(
+                    currentUserId,
+                    conversationId,
+                    MessageEnumType.SYSTEM,
+                    `${currentName} đã chuyển quyền quản trị viên cho ${newName}`,
+                    undefined,
+                    undefined,
+                    session,
+                );
+            });
+        } finally {
+            await session.endSession();
         }
+
         const membersOnline = await this.redisService.getUserOnlineInListIds(
             result.users,
         );
@@ -852,7 +913,11 @@ export class ConversationsService {
                             { new: true, session },
                         )
                         .select('-__v')
-                        .populate({ path: 'users', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
+                        .populate({
+                            path: 'users',
+                            select: '-password -__v',
+                            populate: { path: 'avatar', select: '-__v' },
+                        })
                         .populate('lastMessageId', '-__v')
                         .populate('avatar', '-__v')
                         .lean();
@@ -937,7 +1002,11 @@ export class ConversationsService {
                             { new: true, session },
                         )
                         .select('-__v')
-                        .populate({ path: 'users', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
+                        .populate({
+                            path: 'users',
+                            select: '-password -__v',
+                            populate: { path: 'avatar', select: '-__v' },
+                        })
                         .populate('lastMessageId', '-__v')
                         .populate('avatar', '-__v')
                         .lean();

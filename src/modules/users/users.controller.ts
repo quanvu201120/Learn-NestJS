@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable prettier/prettier */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
@@ -21,7 +23,7 @@ import {
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateUserByAdminDto, UpdateUserDto } from './dto/update-user.dto';
 import { Roles } from '@/utils/decorator-customize';
 import { RolesGuard } from '@/auth/passport/roles.guard';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -55,8 +57,8 @@ export class UsersController {
     @Roles('ADMIN')
     @UseGuards(RolesGuard)
     @ApiOperation({ summary: 'Tạo mới người dùng (Chỉ ADMIN)' })
-    create(@Body() createUserDto: CreateUserDto) {
-        return this.usersService.create(createUserDto);
+    async create(@Body() createUserDto: CreateUserDto) {
+        return await this.usersService.create(createUserDto);
     }
 
     @Get()
@@ -81,20 +83,27 @@ export class UsersController {
         return await this.usersService.findOneForApi(id);
     }
 
-    @Patch()
-    @ApiOperation({ summary: 'Cập nhật thông tin người dùng' })
-    update(@Body() updateUserDto: UpdateUserDto, @Request() req) {
-        return this.usersService.update(
-            updateUserDto,
-            req.user._id,
-            req.user.role,
-        );
+    @Patch('me')
+    @ApiOperation({ summary: 'Cập nhật thông tin cá nhân của bản thân' })
+    async updateSelf(@Body() updateUserDto: UpdateUserDto, @Request() req) {
+        return await this.usersService.update(updateUserDto, req.user._id);
+    }
+
+    @Patch(':id')
+    @Roles('ADMIN')
+    @UseGuards(RolesGuard)
+    @ApiOperation({ summary: 'ADMIN cập nhật thông tin user' })
+    async updateByAdmin(
+        @Param('id') id: string,
+        @Body() updateUserDto: UpdateUserByAdminDto,
+    ) {
+        return await this.usersService.updateByAdmin(id, updateUserDto);
     }
 
     @Patch('avatar')
     @UseInterceptors(FileInterceptor('file'))
     @ApiOperation({ summary: 'Cập nhật ảnh đại diện của người dùng' })
-    uploadAvatar(
+    async uploadAvatar(
         @UploadedFile(
             new ParseFilePipe({
                 validators: [
@@ -106,13 +115,13 @@ export class UsersController {
         file: Express.Multer.File,
         @Request() req,
     ) {
-        return this.usersService.uploadAvatar(req.user._id, file);
+        return await this.usersService.uploadAvatar(req.user._id, file);
     }
 
     @Delete('avatar')
     @ApiOperation({ summary: 'Xóa ảnh đại diện của người dùng' })
-    deleteAvatar(@Request() req) {
-        return this.usersService.deleteAvatar(req.user._id);
+    async deleteAvatar(@Request() req) {
+        return await this.usersService.deleteAvatar(req.user._id);
     }
 
     @Patch('me/disable')
@@ -121,29 +130,28 @@ export class UsersController {
         @Request() req,
         @Res({ passthrough: true }) response: express.Response,
     ): Promise<UserDisableStateResponse> {
-        response.clearCookie(
-            'refreshToken',
-            this.getRefreshCookieOptions(0),
-        );
-        return this.usersService.disableSelf(req.user._id);
+        response.clearCookie('refreshToken', this.getRefreshCookieOptions(0));
+        return await this.usersService.disableSelf(req.user._id);
     }
 
     @Patch(':id/disable')
     @Roles('ADMIN')
     @UseGuards(RolesGuard)
     @ApiOperation({ summary: 'ADMIN vô hiệu hóa tài khoản user' })
-    disableUser(@Param('id') id: string): Promise<UserDisableStateResponse> {
-        return this.usersService.disableUserByAdmin(id);
+    async disableUser(
+        @Param('id') id: string,
+    ): Promise<UserDisableStateResponse> {
+        return await this.usersService.disableUserByAdmin(id);
     }
 
     @Patch(':id/enable')
     @Roles('ADMIN')
     @UseGuards(RolesGuard)
     @ApiOperation({ summary: 'ADMIN gỡ trạng thái vô hiệu hóa user' })
-    enableUser(
+    async enableUser(
         @Param('id') id: string,
         @Request() req,
     ): Promise<UserDisableStateResponse> {
-        return this.usersService.enableUserByAdmin(id, req.user._id);
+        return await this.usersService.enableUserByAdmin(id, req.user._id);
     }
 }

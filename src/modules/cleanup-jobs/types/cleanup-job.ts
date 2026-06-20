@@ -1,3 +1,5 @@
+import { CleanupJob } from '../schemas/cleanup-job.schema';
+
 export enum CleanupJobStatusEnum {
     PENDING = 'PENDING',
     RETRY = 'RETRY',
@@ -31,3 +33,18 @@ export enum CleanupJobEntityEnum {
     MESSAGE = 'MESSAGE',
     USER = 'USER',
 }
+
+export enum CleanupJobLockedBy {
+    ADMIN = 'ADMIN',
+    WORKER = 'WORKER',
+}
+
+export type CleanupJobRespone = {
+    cleanupJobs: CleanupJob[];
+    pagination: {
+        totalItems: number;
+        totalPages: number;
+        currentPage: number;
+        limit: number;
+    };
+};

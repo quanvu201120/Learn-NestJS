@@ -1,4 +1,10 @@
-import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import {
+    BadRequestException,
+    forwardRef,
+    Inject,
+    Injectable,
+    NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { CleanupJob, CleanupJobDocument } from './schemas/cleanup-job.schema';
 import { Model } from 'mongoose';
@@ -6,7 +12,18 @@ import { SessionService } from '../session/session.service';
 import { MediaService } from '../media/media.service';
 import { RedisService } from '@/redis/redis.service';
 import { CreateCleanupJobDto } from './dto/create-cleanup-job.dto';
-import { CLEANUP_JOB_MESSAGES } from './constants/cleanup-job.constant';
+import {
+    CLEANUP_JOB_CONSTANTS,
+    CLEANUP_JOB_MESSAGES,
+    CLEANUP_RETRY_DELAYS_MINUTES,
+} from './constants/cleanup-job.constant';
+import { toObjectId } from '@/utils/utils';
+import {
+    CleanupJobActionEnum,
+    CleanupJobLockedBy,
+    CleanupJobRespone,
+    CleanupJobStatusEnum,
+} from './types/cleanup-job';
 
 @Injectable()
 export class CleanupJobsService {
@@ -24,12 +41,447 @@ export class CleanupJobsService {
         private readonly redisService: RedisService,
     ) {}
 
+    /** Tạo job dọn rác (media claudinaty - R2, session, redis) */
     async createCleanupJob(createDto: CreateCleanupJobDto) {
         const cleanupJob = await this.cleanupJobModel.create(createDto);
 
         if (!cleanupJob) {
-            throw new Error(CLEANUP_JOB_MESSAGES.FAILED_TO_CREATE_CLEANUP_JOB);
+            throw new BadRequestException(
+                CLEANUP_JOB_MESSAGES.FAILED_TO_CREATE_CLEANUP_JOB,
+            );
         }
         return cleanupJob;
+    }
+
+    /** Lấy tất cả job dọn rác, có pagination và sort desc theo creation date */
+    async getCleanUpJobs(
+        page: number = CLEANUP_JOB_CONSTANTS.DEFAULT_PAGE,
+        limit: number = CLEANUP_JOB_CONSTANTS.DEFAULT_LIMIT,
+    ) {
+        if (page <= 0 || limit <= 0) {
+            throw new BadRequestException(
+                CLEANUP_JOB_MESSAGES.GET_JOB_PAGINATION_INVALID,
+            );
+        }
+        const [totalItems, foundJobs] = await Promise.all([
+            this.cleanupJobModel.countDocuments(),
+            this.cleanupJobModel
+                .find()
+                .skip((page - 1) * limit)
+                .limit(limit)
+                .sort({ createdAt: -1, _id: -1 }),
+        ]);
+        const totalPages = Math.ceil(totalItems / limit);
+        return {
+            cleanupJobs: foundJobs,
+            pagination: {
+                totalItems,
+                totalPages,
+                currentPage: page,
+                limit,
+            },
+        } as CleanupJobRespone;
+    }
+
+    /** Lấy job dọn rác theo id */
+    async getCleanupJobById(jobId: string) {
+        const objectId = toObjectId(jobId, 'cleanup job id');
+        const cleanupJob = await this.cleanupJobModel
+            .findById(objectId)
+            .select('-__v')
+            .lean();
+        if (!cleanupJob) {
+            throw new NotFoundException(CLEANUP_JOB_MESSAGES.JOB_NOT_FOUND);
+        }
+        return cleanupJob as CleanupJob;
+    }
+
+    /** Lấy job dọn rác ở trạng thái PENDING hoặc RETRY có phân trang và sort asc theo nextRetryAt, job đến hạn dọn trước nằm trước*/
+    async getPendingAndRetryJobs(
+        page: number = CLEANUP_JOB_CONSTANTS.DEFAULT_PAGE,
+        limit: number = CLEANUP_JOB_CONSTANTS.DEFAULT_LIMIT,
+    ) {
+        if (page <= 0 || limit <= 0) {
+            throw new BadRequestException(
+                CLEANUP_JOB_MESSAGES.GET_JOB_PAGINATION_INVALID,
+            );
+        }
+
+        const filter = this.getRunnableCleanupJobFilter();
+        const [totalItems, foundJobs] = await Promise.all([
+            this.cleanupJobModel.countDocuments(filter),
+            this.cleanupJobModel
+                .find(filter)
+                .skip((page - 1) * limit)
+                .limit(limit)
+                .sort({ nextRetryAt: 1, _id: 1 }),
+        ]);
+        const totalPages = Math.ceil(totalItems / limit);
+
+        return {
+            cleanupJobs: foundJobs,
+            pagination: {
+                totalItems,
+                totalPages,
+                currentPage: page,
+                limit,
+            },
+        } as CleanupJobRespone;
+    }
+
+    /** Set job thành IGNORED và remove lock */
+    async setIgnoreJob(jobId: string) {
+        const objectId = toObjectId(jobId, 'job id');
+        const cleanupJob = await this.cleanupJobModel.findOneAndUpdate(
+            {
+                _id: objectId,
+                ...this.getRunnableCleanupJobFilter(),
+            },
+            {
+                $set: {
+                    status: CleanupJobStatusEnum.IGNORED,
+                },
+                $unset: {
+                    lockedAt: 1,
+                    lockedBy: 1,
+                    lockedUntil: 1,
+                },
+            },
+            { new: true },
+        );
+        if (!cleanupJob) {
+            throw new NotFoundException(
+                CLEANUP_JOB_MESSAGES.JOB_NOT_FOUND_OR_LOCKED,
+            );
+        }
+        return cleanupJob;
+    }
+
+    /** Xử lý job dọn rác (media claudinaty - R2, session, redis) */
+    async processCleanupJob(jobId: string, lockedBy: CleanupJobLockedBy) {
+        const cleanupJob = await this.getAndLockCleanupJobOrThrow(
+            jobId,
+            lockedBy,
+        );
+        try {
+            switch (cleanupJob.action) {
+                case CleanupJobActionEnum.CLOUDINARY_DELETE_ONE:
+                    await this.handleCloudinaryDeleteOne(cleanupJob);
+                    break;
+                case CleanupJobActionEnum.CLOUDINARY_DELETE_MANY:
+                    await this.handleCloudinaryDeleteMany(cleanupJob);
+                    break;
+                case CleanupJobActionEnum.R2_DELETE_ONE:
+                    await this.handleR2DeleteOne(cleanupJob);
+                    break;
+                case CleanupJobActionEnum.R2_DELETE_MANY:
+                    await this.handleR2DeleteMany(cleanupJob);
+                    break;
+                case CleanupJobActionEnum.REDIS_REMOVE_UNSEEN_ONE:
+                    await this.handleRedisRemoveUnseenOne(cleanupJob);
+                    break;
+                case CleanupJobActionEnum.REDIS_REMOVE_UNSEEN_MANY:
+                    await this.handleRedisRemoveUnseenMany(cleanupJob);
+                    break;
+                case CleanupJobActionEnum.SESSION_REVOKE:
+                    await this.handleSessionRevoke(cleanupJob);
+                    break;
+                case CleanupJobActionEnum.SESSION_REVOKE_ALL:
+                    await this.handleSessionRevokeAll(cleanupJob);
+                    break;
+                default:
+                    throw new BadRequestException(
+                        CLEANUP_JOB_MESSAGES.JOB_ACTION_NOT_SUPPORTED,
+                    );
+            }
+
+            return await this.handleCompletedJob(cleanupJob);
+        } catch (error) {
+            const newRetryCount = cleanupJob.retryCount + 1;
+            if (newRetryCount > cleanupJob.maxRetries) {
+                return await this.handleFailedJob(
+                    cleanupJob,
+                    (error as Error)?.message || 'Unknown error',
+                );
+            }
+            return await this.handleRetryJob(
+                cleanupJob,
+                newRetryCount,
+                (error as Error)?.message || 'Unknown error',
+            );
+        }
+    }
+
+    /** Xử lý job xóa 1 ảnh trên cloudinary */
+    private async handleCloudinaryDeleteOne(cleanupJob: CleanupJobDocument) {
+        const { publicId } = cleanupJob.payload;
+        if (!publicId) {
+            throw new BadRequestException(
+                CLEANUP_JOB_MESSAGES.JOB_INVALID_PAYLOAD_PUBLIC_ID,
+            );
+        }
+        return await this.mediaService.deleteImageFromCloudinary(publicId);
+    }
+
+    /** Xử lý job xóa nhiều ảnh trên cloudinary */
+    private async handleCloudinaryDeleteMany(cleanupJob: CleanupJobDocument) {
+        const { publicIds } = cleanupJob.payload;
+        if (!publicIds || !Array.isArray(publicIds) || publicIds.length === 0) {
+            throw new BadRequestException(
+                CLEANUP_JOB_MESSAGES.JOB_INVALID_PAYLOAD_PUBLIC_IDS,
+            );
+        }
+        return await this.mediaService.deleteImagesFromCloudinary(publicIds);
+    }
+
+    /** Xử lý job xóa 1 file trên r2 */
+    private async handleR2DeleteOne(cleanupJob: CleanupJobDocument) {
+        const { objectKey } = cleanupJob.payload;
+        if (!objectKey) {
+            throw new BadRequestException(
+                CLEANUP_JOB_MESSAGES.JOB_INVALID_PAYLOAD_OBJECT_KEY,
+            );
+        }
+        return await this.mediaService.deleteFileFromR2(objectKey);
+    }
+
+    /** Xử lý job xóa nhiều file trên r2 */
+    private async handleR2DeleteMany(cleanupJob: CleanupJobDocument) {
+        const { objectKeys } = cleanupJob.payload;
+        if (
+            !objectKeys ||
+            !Array.isArray(objectKeys) ||
+            objectKeys.length === 0
+        ) {
+            throw new BadRequestException(
+                CLEANUP_JOB_MESSAGES.JOB_INVALID_PAYLOAD_OBJECT_KEYS,
+            );
+        }
+        return await this.mediaService.deleteFilesFromR2(objectKeys);
+    }
+
+    /** Xử lý job xóa 1 key unseen trên redis */
+    private async handleRedisRemoveUnseenOne(cleanupJob: CleanupJobDocument) {
+        const { userId, conversationId } = cleanupJob.payload;
+        if (!userId) {
+            throw new BadRequestException(
+                CLEANUP_JOB_MESSAGES.JOB_INVALID_PAYLOAD_USER_ID,
+            );
+        }
+        if (!conversationId) {
+            throw new BadRequestException(
+                CLEANUP_JOB_MESSAGES.JOB_INVALID_PAYLOAD_CONVERSATION_ID,
+            );
+        }
+        return await this.redisService.removeUnseenConversation(
+            userId,
+            conversationId,
+        );
+    }
+
+    /** Xử lý job xóa nhiều key trên redis */
+    private async handleRedisRemoveUnseenMany(cleanupJob: CleanupJobDocument) {
+        const { userIds, conversationId } = cleanupJob.payload;
+        if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+            throw new BadRequestException(
+                CLEANUP_JOB_MESSAGES.JOB_INVALID_PAYLOAD_USER_IDS,
+            );
+        }
+        if (!conversationId) {
+            throw new BadRequestException(
+                CLEANUP_JOB_MESSAGES.JOB_INVALID_PAYLOAD_CONVERSATION_ID,
+            );
+        }
+        const result = await this.redisService.removeAllUnseenConversation(
+            userIds,
+            conversationId,
+        );
+        if (result.failedCount > 0 || !result.ok) {
+            throw new BadRequestException(
+                CLEANUP_JOB_MESSAGES.FAILED_TO_REMOVE_UNSEENS_FROM_REDIS,
+            );
+        }
+        return result;
+    }
+
+    /** Xử lý job revoke 1 session của user*/
+    private async handleSessionRevoke(cleanupJob: CleanupJobDocument) {
+        const { userId, sessionId } = cleanupJob.payload;
+        if (!userId) {
+            throw new BadRequestException(
+                CLEANUP_JOB_MESSAGES.JOB_INVALID_PAYLOAD_USER_ID,
+            );
+        }
+        if (!sessionId) {
+            throw new BadRequestException(
+                CLEANUP_JOB_MESSAGES.JOB_INVALID_PAYLOAD_SESSION_ID,
+            );
+        }
+        return await this.sessionService.revoke(sessionId, userId);
+    }
+
+    /** Xử lý job revoke tất cả session của user*/
+    private async handleSessionRevokeAll(cleanupJob: CleanupJobDocument) {
+        const { userId } = cleanupJob.payload;
+        if (!userId) {
+            throw new BadRequestException(
+                CLEANUP_JOB_MESSAGES.JOB_INVALID_PAYLOAD_USER_ID,
+            );
+        }
+        return await this.sessionService.revokeAllByUserId(userId);
+    }
+
+    /** Xử lý job đánh dấu đã hoàn thành */
+    private async handleCompletedJob(cleanupJob: CleanupJobDocument) {
+        const result = await this.cleanupJobModel.findOneAndUpdate(
+            {
+                _id: cleanupJob._id,
+                status: cleanupJob.status,
+                lockedUntil: { $gt: new Date() },
+            },
+            {
+                $set: {
+                    status: CleanupJobStatusEnum.DONE,
+                    resolvedAt: new Date(),
+                },
+                $unset: {
+                    nextRetryAt: 1,
+                    lockedAt: 1,
+                    lockedUntil: 1,
+                    lockedBy: 1,
+                },
+            },
+            { new: true },
+        );
+        if (!result) {
+            throw new BadRequestException(
+                CLEANUP_JOB_MESSAGES.FAILED_TO_UPDATE_JOB,
+            );
+        }
+        return result;
+    }
+
+    /** Xử lý job đánh dấu retry */
+    private async handleRetryJob(
+        cleanupJob: CleanupJobDocument,
+        newRetryCount: number,
+        errorMessage?: string,
+    ) {
+        const nextRetryMinutes =
+            CLEANUP_RETRY_DELAYS_MINUTES[cleanupJob.action][newRetryCount - 1];
+
+        const result = await this.cleanupJobModel.findOneAndUpdate(
+            {
+                _id: cleanupJob._id,
+                status: cleanupJob.status,
+                lockedUntil: { $gt: new Date() },
+            },
+            {
+                $set: {
+                    status: CleanupJobStatusEnum.RETRY,
+                    retryCount: newRetryCount,
+                    nextRetryAt: new Date(
+                        Date.now() + nextRetryMinutes * 60 * 1000,
+                    ),
+                    error: errorMessage,
+                    lastTriedAt: new Date(),
+                },
+                $unset: {
+                    lockedAt: 1,
+                    lockedUntil: 1,
+                    lockedBy: 1,
+                },
+            },
+            { new: true },
+        );
+        if (!result) {
+            throw new BadRequestException(
+                CLEANUP_JOB_MESSAGES.FAILED_TO_UPDATE_JOB,
+            );
+        }
+        return result;
+    }
+
+    /** Xử lý job đánh dấu đã thất bại */
+    private async handleFailedJob(
+        cleanupJob: CleanupJobDocument,
+        errorMessage?: string,
+    ) {
+        const result = await this.cleanupJobModel.findOneAndUpdate(
+            {
+                _id: cleanupJob._id,
+                status: cleanupJob.status,
+                lockedUntil: { $gt: new Date() },
+            },
+            {
+                $set: {
+                    status: CleanupJobStatusEnum.FAILED,
+                    error: errorMessage,
+                    lastTriedAt: new Date(),
+                },
+                $unset: {
+                    nextRetryAt: 1,
+                    lockedAt: 1,
+                    lockedUntil: 1,
+                    lockedBy: 1,
+                },
+            },
+            { new: true },
+        );
+
+        if (!result) {
+            throw new BadRequestException(
+                CLEANUP_JOB_MESSAGES.FAILED_TO_UPDATE_JOB,
+            );
+        }
+        return result;
+    }
+
+    /** Helper - Lấy Cleanup job hoặc ném lỗi nếu không tìm thấy */
+    private async getAndLockCleanupJobOrThrow(
+        jobId: string,
+        lockedBy: CleanupJobLockedBy,
+    ) {
+        const objectJobId = toObjectId(jobId, 'clean up job id');
+        const now = new Date();
+        const cleanupJob = await this.cleanupJobModel
+            .findOneAndUpdate(
+                {
+                    _id: objectJobId,
+                    ...this.getRunnableCleanupJobFilter(),
+                },
+                {
+                    $set: {
+                        lockedBy,
+                        lockedAt: now,
+                        lockedUntil: new Date(
+                            now.getTime() +
+                                CLEANUP_JOB_CONSTANTS.LOCK_DURATION_MS,
+                        ),
+                    },
+                },
+                { new: true },
+            )
+            .lean();
+        if (!cleanupJob) {
+            throw new NotFoundException(
+                CLEANUP_JOB_MESSAGES.JOB_NOT_FOUND_OR_LOCKED,
+            );
+        }
+        return cleanupJob;
+    }
+
+    /** Helper - Tạo filter cho các job có thể xử lý (trạng thái PENDING hoặc RETRY và chưa bị lock hoặc lock đã hết hạn) */
+    private getRunnableCleanupJobFilter() {
+        return {
+            status: {
+                $in: [CleanupJobStatusEnum.PENDING, CleanupJobStatusEnum.RETRY],
+            },
+            $or: [
+                { lockedUntil: { $exists: false } },
+                { lockedUntil: null },
+                { lockedUntil: { $lte: new Date() } },
+            ],
+        };
     }
 }

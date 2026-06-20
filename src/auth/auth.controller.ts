@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
@@ -13,6 +15,7 @@ import {
     Request,
     Res,
     InternalServerErrorException,
+    Patch,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './passport/local-auth-guard';
@@ -21,20 +24,23 @@ import * as express from 'express';
 import { ConfigService } from '@nestjs/config';
 import ms, { StringValue } from 'ms';
 
-import {
-    ActiveAuthDto,
-    RegisterAuthDto,
-    ResendCodeAuthDto,
-    LoginDto,
-} from './dto/register-auth.dto';
+import { RegisterAuthDto, LoginDto } from './dto/register-auth.dto';
 import {
     ChangePasswordAuthDto,
+    ConfirmPasswordAuthDto,
     ForgotPasswordAuthDto,
     ResetPasswordAuthDto,
 } from './dto/password-auth.dto';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { buildDeviceNameFromUA } from '../utils/utils';
 import { LoginResponse, RefreshTokenResponse } from './types/auth';
+import { UsersService } from '@/modules/users/users.service';
+import {
+    ActiveAuthDto,
+    ResendCodeAuthDto,
+    SendCodeUpdateEmailAuthDto,
+    UpdateEmailAuthDto,
+} from './dto/mail-auth.dto';
 
 @ApiTags('Auth - Xác thực')
 @Controller('auth')
@@ -42,6 +48,7 @@ export class AuthController {
     constructor(
         private readonly authService: AuthService,
         private readonly configService: ConfigService,
+        private readonly userService: UsersService,
     ) {}
 
     private getRefreshCookieOptions(maxAge?: number) {
@@ -133,10 +140,7 @@ export class AuthController {
             /* empty */
         }
 
-        response.clearCookie(
-            'refreshToken',
-            this.getRefreshCookieOptions(0),
-        );
+        response.clearCookie('refreshToken', this.getRefreshCookieOptions(0));
 
         return AUTH_MESSAGES.LOGOUT_SUCCESS;
     }
@@ -226,5 +230,47 @@ export class AuthController {
         @Body() resetPasswordAuthDto: ResetPasswordAuthDto,
     ) {
         return await this.authService.resetPassword(resetPasswordAuthDto);
+    }
+
+    @Patch('confirm-password')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Xác nhận mật khẩu' })
+    async handleConfirmPassword(
+        @Body() body: ConfirmPasswordAuthDto,
+        @Request() req,
+    ) {
+        return await this.userService.confirmPassword(
+            req.user._id,
+            body.password,
+        );
+    }
+
+    @Post('send-code-update-email')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Gửi mã cập nhật email' })
+    async handleSendCodeUpdateEmail(
+        @Body() sendCodeUpdateEmailAuthDto: SendCodeUpdateEmailAuthDto,
+        @Request() req,
+    ) {
+        return await this.userService.sendMailUpdateEmail(
+            req.user._id,
+            sendCodeUpdateEmailAuthDto.email,
+        );
+    }
+
+    @Patch('update-email')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Cập nhật email' })
+    async handleUpdateEmail(
+        @Body() updateEmailAuthDto: UpdateEmailAuthDto,
+        @Request() req,
+    ) {
+        await this.userService.updateEmail(
+            req.user._id,
+            updateEmailAuthDto.email,
+            updateEmailAuthDto.code,
+        );
+
+        return await this.authService.logoutAllDevices(req.user._id);
     }
 }

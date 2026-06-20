@@ -24,4 +24,7 @@ export const USER_MESSAGES = {
     AVATAR_DELETE_FAILED: 'Avatar delete failed',
     AVATAR_DELETED_SUCCESS: 'Avatar deleted successfully',
     AVATAR_NOT_EXIST: 'User not have avatar',
+    PASSWORD_NOT_MATCH: 'Password not match',
+    EMAIL_NOT_CHANGED: 'Email not changed',
+    EMAIL_UPDATE_FAILED: 'Email update failed',
 } as const;

@@ -17,7 +17,7 @@ import {
     toObjectId,
 } from '@/utils/utils';
 import aqp from 'api-query-params';
-import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateUserByAdminDto, UpdateUserDto } from './dto/update-user.dto';
 import { ConfigService } from '@nestjs/config';
 import ms, { StringValue } from 'ms';
 import { v4 as uuidv4 } from 'uuid';
@@ -226,43 +226,37 @@ export class UsersService {
     }
 
     /**
-     * Cập nhật thông tin user. Chỉ user chính chủ hoặc Admin mới được phép update.
+     * Cập nhật thông tin cá nhân của user hiện tại.
      */
-    async update(
-        updateUserDto: UpdateUserDto,
-        currentUser: string,
-        role: string,
-    ) {
-        if (role !== 'ADMIN' && updateUserDto._id !== currentUser) {
-            throw new BadRequestException(USER_MESSAGES.NOT_AUTHORIZED_UPDATE);
-        }
-        if (updateUserDto.email) {
-            const isEmailExisted = await this.userModel.exists({
-                email: updateUserDto.email,
-                _id: { $ne: updateUserDto._id },
-            });
+    async update(updateUserDto: UpdateUserDto, currentUser: string) {
+        validateObjectId(currentUser, 'user id');
 
-            if (isEmailExisted) {
-                throw new BadRequestException(USER_MESSAGES.EMAIL_EXISTED);
+        const user = await this.userModel.findById(currentUser).lean();
+        if (!user) {
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
+        }
+
+        if (user.isDisabled) {
+            throw new BadRequestException(USER_MESSAGES.USER_DISABLED);
+        }
+
+        const normalizedEntries = Object.entries(updateUserDto).filter(
+            ([, value]) => value !== undefined,
+        );
+
+        if ('name' in updateUserDto) {
+            const name = updateUserDto.name?.trim();
+            if (!name) {
+                throw new BadRequestException('Name must not be empty');
             }
         }
 
-        const { _id, ...updateData } = updateUserDto;
-        const normalizedEntries = Object.entries(updateData).filter(
-            ([, value]) => value !== undefined,
-        );
         const $set = Object.fromEntries(
-            normalizedEntries.filter(
-                ([key, value]) =>
-                    value !== null || key === 'email' || key === 'name',
-            ),
+            normalizedEntries.filter(([, value]) => value !== null),
         );
         const $unset = Object.fromEntries(
             normalizedEntries
-                .filter(
-                    ([key, value]) =>
-                        value === null && key !== 'email' && key !== 'name',
-                )
+                .filter(([, value]) => value === null)
                 .map(([key]) => [key, '']),
         );
         const updateQuery: {
@@ -278,17 +272,79 @@ export class UsersService {
             updateQuery.$unset = $unset;
         }
 
-        const user = (await this.userModel
-            .findOneAndUpdate({ _id }, updateQuery, { new: true })
+        const updatedUser = await this.userModel
+            .findByIdAndUpdate(currentUser, updateQuery, { new: true })
             .select('-password -__v')
             .populate('avatar', '-__v')
-            .lean()) as UserResponse;
+            .lean();
 
-        if (!user) {
+        if (!updatedUser) {
             throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
         }
 
-        return this.serializeUserResponse(user);
+        return this.serializeUserResponse(updatedUser as UserResponse);
+    }
+
+    /**
+     * Cập nhật thông tin user cho ADMIN.
+     */
+    async updateByAdmin(userId: string, updateUserDto: UpdateUserByAdminDto) {
+        validateObjectId(userId, 'user id');
+
+        const user = await this.userModel.findById(userId);
+        if (!user) {
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
+        }
+        if (user.isDisabled) {
+            throw new BadRequestException(USER_MESSAGES.USER_DISABLED);
+        }
+
+        if (updateUserDto.email) {
+            const isEmailExisted = await this.userModel.exists({
+                email: updateUserDto.email,
+                _id: { $ne: userId },
+            });
+
+            if (isEmailExisted) {
+                throw new BadRequestException(USER_MESSAGES.EMAIL_EXISTED);
+            }
+        }
+
+        const normalizedEntries = Object.entries(updateUserDto).filter(
+            ([key, value]) => key !== '_id' && value !== undefined,
+        );
+        const $set = Object.fromEntries(
+            normalizedEntries.filter(([, value]) => value !== null),
+        );
+        const $unset = Object.fromEntries(
+            normalizedEntries
+                .filter(([, value]) => value === null)
+                .map(([key]) => [key, '']),
+        );
+        const updateQuery: {
+            $set?: Record<string, unknown>;
+            $unset?: Record<string, unknown>;
+        } = {};
+
+        if (Object.keys($set).length > 0) {
+            updateQuery.$set = $set;
+        }
+
+        if (Object.keys($unset).length > 0) {
+            updateQuery.$unset = $unset;
+        }
+
+        const updatedUser = await this.userModel
+            .findByIdAndUpdate(userId, updateQuery, { new: true })
+            .select('-password -__v')
+            .populate('avatar', '-__v')
+            .lean();
+
+        if (!updatedUser) {
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
+        }
+
+        return this.serializeUserResponse(updatedUser as UserResponse);
     }
 
     /**
@@ -411,9 +467,15 @@ export class UsersService {
             throw new BadRequestException(USER_MESSAGES.USER_ALREADY_ACTIVE);
         }
 
+        await this.checkMailCooldownRedis(
+            this.redisActiveKey(user._id.toString()),
+            this.configService.get<string>('MAIL_CODE_ACTIVE_EXPIRE')!,
+            GLOBAL_CONSTANTS.COOLDOWN_SECONDS,
+        );
+
         const codeActive = uuidv4();
 
-        // Lưu Redis ĐỒNG BỘ trước (bao gồm check cooldown)
+        // Lưu Redis ĐỒNG BỘ trước
         await this.saveCodeRedis(user._id.toString(), codeActive, 'RESEND');
 
         // Gửi mail bất đồng bộ (fire-and-forget)
@@ -535,6 +597,13 @@ export class UsersService {
     }
 
     /**
+     * Helper: Format Redis key cho OTP Update Email.
+     */
+    private redisUpdateEmailKey(userId: string, email: string) {
+        return `auth:update-email:${userId}:${email}`;
+    }
+
+    /**
      * Hàm helper: Check cooldown để tránh spam gửi mail (giới hạn 1 email / X giây).
      */
     private async checkMailCooldownRedis(
@@ -563,23 +632,21 @@ export class UsersService {
         id: string,
         codeActive: string,
         type: ActionRedis,
+        email: string = '',
     ) {
         const keyRedis =
             type === 'FORGOT'
                 ? this.redisForgotKey(id)
-                : this.redisActiveKey(id);
+                : type === 'UPDATE_EMAIL'
+                  ? this.redisUpdateEmailKey(id, email)
+                  : this.redisActiveKey(id);
         const expireTime = this.configService.get<string>(
             type === 'FORGOT'
                 ? 'MAIL_CODE_FORGOT_EXPIRE'
-                : 'MAIL_CODE_ACTIVE_EXPIRE',
+                : type === 'UPDATE_EMAIL'
+                  ? 'MAIL_CODE_UPDATE_EMAIL_EXPIRE'
+                  : 'MAIL_CODE_ACTIVE_EXPIRE',
         )!;
-        if (type === 'RESEND') {
-            await this.checkMailCooldownRedis(
-                keyRedis,
-                expireTime,
-                GLOBAL_CONSTANTS.COOLDOWN_SECONDS,
-            );
-        }
         const expireTimeSeconds = ms(expireTime as StringValue) / 1000;
         const hashCode = hashCodeVerifyEmail(
             codeActive,
@@ -855,5 +922,160 @@ export class UsersService {
         } finally {
             await session.endSession();
         }
+    }
+
+    /**
+     * Xác nhận mật khẩu
+     */
+    async confirmPassword(userId: string, password: string) {
+        const objectUserId = toObjectId(userId, 'user id');
+        const existingUser = await this.userModel
+            .findById(objectUserId)
+            .select('_id password')
+            .lean();
+        if (!existingUser) {
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
+        }
+        const isPasswordValid = await bcrypt.compare(
+            password,
+            existingUser.password,
+        );
+        if (!isPasswordValid) {
+            throw new BadRequestException(USER_MESSAGES.PASSWORD_NOT_MATCH);
+        }
+        return true;
+    }
+
+    /**
+     * Cập nhật email
+     */
+    async updateEmail(userId: string, email: string, code: string) {
+        const objectUserId = toObjectId(userId, 'user id');
+
+        const session = await this.connection.startSession();
+        try {
+            const hashCode = hashCodeVerifyEmail(
+                code,
+                this.configService.get<string>('CODE_VERIFY_PEPPER')!,
+            );
+            const redisKey = this.redisUpdateEmailKey(userId, email);
+
+            const codeRedis = await this.redisService.get(redisKey);
+            if (codeRedis !== hashCode) {
+                throw new BadRequestException(USER_MESSAGES.INVALID_CODE);
+            }
+
+            const user = await session.withTransaction(async () => {
+                const isEmailExisted = await this.userModel
+                    .findOne({
+                        email,
+                        _id: { $ne: objectUserId },
+                    })
+                    .session(session)
+                    .select('_id')
+                    .lean();
+                if (isEmailExisted) {
+                    throw new BadRequestException(USER_MESSAGES.EMAIL_EXISTED);
+                }
+                const updatedUser = await this.userModel
+                    .findOneAndUpdate(
+                        {
+                            _id: objectUserId,
+                            isDisabled: false,
+                        },
+                        {
+                            $set: {
+                                email,
+                            },
+                        },
+                        { new: true, session },
+                    )
+                    .select('-password -__v')
+                    .populate('avatar', '-__v')
+                    .lean();
+                if (!updatedUser) {
+                    throw new BadRequestException(
+                        USER_MESSAGES.EMAIL_UPDATE_FAILED,
+                    );
+                }
+                return updatedUser as UserResponse;
+            });
+            if (!user) {
+                throw new BadRequestException(
+                    USER_MESSAGES.EMAIL_UPDATE_FAILED,
+                );
+            }
+            await this.redisService.del(redisKey).catch((error) => {
+                console.error(
+                    'Failed to delete redis update email key:',
+                    error,
+                );
+            });
+            return this.serializeUserResponse(user);
+        } finally {
+            await session.endSession();
+        }
+    }
+
+    /**
+     * Gửi mail xác nhận khi update email
+     */
+    async sendMailUpdateEmail(userId: string, email: string) {
+        const objectUserId = toObjectId(userId, 'user id');
+        const [user, isEmailExisted] = await Promise.all([
+            this.userModel
+                .findOne({ _id: objectUserId, isDisabled: false })
+                .select('_id email')
+                .lean(),
+            this.userModel
+                .findOne({
+                    email,
+                    _id: { $ne: objectUserId },
+                })
+                .select('_id')
+                .lean(),
+        ]);
+        if (!user) {
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
+        }
+        if (isEmailExisted) {
+            throw new BadRequestException(USER_MESSAGES.EMAIL_EXISTED);
+        }
+
+        if (email === user.email) {
+            throw new BadRequestException(USER_MESSAGES.EMAIL_NOT_CHANGED);
+        }
+
+        await this.checkMailCooldownRedis(
+            this.redisUpdateEmailKey(user._id.toString(), email),
+            this.configService.get<string>('MAIL_CODE_UPDATE_EMAIL_EXPIRE')!,
+            GLOBAL_CONSTANTS.COOLDOWN_SECONDS,
+        );
+
+        const codeUpdateEmailId = uuidv4();
+        await this.saveCodeRedis(
+            user._id.toString(),
+            codeUpdateEmailId,
+            'UPDATE_EMAIL',
+            email,
+        );
+        const expireTime = this.configService.get<string>(
+            'MAIL_CODE_UPDATE_EMAIL_EXPIRE',
+        )!;
+        const expireTimeFormatted = formatExpireTime(expireTime);
+        this.sendEmailViaResend(
+            email,
+            'Verify Your New Email!',
+            this.configService.get<string>('MAIL_UPDATE_EMAIL_TEMPLATE') ||
+                'verify-new-email',
+            {
+                email: email,
+                activationCode: codeUpdateEmailId,
+                expireTime: expireTimeFormatted,
+            },
+        ).catch((error) => {
+            console.error(error);
+        });
+        return 'OK';
     }
 }

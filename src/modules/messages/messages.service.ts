@@ -71,14 +71,19 @@ export class MessagesService {
     /**
      * Lấy chi tiết một tin nhắn theo ID, kèm theo thông tin người gửi và tin nhắn được reply.
      */
-    async getMessageById(messageId: string) {
+    async getMessageById(messageId: string, session?: ClientSession) {
         const objectMessageId = toObjectId(messageId, 'message id');
-        const message = await this.messageModel
+        let query = this.messageModel
             .findById(objectMessageId)
             .populate({ path: 'senderId', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
             .populate('replyTo', '-__v')
-            .populate('mediaId', '-__v')
-            .lean();
+            .populate('mediaId', '-__v');
+            
+        if (session) {
+            query = query.session(session);
+        }
+        
+        const message = await query.lean();
 
         if (!message) {
             throw new BadRequestException(MESSAGE_MESSAGES.MESSAGE_NOT_FOUND);
@@ -122,6 +127,7 @@ export class MessagesService {
         content?: string,
         replyTo?: string,
         file?: Express.Multer.File,
+        externalSession?: ClientSession,
     ) {
         if (
             [MessageEnumType.TEXT, MessageEnumType.SYSTEM].includes(type) &&
@@ -164,7 +170,8 @@ export class MessagesService {
             type === MessageEnumType.IMAGE
                 ? MediaProviderEnum.CLOUDINARY
                 : MediaProviderEnum.R2;
-        const session = await this.connection.startSession();
+        const isExternalSession = !!externalSession;
+        const session = externalSession || await this.connection.startSession();
         try {
             let newMessage: MessageDocument | null = null;
 
@@ -222,8 +229,8 @@ export class MessagesService {
                     }
                 }
             }
-            // bọc các lệnh ghi DB vào transaction thật
-            await session.withTransaction(async () => {
+            // bọc các lệnh ghi DB vào transaction
+            const executeMessageCreation = async () => {
                 let createMedia: MediaDocument | null = null;
                 // nếu có file được upload, tạo media
                 if (uploadedFile) {
@@ -255,7 +262,13 @@ export class MessagesService {
                     senderId,
                     session, // truyền session xuống service conversation để update cùng transaction
                 );
-            });
+            };
+
+            if (isExternalSession) {
+                await executeMessageCreation();
+            } else {
+                await session.withTransaction(executeMessageCreation);
+            }
             if (!newMessage) {
                 throw new InternalServerErrorException(
                     MESSAGE_MESSAGES.MESSAGE_NOT_CREATED,
@@ -278,7 +291,7 @@ export class MessagesService {
             );
 
             const newMessageId = (newMessage as MessageDocument)._id.toString();
-            const message = await this.getMessageById(newMessageId);
+            const message = await this.getMessageById(newMessageId, session);
             this.createdMessage$.next(message);
             return { message, conversation };
         } catch (error) {
@@ -311,7 +324,9 @@ export class MessagesService {
             }
             throw error;
         } finally {
-            await session.endSession();
+            if (!isExternalSession) {
+                await session.endSession();
+            }
         }
     }
 

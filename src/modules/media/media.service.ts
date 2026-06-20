@@ -93,7 +93,9 @@ export class MediaService implements OnModuleInit {
         await this.assertMediaAccess(media, userId);
 
         if (media.provider !== MediaProviderEnum.R2 || !media.objectKey) {
-            throw new BadRequestException(MEDIA_MESSAGES.MEDIA_NOT_STORED_IN_R2);
+            throw new BadRequestException(
+                MEDIA_MESSAGES.MEDIA_NOT_STORED_IN_R2,
+            );
         }
 
         const result = await this.r2Service.getObject(media.objectKey);
@@ -191,7 +193,7 @@ export class MediaService implements OnModuleInit {
     /**
      * Xóa một ảnh trên Cloudinary theo `publicId`.
      */
-    private async deleteImageFromCloudinary(publicId: string) {
+    async deleteImageFromCloudinary(publicId: string) {
         return await this.cloudinaryService.deleteResource(publicId);
     }
 
@@ -219,7 +221,7 @@ export class MediaService implements OnModuleInit {
     /**
      * Xóa nhiều ảnh trên Cloudinary theo dạng batch.
      */
-    private async deleteImagesFromCloudinary(publicIds: string[]) {
+    async deleteImagesFromCloudinary(publicIds: string[]) {
         return await this.cloudinaryService.deleteResources(publicIds);
     }
 
@@ -276,7 +278,7 @@ export class MediaService implements OnModuleInit {
     /**
      * Xóa một file trên R2 theo `objectKey`.
      */
-    private async deleteFileFromR2(objectKey: string) {
+    async deleteFileFromR2(objectKey: string) {
         return await this.r2Service.deleteObject(objectKey);
     }
 
@@ -304,7 +306,7 @@ export class MediaService implements OnModuleInit {
     /**
      * Xóa nhiều file trên R2 theo danh sách `objectKey`.
      */
-    private async deleteFilesFromR2(objectKeys: string[]) {
+    async deleteFilesFromR2(objectKeys: string[]) {
         return await this.r2Service.deleteObjects(objectKeys);
     }
 
@@ -385,8 +387,13 @@ export class MediaService implements OnModuleInit {
         if (media.ownerType === OwnerTypeEnum.USER) {
             const ownerId = media.ownerId?.toString();
             const uploadedBy = media.uploadedBy?.toString();
-            if (ownerId !== objectUserId.toString() && uploadedBy !== objectUserId.toString()) {
-                throw new ForbiddenException(MEDIA_MESSAGES.MEDIA_ACCESS_DENIED);
+            if (
+                ownerId !== objectUserId.toString() &&
+                uploadedBy !== objectUserId.toString()
+            ) {
+                throw new ForbiddenException(
+                    MEDIA_MESSAGES.MEDIA_ACCESS_DENIED,
+                );
             }
             return;
         }
@@ -398,7 +405,9 @@ export class MediaService implements OnModuleInit {
             });
 
             if (!hasAccess) {
-                throw new ForbiddenException(MEDIA_MESSAGES.MEDIA_ACCESS_DENIED);
+                throw new ForbiddenException(
+                    MEDIA_MESSAGES.MEDIA_ACCESS_DENIED,
+                );
             }
         }
     }

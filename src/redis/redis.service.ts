@@ -148,10 +148,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     /**
      * Gỡ bỏ cờ Unseen của một conversation cho một user (khi user đã đọc tin nhắn).
      */
-    private async removeUnseenConversation(
-        userId: string,
-        conversationId: string,
-    ) {
+    async removeUnseenConversation(userId: string, conversationId: string) {
         return await this.redis.srem(
             `unseen:conversations:${userId}`,
             conversationId,
@@ -183,7 +180,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     /**
      * Xóa toàn bộ cờ Unseen của một conversation cho tất cả user (khi user đã đọc tin nhắn).
      */
-    private async removeAllUnseenConversation(
+    async removeAllUnseenConversation(
         userIds: (string | Types.ObjectId)[],
         conversationId: string,
     ) {

@@ -61,7 +61,7 @@ export class SessionService {
     /**
      * Thu hồi một session đang hoạt động của user.
      */
-    private async revoke(_id: string, userId: string) {
+    async revoke(_id: string, userId: string) {
         validateObjectId(_id, 'session id');
         validateObjectId(userId, 'user id');
 
@@ -96,7 +96,7 @@ export class SessionService {
     /**
      * Thu hồi toàn bộ session đang hoạt động của một user.
      */
-    private async revokeAllByUserId(userId: string) {
+    async revokeAllByUserId(userId: string) {
         validateObjectId(userId, 'user id');
 
         return await this.sessionModel.updateMany(

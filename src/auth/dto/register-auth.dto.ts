@@ -1,9 +1,14 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Match } from '@/utils/decorator-customize';
 import { IsEmail, IsNotEmpty, MinLength } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class RegisterAuthDto {
     @IsEmail({}, { message: 'Email is invalid' })
     @IsNotEmpty({ message: 'Email is required' })
+    @Transform(({ value }) =>
+        typeof value === 'string' ? value.toLowerCase().trim() : value,
+    )
     email: string;
 
     @MinLength(6, { message: 'Password must be at least 6 characters' })
@@ -16,24 +21,12 @@ export class RegisterAuthDto {
     confirmPassword: string;
 }
 
-export class ActiveAuthDto {
-    @IsEmail({}, { message: 'Email is invalid' })
-    @IsNotEmpty({ message: 'Email is required' })
-    email: string;
-
-    @IsNotEmpty({ message: 'Code is invalid' })
-    code: string;
-}
-
-export class ResendCodeAuthDto {
-    @IsEmail({}, { message: 'Email không đúng định dạng' })
-    @IsNotEmpty({ message: 'Email không được để trống' })
-    email: string;
-}
-
 export class LoginDto {
     @IsEmail({}, { message: 'Email is invalid' })
     @IsNotEmpty({ message: 'Email is required' })
+    @Transform(({ value }) =>
+        typeof value === 'string' ? value.toLowerCase().trim() : value,
+    )
     email: string;
 
     @IsNotEmpty({ message: 'Password is required' })

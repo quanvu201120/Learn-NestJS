@@ -1,5 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Match } from '@/utils/decorator-customize';
 import { IsEmail, IsNotEmpty, MinLength } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class ChangePasswordAuthDto {
     @MinLength(6, { message: 'Old password must be at least 6 characters' })
@@ -19,12 +21,18 @@ export class ChangePasswordAuthDto {
 export class ForgotPasswordAuthDto {
     @IsEmail({}, { message: 'Email không đúng định dạng' })
     @IsNotEmpty({ message: 'Email không được để trống' })
+    @Transform(({ value }) =>
+        typeof value === 'string' ? value.toLowerCase().trim() : value,
+    )
     email: string;
 }
 
 export class ResetPasswordAuthDto {
     @IsNotEmpty({ message: 'Email không được để trống' })
     @IsEmail({}, { message: 'Email không đúng định dạng' })
+    @Transform(({ value }) =>
+        typeof value === 'string' ? value.toLowerCase().trim() : value,
+    )
     email: string;
 
     @IsNotEmpty({ message: 'Code không được để trống' })
@@ -38,4 +46,10 @@ export class ResetPasswordAuthDto {
     @IsNotEmpty({ message: 'Xác nhận mật khẩu không được để trống' })
     @Match('password', { message: 'Xác nhận mật khẩu không khớp' })
     confirmPassword: string;
+}
+
+export class ConfirmPasswordAuthDto {
+    @MinLength(6, { message: 'Mật khẩu phải có ít nhất 6 ký tự' })
+    @IsNotEmpty({ message: 'Mật khẩu không được để trống' })
+    password: string;
 }
