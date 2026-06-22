@@ -53,21 +53,22 @@ export const serializeMessage = (message: any): MessageResponse => {
 
     return {
         ...rest,
+        content: message.isDeleted ? '' : rest.content,
         _id: rest._id ? rest._id.toString() : undefined,
         conversationId: rest.conversationId
             ? rest.conversationId.toString()
             : undefined,
-        sender:
-            serializeSender(senderId),
-        media:
-            mediaId &&
-            typeof mediaId === 'object' &&
-            !(mediaId instanceof Types.ObjectId) &&
-            Object.keys(mediaId).includes('_id')
-                ? serializeMedia(mediaId)
-                : mediaId
-                  ? mediaId.toString()
-                  : undefined,
+        sender: serializeSender(senderId),
+        media: message.isDeleted
+            ? undefined
+            : mediaId &&
+              typeof mediaId === 'object' &&
+              !(mediaId instanceof Types.ObjectId) &&
+              Object.keys(mediaId).includes('_id')
+              ? serializeMedia(mediaId)
+              : mediaId
+                ? mediaId.toString()
+                : undefined,
         replyTo: replyTo ? serializeReplyMessage(replyTo) : undefined,
     };
 };

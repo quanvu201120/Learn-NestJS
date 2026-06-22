@@ -15,6 +15,11 @@ export type MessageResponse = Omit<
     replyTo?: MessageResponse | Types.ObjectId | string;
 };
 
+export type ListMessagesResponse = {
+    nextCursor: string | null;
+    messages: MessageResponse[];
+};
+
 export enum MessageReactionEnumType {
     LIKE = 'like',
     LOVE = 'love',

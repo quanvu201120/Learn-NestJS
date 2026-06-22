@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
+/* eslint-disable prefer-const */
 /* eslint-disable prettier/prettier */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
@@ -19,11 +21,13 @@ import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
 import { MEDIA_MESSAGES } from './constants/media.constant';
 import {
+    ListMediaResponse,
     MediaProviderEnum,
     MediaResourceTypeEnum,
+    MediaResponse,
     OwnerTypeEnum,
 } from './types/media';
-import { toObjectId } from '@/utils/utils';
+import { parseDateOrThrow, toObjectId } from '@/utils/utils';
 import { CleanupJobsService } from '../cleanup-jobs/cleanup-jobs.service';
 import { CreateCleanupJobDto } from '../cleanup-jobs/dto/create-cleanup-job.dto';
 import {
@@ -35,6 +39,9 @@ import {
     Conversation,
     ConversationDocument,
 } from '../conversations/schemas/conversation.schema';
+import { CONVERSATION_MESSAGES } from '../conversations/constants/conversation.constant';
+import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
+import { serializeMedia } from './utils/media.serializer';
 
 type MediaCleanupContext = {
     resourceType: CleanupJobResourceEnum;
@@ -83,6 +90,92 @@ export class MediaService implements OnModuleInit {
         });
     }
 
+    async getMediasByConversation(
+        conversationId: string,
+        userId: string,
+        type: MediaResourceTypeEnum, // Đã thêm type để filter
+        cursor?: string,
+        session?: ClientSession,
+    ) {
+        const objectConversationId = toObjectId(
+            conversationId,
+            'conversation id',
+        );
+        const objectUserId = toObjectId(userId, 'user id');
+
+        let query = this.conversationModel
+            .findOne({
+                _id: objectConversationId,
+                users: objectUserId,
+            })
+            .select('_id hiddenHistory');
+
+        if (session) {
+            query.session(session);
+        }
+        const conversation = await query.lean();
+
+        if (!conversation) {
+            throw new NotFoundException(
+                CONVERSATION_MESSAGES.CONVERSATION_NOT_FOUND,
+            );
+        }
+
+        // Dùng optional chaining (?.) để tránh crash nếu DB cũ không có mảng này
+        const userHidden = conversation.hiddenHistory?.find(
+            (item) => item?.userId?.toString() === objectUserId.toString(),
+        );
+
+        const createdAtFilter: Record<string, Date> = {};
+        if (cursor) {
+            createdAtFilter.$lt = parseDateOrThrow(cursor, 'cursor');
+        }
+        if (userHidden?.hiddenAt) {
+            createdAtFilter.$gte = userHidden.hiddenAt;
+        }
+
+        let mediaQuery = this.mediaModel.find({
+            ownerId: objectConversationId,
+            ownerType: OwnerTypeEnum.CONVERSATION,
+            resourceType: type, // Filter theo type
+            isDeleted: { $ne: true }, // Không lấy media đã bị thu hồi
+            ...(Object.keys(createdAtFilter).length > 0
+                ? { createdAt: createdAtFilter }
+                : {}),
+        });
+
+        // Bổ sung session cho query này (bạn đang bị thiếu)
+        if (session) {
+            mediaQuery.session(session);
+        }
+
+        const medias = await mediaQuery
+            .sort({ createdAt: -1, _id: -1 })
+            .limit(GLOBAL_CONSTANTS.LIMIT_MEDIAS_DEFAULT)
+            .lean();
+
+        if (medias.length === 0) {
+            return { nextCursor: null, medias: [] } as ListMediaResponse;
+        }
+
+        const formattedMedias: MediaResponse[] = medias.map((media) =>
+            serializeMedia(media),
+        );
+
+        const hasNextPage =
+            formattedMedias.length === GLOBAL_CONSTANTS.LIMIT_MEDIAS_DEFAULT;
+        const lastMedia = formattedMedias[formattedMedias.length - 1];
+        const nextCursor =
+            hasNextPage && lastMedia?.createdAt
+                ? new Date(lastMedia.createdAt).toISOString()
+                : null;
+
+        return { nextCursor, medias: formattedMedias } as ListMediaResponse;
+    }
+
+    /**
+     * Download file media từ R2 theo id và kiểm tra quyền truy cập.
+     */
     async downloadR2Media(id: string, userId: string) {
         const media = await this.findById(id);
 
@@ -197,6 +290,9 @@ export class MediaService implements OnModuleInit {
         return await this.cloudinaryService.deleteResource(publicId);
     }
 
+    /**
+     * Xóa một ảnh trên Cloudinary theo `publicId` và tạo cleanup job nếu có lỗi.
+     */
     async deleteImageFromCloudinaryWithCleanup(
         publicId: string,
         cleanup: MediaCleanupContext,
@@ -225,6 +321,9 @@ export class MediaService implements OnModuleInit {
         return await this.cloudinaryService.deleteResources(publicIds);
     }
 
+    /**
+     * Xóa nhiều ảnh trên Cloudinary theo dạng batch và tạo cleanup job nếu có lỗi.
+     */
     async deleteImagesFromCloudinaryWithCleanup(
         publicIds: string[],
         cleanup: MediaCleanupContext,
@@ -282,6 +381,9 @@ export class MediaService implements OnModuleInit {
         return await this.r2Service.deleteObject(objectKey);
     }
 
+    /**
+     * Xóa một file trên R2 theo `objectKey` và tạo cleanup job nếu có lỗi.
+     */
     async deleteFileFromR2WithCleanup(
         objectKey: string,
         cleanup: MediaCleanupContext,
@@ -310,6 +412,9 @@ export class MediaService implements OnModuleInit {
         return await this.r2Service.deleteObjects(objectKeys);
     }
 
+    /**
+     * Xóa nhiều file trên R2 theo danh sách `objectKey` và tạo cleanup job nếu có lỗi.
+     */
     async deleteFilesFromR2WithCleanup(
         objectKeys: string[],
         cleanup: MediaCleanupContext,
@@ -371,6 +476,54 @@ export class MediaService implements OnModuleInit {
             },
         );
         return { listPublicId, listObjectKey };
+    }
+
+    /**
+     * Xoá mềm media khi xoá tin nhắn.
+     *  -> đảm bảo media đã bị xoá sẽ không được sử dụng lại.
+     */
+    async softDeleteMediaWithMessage(
+        mediaId: string,
+        conversationId: string,
+        session?: ClientSession,
+    ) {
+        const objectMediaId = toObjectId(mediaId, 'media id');
+        const objectConversationId = toObjectId(
+            conversationId,
+            'conversation id',
+        );
+
+        const media = await this.mediaModel
+            .findOne(
+                {
+                    _id: objectMediaId,
+                    isDeleted: { $ne: true },
+                    ownerType: OwnerTypeEnum.CONVERSATION,
+                    ownerId: objectConversationId,
+                },
+                null,
+                { session },
+            )
+            .select('_id')
+            .lean();
+
+        if (!media) {
+            throw new BadRequestException(MEDIA_MESSAGES.MEDIA_NOT_FOUND);
+        }
+
+        return await this.mediaModel
+            .findOneAndUpdate(
+                {
+                    _id: objectMediaId,
+                    isDeleted: { $ne: true },
+                    ownerType: OwnerTypeEnum.CONVERSATION,
+                    ownerId: objectConversationId,
+                },
+                { $set: { isDeleted: true, deletedAt: new Date() } },
+                { new: true, session },
+            )
+            .select('_id')
+            .lean();
     }
 
     private async createCleanupJob(createDto: CreateCleanupJobDto) {

@@ -89,17 +89,6 @@ export class UsersController {
         return await this.usersService.update(updateUserDto, req.user._id);
     }
 
-    @Patch(':id')
-    @Roles('ADMIN')
-    @UseGuards(RolesGuard)
-    @ApiOperation({ summary: 'ADMIN cập nhật thông tin user' })
-    async updateByAdmin(
-        @Param('id') id: string,
-        @Body() updateUserDto: UpdateUserByAdminDto,
-    ) {
-        return await this.usersService.updateByAdmin(id, updateUserDto);
-    }
-
     @Patch('avatar')
     @UseInterceptors(FileInterceptor('file'))
     @ApiOperation({ summary: 'Cập nhật ảnh đại diện của người dùng' })
@@ -132,6 +121,17 @@ export class UsersController {
     ): Promise<UserDisableStateResponse> {
         response.clearCookie('refreshToken', this.getRefreshCookieOptions(0));
         return await this.usersService.disableSelf(req.user._id);
+    }
+
+    @Patch(':id')
+    @Roles('ADMIN')
+    @UseGuards(RolesGuard)
+    @ApiOperation({ summary: 'ADMIN cập nhật thông tin user' })
+    async updateByAdmin(
+        @Param('id') id: string,
+        @Body() updateUserDto: UpdateUserByAdminDto,
+    ) {
+        return await this.usersService.updateByAdmin(id, updateUserDto);
     }
 
     @Patch(':id/disable')

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 /* eslint-disable prettier/prettier */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
@@ -22,6 +23,7 @@ import { serializeMessage } from './utils/message.serializer';
 import { Subject } from 'rxjs';
 import { UserResponse } from '../users/types/user';
 import {
+    ListMessagesResponse,
     MessageEnumType,
     MessageReactionEnumType,
     MessageResponse,
@@ -75,14 +77,18 @@ export class MessagesService {
         const objectMessageId = toObjectId(messageId, 'message id');
         let query = this.messageModel
             .findById(objectMessageId)
-            .populate({ path: 'senderId', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
+            .populate({
+                path: 'senderId',
+                select: '-password -__v',
+                populate: { path: 'avatar', select: '-__v' },
+            })
             .populate('replyTo', '-__v')
             .populate('mediaId', '-__v');
-            
+
         if (session) {
             query = query.session(session);
         }
-        
+
         const message = await query.lean();
 
         if (!message) {
@@ -171,7 +177,8 @@ export class MessagesService {
                 ? MediaProviderEnum.CLOUDINARY
                 : MediaProviderEnum.R2;
         const isExternalSession = !!externalSession;
-        const session = externalSession || await this.connection.startSession();
+        const session =
+            externalSession || (await this.connection.startSession());
         try {
             let newMessage: MessageDocument | null = null;
 
@@ -346,7 +353,11 @@ export class MessagesService {
         }
         const lastMessage = await this.messageModel
             .findById(conversation.lastMessageId)
-            .populate({ path: 'senderId', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
+            .populate({
+                path: 'senderId',
+                select: '-password -__v',
+                populate: { path: 'avatar', select: '-__v' },
+            })
             .populate('replyTo', '-__v')
             .populate('mediaId', '-__v')
             .lean();
@@ -393,13 +404,28 @@ export class MessagesService {
                     : {}),
             })
             .select('-__v')
-            .populate({ path: 'senderId', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
+            .populate({
+                path: 'senderId',
+                select: '-password -__v',
+                populate: { path: 'avatar', select: '-__v' },
+            })
             .populate('replyTo', '-__v')
             .populate('mediaId', '-__v')
             .sort({ createdAt: -1 })
             .limit(GLOBAL_CONSTANTS.LIMIT_MESSAGES_DEFAULT)
             .lean();
-        return result.map((message) => serializeMessage(message));
+        if (result.length === 0) {
+            return { nextCursor: null, messages: [] } as ListMessagesResponse;
+        }
+        const messages = result.map((message) => serializeMessage(message));
+
+        const hasNextPage =
+            messages.length === GLOBAL_CONSTANTS.LIMIT_MESSAGES_DEFAULT;
+        const lastMessage = messages[messages.length - 1];
+        const nextCursor = hasNextPage
+            ? new Date(lastMessage!.createdAt!).toISOString()
+            : null;
+        return { nextCursor, messages } as ListMessagesResponse;
     }
 
     /**
@@ -442,20 +468,37 @@ export class MessagesService {
             throw new BadRequestException(MESSAGE_MESSAGES.ALREADY_DELETED);
         }
         const objectMessageId = toObjectId(messageId, 'message id');
-        await this.messageModel
-            .findOneAndUpdate(
-                {
-                    _id: objectMessageId,
-                    conversationId: objectConversationId,
-                },
-                {
-                    isDeleted: true,
-                    deletedAt: new Date(),
-                },
-                { new: true },
-            )
-            .lean();
-        return MESSAGE_MESSAGES.DELETE_SUCCESS;
+
+        const session = await this.connection.startSession();
+        try {
+            await session.withTransaction(async () => {
+                await this.messageModel
+                    .findOneAndUpdate(
+                        {
+                            _id: objectMessageId,
+                            conversationId: objectConversationId,
+                        },
+                        {
+                            isDeleted: true,
+                            deletedAt: new Date(),
+                        },
+                        { new: true, session },
+                    )
+                    .lean();
+                    
+                if (checkMessage.mediaId) {
+                    await this.mediaService.softDeleteMediaWithMessage(
+                        checkMessage.mediaId.toString(),
+                        conversationId,
+                        session,
+                    );
+                }
+            });
+
+            return MESSAGE_MESSAGES.DELETE_SUCCESS;
+        } finally {
+            await session.endSession();
+        }
     }
 
     /**
@@ -505,7 +548,11 @@ export class MessagesService {
                 isDeleted: false,
                 type: MessageEnumType.TEXT,
             })
-            .populate({ path: 'senderId', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
+            .populate({
+                path: 'senderId',
+                select: '-password -__v',
+                populate: { path: 'avatar', select: '-__v' },
+            })
             .populate('replyTo', '-__v')
             .populate('mediaId', '-__v')
             .lean();
@@ -532,7 +579,11 @@ export class MessagesService {
                 },
                 { new: true },
             )
-            .populate({ path: 'senderId', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
+            .populate({
+                path: 'senderId',
+                select: '-password -__v',
+                populate: { path: 'avatar', select: '-__v' },
+            })
             .populate('replyTo', '-__v')
             .populate('mediaId', '-__v')
             .lean();
@@ -621,7 +672,11 @@ export class MessagesService {
                       },
                       { new: true, runValidators: true },
                   )
-                  .populate({ path: 'senderId', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
+                  .populate({
+                      path: 'senderId',
+                      select: '-password -__v',
+                      populate: { path: 'avatar', select: '-__v' },
+                  })
                   .populate('replyTo', '-__v')
                   .populate('mediaId', '-__v')
                   .lean()
@@ -637,7 +692,11 @@ export class MessagesService {
                           runValidators: true,
                       },
                   )
-                  .populate({ path: 'senderId', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
+                  .populate({
+                      path: 'senderId',
+                      select: '-password -__v',
+                      populate: { path: 'avatar', select: '-__v' },
+                  })
                   .populate('replyTo', '-__v')
                   .populate('mediaId', '-__v')
                   .lean();
@@ -682,7 +741,11 @@ export class MessagesService {
                 },
                 { new: true, runValidators: true },
             )
-            .populate({ path: 'senderId', select: '-password -__v', populate: { path: 'avatar', select: '-__v' } })
+            .populate({
+                path: 'senderId',
+                select: '-password -__v',
+                populate: { path: 'avatar', select: '-__v' },
+            })
             .populate('replyTo', '-__v')
             .populate('mediaId', '-__v')
             .lean();

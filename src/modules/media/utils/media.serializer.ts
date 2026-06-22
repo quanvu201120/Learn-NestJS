@@ -1,9 +1,10 @@
+/* eslint-disable @typescript-eslint/no-redundant-type-constituents */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Types } from 'mongoose';
-import { MediaProviderEnum } from '../types/media';
+import { MediaProviderEnum, MediaResponse } from '../types/media';
 
 /**
  * Lấy base URL public của R2 và bỏ dấu `/` cuối chuỗi
@@ -30,7 +31,7 @@ export const buildR2MediaUrl = (objectKey: string) => {
  * Chuẩn hóa field media trước khi trả về API.
  * Hỗ trợ cả document đã populate, ObjectId hoặc string id thô.
  */
-export const serializeMedia = (media: any) => {
+export const serializeMedia = (media: any): MediaResponse | any => {
     if (
         !media ||
         typeof media !== 'object' ||
@@ -49,5 +50,5 @@ export const serializeMedia = (media: any) => {
         serializedMedia.url = buildR2MediaUrl(serializedMedia.objectKey);
     }
 
-    return serializedMedia;
+    return serializedMedia as MediaResponse;
 };

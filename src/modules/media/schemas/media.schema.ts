@@ -8,7 +8,7 @@ import {
 
 export type MediaDocument = HydratedDocument<Media>;
 
-@Schema()
+@Schema({ timestamps: true })
 export class Media {
     @Prop({ type: Types.ObjectId, ref: 'User', required: true })
     uploadedBy: Types.ObjectId;
@@ -66,6 +66,15 @@ export class Media {
 
     @Prop({ type: String })
     thumbUrl?: string;
+
+    @Prop({ type: Boolean, default: false })
+    isDeleted?: boolean;
+
+    @Prop({ type: Date })
+    deletedAt?: Date;
 }
 
 export const MediaSchema = SchemaFactory.createForClass(Media);
+
+// Compound Index: Sắp xếp theo mức độ chọn lọc (Cardinality) giảm dần
+MediaSchema.index({ ownerId: 1, ownerType: 1, resourceType: 1, createdAt: -1 });

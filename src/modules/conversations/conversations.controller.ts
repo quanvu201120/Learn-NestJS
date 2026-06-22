@@ -14,6 +14,8 @@ import {
     ParseFilePipe,
     FileTypeValidator,
     MaxFileSizeValidator,
+    Query,
+    ParseEnumPipe,
 } from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
@@ -26,12 +28,15 @@ import {
 } from './dto/update-conversation.dto';
 import { RedisService } from '@/redis/redis.service';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { MediaResourceTypeEnum } from '../media/types/media';
+import { MediaService } from '../media/media.service';
 
 @Controller('conversations')
 export class ConversationsController {
     constructor(
         private readonly conversationsService: ConversationsService,
         private readonly redisService: RedisService,
+        private readonly mediaService: MediaService,
     ) {}
 
     @Post()
@@ -53,6 +58,22 @@ export class ConversationsController {
     @Get(':id')
     findOne(@Param('id') id: string, @Request() req: any) {
         return this.conversationsService.findOne(id, req.user._id);
+    }
+
+    @Get(':id/medias')
+    getMedias(
+        @Request() req,
+        @Param('id') id: string,
+        @Query('type', new ParseEnumPipe(MediaResourceTypeEnum))
+        type: MediaResourceTypeEnum,
+        @Query('cursor') cursor?: string,
+    ) {
+        return this.mediaService.getMediasByConversation(
+            id,
+            req.user._id,
+            type,
+            cursor,
+        );
     }
 
     @Patch(':id/update-name')
