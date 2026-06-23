@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
-/* eslint-disable @typescript-eslint/no-non-null-asserted-optional-chain */
+
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
@@ -21,6 +21,7 @@ import { UpdateUserByAdminDto, UpdateUserDto } from './dto/update-user.dto';
 import { ConfigService } from '@nestjs/config';
 import ms, { StringValue } from 'ms';
 import { v4 as uuidv4 } from 'uuid';
+import { Subject } from 'rxjs';
 import bcrypt from 'bcrypt';
 import { ChangePasswordAuthDto } from '@/auth/dto/password-auth.dto';
 import { RedisService } from '@/redis/redis.service';
@@ -48,6 +49,8 @@ import {
 
 @Injectable()
 export class UsersService {
+    public readonly userDisabled$ = new Subject<{ userId: string }>();
+
     constructor(
         @InjectModel(User.name) private userModel: Model<User>,
         @InjectConnection() private readonly connection: Connection,
@@ -108,7 +111,6 @@ export class UsersService {
      * Helper đăng ký nhanh chỉ với email và password.
      */
     async register(email: string, pass: string) {
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
         return this.create({
             email,
             password: pass,
@@ -213,6 +215,7 @@ export class UsersService {
 
         if (isDisabled) {
             await this.sessionService.revokeAllByUserIdWithCleanup(userId);
+            this.userDisabled$.next({ userId });
             return {
                 message: USER_MESSAGES.DISABLE_SUCCESS,
                 isDisabled: true,
@@ -386,7 +389,6 @@ export class UsersService {
         )!;
         const expireTime = formatExpireTime(rawExpire);
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
         return await this.sendEmailViaResend(
             email,
             'Welcome!',

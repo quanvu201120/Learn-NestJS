@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable prettier/prettier */
+
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
@@ -107,20 +107,38 @@ export class ConversationsService {
     private serializeConversation(conversation: any): ConversationResponse {
         const { lastMessageId, avatar, users, ...rest } = conversation;
 
+        let processedUsers = users;
+        if (conversation.isGroup) {
+            processedUsers = users?.filter((user: any) => !user.isDisabled);
+        }
+
         return {
             ...rest,
-            users: users?.map((user) => {
-                if (
-                    user &&
-                    typeof user === 'object' &&
-                    '_id' in user &&
-                    user.avatar &&
-                    typeof user.avatar === 'object' &&
-                    '_id' in user.avatar
-                ) {
-                    return { ...user, avatar: serializeMedia(user.avatar) };
+            users: processedUsers?.map((user: any) => {
+                let mappedUser = user;
+                if (!conversation.isGroup && user && user.isDisabled) {
+                    mappedUser = {
+                        ...(user.toJSON ? user.toJSON() : user),
+                        name: 'Tài khoản vô hiệu hóa',
+                        avatar: undefined,
+                        isDisabled: true, // <-- IMPORTANT FOR FRONTEND
+                    };
                 }
-                return user;
+
+                if (
+                    mappedUser &&
+                    typeof mappedUser === 'object' &&
+                    '_id' in mappedUser &&
+                    mappedUser.avatar &&
+                    typeof mappedUser.avatar === 'object' &&
+                    '_id' in mappedUser.avatar
+                ) {
+                    return {
+                        ...mappedUser,
+                        avatar: serializeMedia(mappedUser.avatar),
+                    };
+                }
+                return mappedUser;
             }),
             avatar: avatar ? serializeMedia(avatar) : avatar,
             lastMessage: lastMessageId
@@ -352,7 +370,7 @@ export class ConversationsService {
     ) {
         const objectConversationId = toObjectId(id, 'conversation id');
         const objectMessageId = toObjectId(messageId, 'message id');
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
         const _ = toObjectId(userId, 'user id');
         const result = await this.conversationModel.findByIdAndUpdate(
             objectConversationId,
@@ -1100,9 +1118,31 @@ export class ConversationsService {
      */
     ensureGroupConversation(conversation: ConversationDocument) {
         if (!conversation.isGroup) {
-            throw new BadRequestException(
-                CONVERSATION_MESSAGES.DIRECT_ACTION_NOT_ALLOWED,
+            throw new BadRequestException(CONVERSATION_MESSAGES.NOT_A_GROUP);
+        }
+    }
+
+    /**
+     * Helper: Kiểm tra xem đoạn chat 1-1 có hợp lệ (người nhận không bị vô hiệu hóa) hay không.
+     */
+    async ensureDirectChatActive(
+        conversation: ConversationDocument,
+        currentUserId: string,
+    ) {
+        if (!conversation.isGroup) {
+            const otherUserId = conversation.users.find(
+                (id) => id.toString() !== currentUserId,
             );
+            if (otherUserId) {
+                const otherUser = await this.userService.findOne(
+                    otherUserId.toString(),
+                );
+                if (otherUser && otherUser.isDisabled) {
+                    throw new BadRequestException(
+                        'Người dùng này đã bị vô hiệu hóa, không thể tiếp tục trò chuyện',
+                    );
+                }
+            }
         }
     }
 

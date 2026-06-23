@@ -1,9 +1,9 @@
 /* eslint-disable prettier/prettier */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
+ 
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-misused-promises */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+ 
 import { REALTIME_MESSAGES } from './constants/realtime.constant';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -331,6 +331,27 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                         });
                 });
             },
+        });
+
+        this.usersService.userDisabled$.subscribe(async ({ userId }) => {
+            try {
+                // Emit event to all rooms the user is in so UI updates instantly
+                const listConver = await this.conversationService.getAllConversationIdsByUser(userId);
+                if (listConver.length > 0) {
+                    listConver.forEach((conversationId) => {
+                        const roomName = getRoomNameConversation(conversationId);
+                        this.server.to(roomName).emit('user:disabled', { userId });
+                    });
+                }
+                
+                // Also emit to the user's personal room so their own clients can log out
+                this.server.to(getRoomNameUser(userId)).emit('user:disabled', { userId });
+                
+                // Force disconnect all sockets of this user
+                this.server.in(getRoomNameUser(userId)).disconnectSockets(true);
+            } catch (error) {
+                console.log('Error user disabled event:', error);
+            }
         });
     }
 

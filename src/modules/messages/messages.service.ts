@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 /* eslint-disable prettier/prettier */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
+ 
+ 
+ 
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { MESSAGE_MESSAGES } from './constants/message.constant';
 import {
@@ -147,6 +147,10 @@ export class MessagesService {
             await this.conversationService.getConversationOrThrow(
                 conversationId,
             );
+        await this.conversationService.ensureDirectChatActive(
+            conversation,
+            senderId,
+        );
         let objectSenderId: Types.ObjectId;
         if (type === MessageEnumType.SYSTEM) {
             objectSenderId = toObjectId(senderId, 'sender id');

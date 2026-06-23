@@ -20,12 +20,18 @@ const serializeSender = (senderId: any) => {
         return senderId ? senderId.toString() : undefined;
     }
 
+    const isDisabled = senderId.isDisabled;
+
     return {
-        ...senderId,
+        ...(senderId.toJSON ? senderId.toJSON() : senderId),
         _id: senderId._id.toString(),
-        avatar: senderId.avatar
-            ? serializeMedia(senderId.avatar)
-            : senderId.avatar,
+        name: isDisabled ? 'Tài khoản vô hiệu hóa' : senderId.name,
+        avatar: isDisabled 
+            ? undefined 
+            : senderId.avatar
+              ? serializeMedia(senderId.avatar)
+              : senderId.avatar,
+        isDisabled,
     };
 };
 
@@ -50,16 +56,17 @@ export const serializeReplyMessage = (replyTo: any) => {
  */
 export const serializeMessage = (message: any): MessageResponse => {
     const { senderId, replyTo, mediaId, ...rest } = message;
+    const isSenderDisabled = senderId && typeof senderId === 'object' && senderId.isDisabled;
 
     return {
         ...rest,
-        content: message.isDeleted ? '' : rest.content,
+        content: isSenderDisabled ? 'Người dùng bị vô hiệu hoá' : (message.isDeleted ? '' : rest.content),
         _id: rest._id ? rest._id.toString() : undefined,
         conversationId: rest.conversationId
             ? rest.conversationId.toString()
             : undefined,
         sender: serializeSender(senderId),
-        media: message.isDeleted
+        media: (message.isDeleted || isSenderDisabled)
             ? undefined
             : mediaId &&
               typeof mediaId === 'object' &&
@@ -70,5 +77,6 @@ export const serializeMessage = (message: any): MessageResponse => {
                 ? mediaId.toString()
                 : undefined,
         replyTo: replyTo ? serializeReplyMessage(replyTo) : undefined,
+        isSenderDisabled,
     };
 };
