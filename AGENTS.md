@@ -42,6 +42,7 @@ When editing existing code:
 - Don't refactor things that aren't broken.
 - Match existing style, even if you'd do it differently.
 - If you notice unrelated dead code, mention it - don't delete it.
+- **Do not care about `.spec.ts` (test) files unless explicitly requested by the user.**
 
 When your changes create orphans:
 - Remove imports/variables/functions that YOUR changes made unused.

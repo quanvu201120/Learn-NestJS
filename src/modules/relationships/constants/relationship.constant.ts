@@ -1,0 +1,18 @@
+export const RELATIONSHIP_MESSAGES = {
+    RELATIONSHIP_NOT_FOUND: 'Relationship not found',
+    UPDATE_FAILED: 'Failed to update relationship',
+    FRIEND_REQUEST_ALREADY_SENT: 'You have already sent a friend request to this user',
+    CREATE_FAILED: 'Failed to create relationship',
+    ALREADY_BLOCKED: 'You have already blocked this user',
+    CANNOT_BLOCK: 'Cannot block this user',
+    BLOCK_FAILED: 'Failed to block user',
+    UNBLOCK_FAILED: 'Failed to unblock user',
+    ALREADY_ACCEPTED: 'Relationship has been accepted before',
+    RELATIONSHIP_ALREADY_BLOCKED: 'Relationship has been blocked before',
+    CANNOT_BE_SAME_USER: 'Requester and recipient cannot be the same',
+    USER_NOT_FOUND: 'Requester or recipient not found',
+    REQUESTER_NOT_ACTIVE: 'You are not active',
+    REQUESTER_DISABLED: 'You are disabled',
+    RECIPIENT_NOT_ACTIVE: 'Recipient is not active',
+    RECIPIENT_DISABLED: 'Recipient is disabled',
+} as const;

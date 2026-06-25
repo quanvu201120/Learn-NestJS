@@ -15,6 +15,7 @@ import { MessagesModule } from './modules/messages/messages.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { PresenceModule } from './modules/presence/presence.module';
 import { MediaModule } from './modules/media/media.module';
+import { RelationshipsModule } from './modules/relationships/relationships.module';
 
 @Module({
     imports: [
@@ -39,6 +40,7 @@ import { MediaModule } from './modules/media/media.module';
             rootPath: join(__dirname, '..', 'TestSocket'),
             serveRoot: '/test/chat',
         }),
+        RelationshipsModule,
     ],
     controllers: [AppController],
     providers: [

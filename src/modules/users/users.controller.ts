@@ -140,8 +140,9 @@ export class UsersController {
     @ApiOperation({ summary: 'ADMIN vô hiệu hóa tài khoản user' })
     async disableUser(
         @Param('id') id: string,
+        @Request() req,
     ): Promise<UserDisableStateResponse> {
-        return await this.usersService.disableUserByAdmin(id);
+        return await this.usersService.disableUserByAdmin(id, req.user._id);
     }
 
     @Patch(':id/enable')

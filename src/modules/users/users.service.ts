@@ -40,7 +40,7 @@ import {
 } from '../media/constants/media.constant';
 import { Media } from '../media/schemas/media.schema';
 import { OwnerTypeEnum } from '../media/types/media';
-import { serializeMedia } from '../media/utils/media.serializer';
+import { serializeUser } from './utils/user.serializer';
 import { SessionService } from '../session/session.service';
 import {
     CleanupJobEntityEnum,
@@ -68,10 +68,7 @@ export class UsersService {
             return user;
         }
 
-        return {
-            ...user,
-            avatar: user.avatar ? serializeMedia(user.avatar) : user.avatar,
-        } as UserResponse;
+        return serializeUser(user, false) as UserResponse;
     }
 
     /**
@@ -362,7 +359,9 @@ export class UsersService {
      */
     async disableUserByAdmin(
         userId: string,
+        currentUserId: string,
     ): Promise<UserDisableStateResponse> {
+        await this.checkUser(currentUserId);
         return this.setDisabledState(userId, true);
     }
 
@@ -374,6 +373,7 @@ export class UsersService {
         currentUserId: string,
     ): Promise<UserDisableStateResponse> {
         validateObjectId(currentUserId, 'current user id');
+        await this.checkUser(currentUserId);
         if (userId === currentUserId) {
             throw new BadRequestException(USER_MESSAGES.CANNOT_ENABLE_SELF);
         }
@@ -494,15 +494,11 @@ export class UsersService {
         id: string,
         changePasswordAuthDto: ChangePasswordAuthDto,
     ) {
-        validateObjectId(id, 'user id');
+        const { existingUser } = await this.checkUser(id);
         const { passwordOld, passwordNew } = changePasswordAuthDto;
-        const user = await this.userModel.findById(id);
-        if (!user) {
-            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
-        }
         const isPasswordMatched = await bcrypt.compare(
             passwordOld,
-            user.password,
+            existingUser.password,
         );
         if (!isPasswordMatched) {
             throw new BadRequestException(USER_MESSAGES.INVALID_PASSWORD);
@@ -510,8 +506,8 @@ export class UsersService {
 
         const passwordNewHash = await hashPassword(passwordNew);
 
-        user.password = passwordNewHash;
-        await user.save();
+        existingUser.password = passwordNewHash;
+        await existingUser.save();
         return USER_MESSAGES.CHANGE_PASSWORD_SUCCESS;
     }
 
@@ -732,8 +728,9 @@ export class UsersService {
      * Cập nhật thời gian online cuối cùng của user.
      */
     async setLastOnline(userId: string) {
+        const { objectUserId } = await this.checkUser(userId);
         return await this.userModel.updateOne(
-            { _id: userId },
+            { _id: objectUserId },
             { $set: { lastOnlineAt: new Date() } },
         );
     }
@@ -742,14 +739,7 @@ export class UsersService {
      * Cập nhật ảnh đại diện của user
      */
     async uploadAvatar(userId: string, file: Express.Multer.File) {
-        const objectUserId = toObjectId(userId, 'user id');
-        const existingUser = await this.userModel
-            .findById(objectUserId)
-            .select('_id avatar')
-            .lean();
-        if (!existingUser) {
-            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
-        }
+        const { existingUser, objectUserId } = await this.checkUser(userId);
         let uploadedAvatar: Media | null = null;
         let isUpdatedUser = false;
         const session = await this.connection.startSession();
@@ -854,14 +844,7 @@ export class UsersService {
      * Xóa ảnh đại diện của user
      */
     async deleteAvatar(userId: string) {
-        const objectUserId = toObjectId(userId, 'user id');
-        const existingUser = await this.userModel
-            .findById(objectUserId)
-            .select('_id avatar')
-            .lean();
-        if (!existingUser) {
-            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
-        }
+        const { existingUser, objectUserId } = await this.checkUser(userId);
         if (!existingUser.avatar) {
             throw new BadRequestException(USER_MESSAGES.AVATAR_NOT_EXIST);
         }
@@ -930,14 +913,8 @@ export class UsersService {
      * Xác nhận mật khẩu
      */
     async confirmPassword(userId: string, password: string) {
-        const objectUserId = toObjectId(userId, 'user id');
-        const existingUser = await this.userModel
-            .findById(objectUserId)
-            .select('_id password')
-            .lean();
-        if (!existingUser) {
-            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
-        }
+        const { existingUser } = await this.checkUser(userId);
+
         const isPasswordValid = await bcrypt.compare(
             password,
             existingUser.password,
@@ -952,7 +929,7 @@ export class UsersService {
      * Cập nhật email
      */
     async updateEmail(userId: string, email: string, code: string) {
-        const objectUserId = toObjectId(userId, 'user id');
+        const { objectUserId } = await this.checkUser(userId);
 
         const session = await this.connection.startSession();
         try {
@@ -1026,7 +1003,11 @@ export class UsersService {
         const objectUserId = toObjectId(userId, 'user id');
         const [user, isEmailExisted] = await Promise.all([
             this.userModel
-                .findOne({ _id: objectUserId, isDisabled: false })
+                .findOne({
+                    _id: objectUserId,
+                    isDisabled: false,
+                    isActive: true,
+                })
                 .select('_id email')
                 .lean(),
             this.userModel
@@ -1079,5 +1060,23 @@ export class UsersService {
             console.error(error);
         });
         return 'OK';
+    }
+
+    /**
+     * Kiểm tra user tồn tại, đã kích hoạt và không bị khóa
+     */
+    async checkUser(userId: string) {
+        const objectUserId = toObjectId(userId, 'user id');
+        const existingUser = await this.userModel.findById(objectUserId);
+        if (!existingUser) {
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
+        }
+        if (existingUser.isActive === false) {
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_ACTIVE);
+        }
+        if (existingUser.isDisabled) {
+            throw new BadRequestException(USER_MESSAGES.USER_DISABLED);
+        }
+        return { existingUser, objectUserId };
     }
 }

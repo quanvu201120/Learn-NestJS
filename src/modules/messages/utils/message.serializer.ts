@@ -6,34 +6,7 @@
 import { Types } from 'mongoose';
 import { MessageResponse } from '../types/message';
 import { serializeMedia } from '@/modules/media/utils/media.serializer';
-
-/**
- * Chuẩn hóa thông tin người gửi trong payload message.
- */
-const serializeSender = (senderId: any) => {
-    if (
-        !senderId ||
-        typeof senderId !== 'object' ||
-        senderId instanceof Types.ObjectId ||
-        !Object.keys(senderId).includes('_id')
-    ) {
-        return senderId ? senderId.toString() : undefined;
-    }
-
-    const isDisabled = senderId.isDisabled;
-
-    return {
-        ...(senderId.toJSON ? senderId.toJSON() : senderId),
-        _id: senderId._id.toString(),
-        name: isDisabled ? 'Tài khoản vô hiệu hóa' : senderId.name,
-        avatar: isDisabled 
-            ? undefined 
-            : senderId.avatar
-              ? serializeMedia(senderId.avatar)
-              : senderId.avatar,
-        isDisabled,
-    };
-};
+import { serializeUser } from '@/modules/users/utils/user.serializer';
 
 /**
  * Chuẩn hóa message được reply tới.
@@ -65,7 +38,7 @@ export const serializeMessage = (message: any): MessageResponse => {
         conversationId: rest.conversationId
             ? rest.conversationId.toString()
             : undefined,
-        sender: serializeSender(senderId),
+        sender: serializeUser(senderId),
         media: (message.isDeleted || isSenderDisabled)
             ? undefined
             : mediaId &&
