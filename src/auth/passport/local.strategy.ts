@@ -11,12 +11,12 @@ import { AuthService } from '../auth.service';
 export class LocalStrategy extends PassportStrategy(Strategy) {
     constructor(private authService: AuthService) {
         super({
-            usernameField: 'email',
+            usernameField: 'identifier',
         });
     }
 
-    async validate(email: string, password: string) {
-        const user = await this.authService.validateUser(email, password);
+    async validate(identifier: string, password: string) {
+        const user = await this.authService.validateUser(identifier, password);
         if (!user) {
             throw new UnauthorizedException(
                 'Tài khoản hoặc mật khẩu không hợp lệ',

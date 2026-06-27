@@ -10,18 +10,23 @@ export class LocalAuthGuard extends AuthGuard('local') {
     async canActivate(context: ExecutionContext): Promise<boolean> {
         const request = context.switchToHttp().getRequest();
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        const { email, password } = request.body || {};
+        const { identifier, password } = request.body || {};
         // 1. Kiểm tra rỗng
-        if (!email) {
-            throw new BadRequestException('Email không được để trống');
+        if (!identifier) {
+            throw new BadRequestException(
+                'Email hoặc số điện thoại không được để trống',
+            );
         }
         if (!password) {
             throw new BadRequestException('Mật khẩu không được để trống');
         }
-        // 2. Kiểm tra định dạng Email
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            throw new BadRequestException('Email không đúng định dạng');
+        // 2. Kiểm tra định dạng Email hoặc Số điện thoại
+        const identifierRegex =
+            /^(?:[^\s@]+@[^\s@]+\.[^\s@]+|(?:0|\+84)[3|5|7|8|9][0-9]{8})$/;
+        if (!identifierRegex.test(identifier)) {
+            throw new BadRequestException(
+                'Email hoặc số điện thoại không hợp lệ',
+            );
         }
         // 3. Cho phép Passport local strategy tiếp tục xử lý
         const result = (await super.canActivate(context)) as boolean;

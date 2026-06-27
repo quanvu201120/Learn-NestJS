@@ -30,11 +30,12 @@ export class AuthService {
     ) {}
 
     /**
-     * Xác thực thông tin đăng nhập của user (email và password).
+     * Xác thực thông tin đăng nhập của user (email/sdt và password).
      * Trả về thông tin user (đã loại bỏ password) nếu hợp lệ, ngược lại trả về null.
      */
-    async validateUser(email: string, pass: string) {
-        const user = await this.usersService.findByEmail(email);
+    async validateUser(identifier: string, pass: string) {
+        const user =
+            await this.usersService.findByEmailOrPhoneForLogin(identifier);
         if (!user) {
             return null;
         }

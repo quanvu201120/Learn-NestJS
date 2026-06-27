@@ -236,10 +236,12 @@ export class UsersService {
     }
 
     /**
-     * Tìm user bằng email (thường dùng trong xác thực Login).
+     * Tìm user bằng email hoặc số điện thoại (thường dùng trong xác thực Login).
      */
-    async findByEmail(email: string) {
-        return await this.userModel.findOne({ email });
+    async findByEmailOrPhoneForLogin(identifier: string) {
+        const isEmail = identifier.includes('@');
+        const filter = isEmail ? { email: identifier } : { phone: identifier };
+        return await this.userModel.findOne(filter);
     }
 
     /**
