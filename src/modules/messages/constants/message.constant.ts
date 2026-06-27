@@ -14,4 +14,5 @@ export const MESSAGE_MESSAGES = {
     DELETE_SUCCESS: 'Deleted message successfully',
     MESSAGE_NOT_UPDATED: 'Message not updated',
     FILE_REQUIRED: 'File is required',
+    CANNOT_SEND_MESSAGE_TO_BLOCKED_USER: 'Cannot send message to blocked user',
 } as const;

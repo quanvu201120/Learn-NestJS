@@ -1,10 +1,17 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 import { USER_MESSAGES } from './constants/user.constant';
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+    BadRequestException,
+    forwardRef,
+    Inject,
+    Injectable,
+} from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { User } from './schemas/user.schema';
 import { Connection, Model, Types } from 'mongoose';
@@ -46,6 +53,7 @@ import {
     CleanupJobEntityEnum,
     CleanupJobResourceEnum,
 } from '../cleanup-jobs/types/cleanup-job';
+import { RelationshipsService } from '../relationships/relationships.service';
 
 @Injectable()
 export class UsersService {
@@ -58,6 +66,8 @@ export class UsersService {
         private readonly redisService: RedisService,
         private readonly mediaService: MediaService,
         private readonly sessionService: SessionService,
+        @Inject(forwardRef(() => RelationshipsService))
+        private readonly relationshipsService: RelationshipsService,
     ) {}
 
     /**
@@ -82,6 +92,16 @@ export class UsersService {
 
         if (isEmailExisted) {
             throw new BadRequestException(USER_MESSAGES.EMAIL_EXISTED);
+        }
+
+        if (createUserDto.phone) {
+            const isPhoneExisted = await this.userModel.exists({
+                phone: createUserDto.phone,
+            });
+
+            if (isPhoneExisted) {
+                throw new BadRequestException(USER_MESSAGES.PHONE_EXISTED);
+            }
         }
 
         const passwordHash = await hashPassword(createUserDto.password);
@@ -170,6 +190,52 @@ export class UsersService {
     }
 
     /**
+     * Tìm kiếm user bằng email hoặc số điện thoại
+     */
+    async findOneByEmailOrPhone(userId: string, search: string) {
+        const { existingUser: currentUser } = await this.checkUser(userId);
+
+        const query = search.trim();
+        const isEmail = query.includes('@');
+
+        const filter = isEmail
+            ? { email: query.toLowerCase() }
+            : { phone: query };
+
+        const searchUser = (await this.userModel
+            .findOne({
+                ...filter,
+                _id: { $ne: userId },
+                isDisabled: false,
+                isActive: true,
+            })
+            .select('-password -__v')
+            .populate('avatar', '-__v')
+            .lean()) as UserResponse;
+
+        if (!searchUser) {
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
+        }
+
+        const relationshipBlock =
+            await this.relationshipsService.checkIsBlocked(
+                currentUser._id.toString(),
+                searchUser._id.toString(),
+            );
+
+        if (
+            relationshipBlock &&
+            relationshipBlock.blockedBy &&
+            relationshipBlock.blockedBy.toString() !==
+                currentUser._id.toString()
+        ) {
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
+        }
+
+        return this.serializeUserResponse(searchUser);
+    }
+
+    /**
      * Tìm user bằng email (thường dùng trong xác thực Login).
      */
     async findByEmail(email: string) {
@@ -251,6 +317,17 @@ export class UsersService {
             }
         }
 
+        if (updateUserDto.phone) {
+            const isPhoneExisted = await this.userModel.exists({
+                phone: updateUserDto.phone,
+                _id: { $ne: currentUser },
+            });
+
+            if (isPhoneExisted) {
+                throw new BadRequestException(USER_MESSAGES.PHONE_EXISTED);
+            }
+        }
+
         const $set = Object.fromEntries(
             normalizedEntries.filter(([, value]) => value !== null),
         );
@@ -307,6 +384,17 @@ export class UsersService {
 
             if (isEmailExisted) {
                 throw new BadRequestException(USER_MESSAGES.EMAIL_EXISTED);
+            }
+        }
+
+        if (updateUserDto.phone) {
+            const isPhoneExisted = await this.userModel.exists({
+                phone: updateUserDto.phone,
+                _id: { $ne: userId },
+            });
+
+            if (isPhoneExisted) {
+                throw new BadRequestException(USER_MESSAGES.PHONE_EXISTED);
             }
         }
 

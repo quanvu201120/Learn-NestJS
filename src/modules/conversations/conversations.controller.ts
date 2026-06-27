@@ -147,17 +147,22 @@ export class ConversationsController {
         return result;
     }
 
-    @Patch(':conversationId/change-admin')
+    @Patch(':id/change-admin')
     async changeAdmin(
-        @Param('conversationId') conversationId: string,
+        @Param('id') id: string,
         @Body() changeAdminGroupDto: ChangeAdminGroupDto,
         @Request() req: any,
     ) {
         return await this.conversationsService.changeAdminGroup(
             req.user._id,
             changeAdminGroupDto.newAdminId,
-            conversationId,
+            id,
         );
+    }
+
+    @Delete(':id/block-and-delete')
+    blockAndDelete(@Param('id') id: string, @Request() req) {
+        return this.conversationsService.blockAndDelete(id, req.user._id);
     }
 
     @Delete(':id')
@@ -186,5 +191,10 @@ export class ConversationsController {
     @Delete(':id/avatar')
     deleteAvatar(@Param('id') id: string, @Request() req: any) {
         return this.conversationsService.deleteAvatar(id, req.user._id);
+    }
+
+    @Patch(':id/accept')
+    acceptConversation(@Param('id') id: string, @Request() req: any) {
+        return this.conversationsService.acceptConversation(id, req.user._id);
     }
 }

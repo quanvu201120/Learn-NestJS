@@ -9,6 +9,7 @@ import {
 import { MessagesModule } from '../messages/messages.module';
 import { UsersModule } from '../users/users.module';
 import { MediaModule } from '../media/media.module';
+import { RelationshipsModule } from '../relationships/relationships.module';
 
 @Module({
     imports: [
@@ -17,6 +18,7 @@ import { MediaModule } from '../media/media.module';
         ]),
         forwardRef(() => MessagesModule),
         forwardRef(() => UsersModule),
+        forwardRef(() => RelationshipsModule),
         MediaModule,
     ],
     controllers: [ConversationsController],

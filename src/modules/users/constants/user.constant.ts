@@ -1,5 +1,6 @@
 export const USER_MESSAGES = {
     EMAIL_EXISTED: 'Email already existed',
+    PHONE_EXISTED: 'Phone number already existed',
     USER_NOT_ACTIVE: 'User is not active',
     NOT_AUTHORIZED_UPDATE: 'You are not authorized to update this user',
     USER_NOT_FOUND: 'User not found',

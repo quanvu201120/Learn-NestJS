@@ -5,6 +5,7 @@ import {
     IsOptional,
     IsString,
     IsIn,
+    Matches,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
@@ -15,7 +16,10 @@ export class UpdateUserDto {
     name?: string;
 
     @IsOptional()
-    @IsString({ message: 'Phone must be a string' })
+    @Transform(({ value }) => (value === '' ? null : value))
+    @Matches(/^(0|\+84)(3|5|7|8|9)[0-9]{8}$/, {
+        message: 'Số điện thoại không hợp lệ',
+    })
     phone?: string | null;
 
     @IsOptional()
@@ -36,7 +40,10 @@ export class UpdateUserByAdminDto {
     email?: string;
 
     @IsOptional()
-    @IsString({ message: 'Phone must be a string' })
+    @Transform(({ value }) => (value === '' ? null : value))
+    @Matches(/^(0|\+84)(3|5|7|8|9)[0-9]{8}$/, {
+        message: 'Số điện thoại không hợp lệ',
+    })
     phone?: string | null;
 
     @IsOptional()

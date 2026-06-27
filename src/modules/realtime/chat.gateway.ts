@@ -1,9 +1,9 @@
 /* eslint-disable prettier/prettier */
- 
+
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-misused-promises */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
- 
+
 import { REALTIME_MESSAGES } from './constants/realtime.constant';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -44,12 +44,17 @@ import {
     SoftDeleteMessageResult,
     SoftDeleteMessagePayload,
     UpdateMessageResult,
+    RelationshipCreatedPayload,
+    RelationshipAcceptedPayload,
+    RelationshipDeletedPayload,
+    RelationshipBlockedPayload,
 } from './types/responseSocket';
 import { UsersService } from '../users/users.service';
 import { USER_MESSAGES } from '../users/constants/user.constant';
 import { AUTH_MESSAGES } from '@/auth/constants/auth.constant';
 import { SessionService } from '../session/session.service';
 import { MessageEnumType } from '../messages/types/message';
+import { RelationshipsService } from '../relationships/relationships.service';
 @WebSocketGateway({
     cors: { origin: '*' },
     transports: ['websocket'],
@@ -67,6 +72,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         private readonly redisService: RedisService,
         private readonly usersService: UsersService,
         private readonly sessionService: SessionService,
+        private readonly relationshipsService: RelationshipsService,
     ) {}
 
     /**
@@ -336,23 +342,80 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.usersService.userDisabled$.subscribe(async ({ userId }) => {
             try {
                 // Emit event to all rooms the user is in so UI updates instantly
-                const listConver = await this.conversationService.getAllConversationIdsByUser(userId);
+                const listConver =
+                    await this.conversationService.getAllConversationIdsByUser(
+                        userId,
+                    );
                 if (listConver.length > 0) {
                     listConver.forEach((conversationId) => {
-                        const roomName = getRoomNameConversation(conversationId);
-                        this.server.to(roomName).emit('user:disabled', { userId });
+                        const roomName =
+                            getRoomNameConversation(conversationId);
+                        this.server
+                            .to(roomName)
+                            .emit('user:disabled', { userId });
                     });
                 }
-                
+
                 // Also emit to the user's personal room so their own clients can log out
-                this.server.to(getRoomNameUser(userId)).emit('user:disabled', { userId });
-                
+                this.server
+                    .to(getRoomNameUser(userId))
+                    .emit('user:disabled', { userId });
+
                 // Force disconnect all sockets of this user
                 this.server.in(getRoomNameUser(userId)).disconnectSockets(true);
             } catch (error) {
                 console.log('Error user disabled event:', error);
             }
         });
+
+        this.relationshipsService.relationshipCreated$.subscribe(
+            ({ recipientId }) => {
+                const payload: RelationshipCreatedPayload = { recipientId };
+                this.server
+                    .to(getRoomNameUser(recipientId))
+                    .emit('relationship:created', payload);
+            },
+        );
+
+        this.relationshipsService.relationshipAccepted$.subscribe(
+            ({ userIds }) => {
+                userIds.forEach((userId) => {
+                    const payload: RelationshipAcceptedPayload = {
+                        userIds,
+                    };
+                    this.server
+                        .to(getRoomNameUser(userId))
+                        .emit('relationship:accepted', payload);
+                });
+            },
+        );
+
+        this.relationshipsService.relationshipDeleted$.subscribe(
+            ({ targetUserId }) => {
+                const payload: RelationshipDeletedPayload = { targetUserId };
+                this.server
+                    .to(getRoomNameUser(targetUserId))
+                    .emit('relationship:deleted', payload);
+            },
+        );
+
+        this.relationshipsService.relationshipBlocked$.subscribe(
+            ({ targetUserId }) => {
+                const payload: RelationshipBlockedPayload = { targetUserId };
+                this.server
+                    .to(getRoomNameUser(targetUserId))
+                    .emit('relationship:blocked', payload);
+            },
+        );
+
+        this.relationshipsService.relationshipUnblocked$.subscribe(
+            ({ targetUserId }) => {
+                const payload = { targetUserId };
+                this.server
+                    .to(getRoomNameUser(targetUserId))
+                    .emit('relationship:unblocked', payload);
+            },
+        );
     }
 
     /**

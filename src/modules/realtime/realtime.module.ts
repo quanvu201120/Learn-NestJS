@@ -6,7 +6,7 @@ import { MessagesModule } from '../messages/messages.module';
 import { RedisModule } from '@/redis/redis.module';
 import { UsersModule } from '../users/users.module';
 import { SessionModule } from '../session/session.module';
-
+import { RelationshipsModule } from '../relationships/relationships.module';
 @Module({
     imports: [
         AuthModule,
@@ -15,6 +15,7 @@ import { SessionModule } from '../session/session.module';
         RedisModule,
         UsersModule,
         SessionModule,
+        RelationshipsModule,
     ],
     exports: [ChatGateway],
     providers: [ChatGateway],

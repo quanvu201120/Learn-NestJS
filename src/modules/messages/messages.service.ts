@@ -1,8 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 /* eslint-disable prettier/prettier */
- 
- 
- 
+
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { MESSAGE_MESSAGES } from './constants/message.constant';
 import {
@@ -44,6 +42,7 @@ import {
     CleanupJobEntityEnum,
     CleanupJobResourceEnum,
 } from '../cleanup-jobs/types/cleanup-job';
+import { RelationshipsService } from '../relationships/relationships.service';
 
 @Injectable()
 export class MessagesService {
@@ -68,6 +67,8 @@ export class MessagesService {
         private readonly connection: Connection,
         private readonly mediaService: MediaService,
         private readonly redisService: RedisService,
+        @Inject(forwardRef(() => RelationshipsService))
+        private readonly relationshipsService: RelationshipsService,
     ) {}
 
     /**
@@ -147,6 +148,25 @@ export class MessagesService {
             await this.conversationService.getConversationOrThrow(
                 conversationId,
             );
+
+        if (!conversation.isGroup && type !== MessageEnumType.SYSTEM) {
+            const targetId = conversation.users.find(
+                (id) => !id.equals(toObjectId(senderId, 'sender id')),
+            );
+            if (targetId) {
+                const isBlocked =
+                    await this.relationshipsService.checkIsBlocked(
+                        senderId,
+                        targetId.toString(),
+                    );
+                if (isBlocked) {
+                    throw new BadRequestException(
+                        MESSAGE_MESSAGES.CANNOT_SEND_MESSAGE_TO_BLOCKED_USER,
+                    );
+                }
+            }
+        }
+
         await this.conversationService.ensureDirectChatActive(
             conversation,
             senderId,
@@ -489,7 +509,7 @@ export class MessagesService {
                         { new: true, session },
                     )
                     .lean();
-                    
+
                 if (checkMessage.mediaId) {
                     await this.mediaService.softDeleteMediaWithMessage(
                         checkMessage.mediaId.toString(),

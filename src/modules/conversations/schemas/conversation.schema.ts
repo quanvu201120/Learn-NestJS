@@ -19,6 +19,9 @@ export class Conversation {
     })
     users: Types.ObjectId[];
 
+    @Prop({ type: [{ type: Types.ObjectId, ref: 'User' }], default: [] })
+    acceptedBy: Types.ObjectId[];
+
     @Prop({ type: Types.ObjectId, ref: 'User' })
     adminGroupId?: Types.ObjectId;
 

@@ -1,7 +1,12 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+    BadRequestException,
+    Injectable,
+    Inject,
+    forwardRef,
+} from '@nestjs/common';
 import { CreateRelationshipDto } from './dto/create-relationship.dto';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { ClientSession, Model, Types } from 'mongoose';
 import {
     Relationship,
     RelationshipDocument,
@@ -12,6 +17,9 @@ import { RelationshipStatusEnum } from './types/relationship';
 import { toObjectId } from '@/utils/utils';
 import { serializeRelationship } from './utils/relationship.serializer';
 import { RELATIONSHIP_MESSAGES } from './constants/relationship.constant';
+import { ConversationsService } from '../conversations/conversations.service';
+import { MessagesService } from '../messages/messages.service';
+import { MessageEnumType } from '../messages/types/message';
 
 @Injectable()
 export class RelationshipsService {
@@ -31,10 +39,19 @@ export class RelationshipsService {
         targetUserId: string;
     }>();
 
+    public readonly relationshipUnblocked$ = new Subject<{
+        targetUserId: string;
+    }>();
+
     constructor(
         @InjectModel(Relationship.name)
         private relationshipModel: Model<RelationshipDocument>,
+        @Inject(forwardRef(() => UsersService))
         private readonly usersService: UsersService,
+        @Inject(forwardRef(() => ConversationsService))
+        private readonly conversationsService: ConversationsService,
+        @Inject(forwardRef(() => MessagesService))
+        private readonly messagesService: MessagesService,
     ) {}
 
     /**
@@ -81,7 +98,8 @@ export class RelationshipsService {
      * Chấp nhận lời mời kết bạn.
      */
     async accept(relationshipId: string, userId: string, targetUserId: string) {
-        await this.checkActiveRequesterAndRecipient(userId, targetUserId);
+        const { recipient: currentUser } =
+            await this.checkActiveRequesterAndRecipient(targetUserId, userId);
         const relationship = await this.relationshipModel
             .findOne({
                 _id: toObjectId(relationshipId, 'relationshipId'),
@@ -115,12 +133,37 @@ export class RelationshipsService {
         if (!accepted) {
             throw new BadRequestException(RELATIONSHIP_MESSAGES.UPDATE_FAILED);
         }
+
+        try {
+            const conversation =
+                await this.conversationsService.createConversation(
+                    {
+                        users: [targetUserId],
+                        isGroup: false,
+                    },
+                    userId,
+                );
+
+            await this.messagesService.createMessage(
+                userId,
+                conversation._id.toString(),
+                MessageEnumType.SYSTEM,
+                `${currentUser.name} đã chấp nhận lời mời kết bạn`,
+            );
+        } catch (error) {
+            console.error(
+                'Error creating system message on friend accept:',
+                error,
+            );
+        }
+
         this.relationshipAccepted$.next({
             userIds: [
                 relationship.requester.toString(),
                 relationship.recipient.toString(),
             ],
         });
+
         return accepted;
     }
 
@@ -232,7 +275,7 @@ export class RelationshipsService {
     /**
      * Chặn một user cụ thể, cho phép chặn người lạ, tránh spam quấy rối
      */
-    async blockUser(userId: string, blockId: string) {
+    async blockUser(userId: string, blockId: string, session?: ClientSession) {
         await this.checkActiveRequesterAndRecipient(userId, blockId, false);
         const relationship = await this.relationshipModel
             .findOne({
@@ -248,15 +291,18 @@ export class RelationshipsService {
                 ],
             })
             .select('-__v')
+            .session(session || null)
             .lean();
         if (!relationship) {
-            return this.create(
+            const created = await this.create(
                 {
                     recipient: blockId,
                 },
                 userId,
                 RelationshipStatusEnum.BLOCKED,
             );
+            this.relationshipBlocked$.next({ targetUserId: blockId });
+            return created;
         }
         if (relationship.status === RelationshipStatusEnum.BLOCKED) {
             if (relationship.blockedBy?.toString() === userId) {
@@ -280,6 +326,7 @@ export class RelationshipsService {
                 { new: true },
             )
             .select('-__v')
+            .session(session || null)
             .lean();
         if (!updated) {
             throw new BadRequestException(RELATIONSHIP_MESSAGES.BLOCK_FAILED);
@@ -315,7 +362,94 @@ export class RelationshipsService {
             throw new BadRequestException(RELATIONSHIP_MESSAGES.UNBLOCK_FAILED);
         }
 
+        this.relationshipUnblocked$.next({ targetUserId: blockId });
+
         return true;
+    }
+
+    /**
+     * Kiểm tra xem 2 user có ai đang block ai không.
+     */
+    async checkIsBlocked(userId1: string, userId2: string) {
+        const relationship = await this.relationshipModel
+            .findOne({
+                $or: [
+                    {
+                        requester: toObjectId(userId1, 'userId1'),
+                        recipient: toObjectId(userId2, 'userId2'),
+                    },
+                    {
+                        requester: toObjectId(userId2, 'userId2'),
+                        recipient: toObjectId(userId1, 'userId1'),
+                    },
+                ],
+                status: RelationshipStatusEnum.BLOCKED,
+            })
+            .lean();
+
+        return relationship;
+    }
+
+    /**
+     * Kiểm tra xem 2 user có đang là bạn bè không.
+     */
+    async checkIsFriend(userId1: string, userId2: string): Promise<boolean> {
+        const relationship = await this.relationshipModel
+            .findOne({
+                $or: [
+                    {
+                        requester: toObjectId(userId1, 'userId1'),
+                        recipient: toObjectId(userId2, 'userId2'),
+                    },
+                    {
+                        requester: toObjectId(userId2, 'userId2'),
+                        recipient: toObjectId(userId1, 'userId1'),
+                    },
+                ],
+                status: RelationshipStatusEnum.ACCEPTED,
+            })
+            .lean();
+
+        return !!relationship;
+    }
+
+    /**
+     * Lấy danh sách ID bạn bè (ACCEPTED) từ một mảng targetUserIds đầu vào.
+     * Dùng để tối ưu hóa truy vấn thay vì gọi checkIsFriend nhiều lần trong vòng lặp.
+     */
+    async getFriendIdsAmongUsers(
+        userId: string,
+        targetUserIds: string[],
+    ): Promise<string[]> {
+        if (!targetUserIds || targetUserIds.length === 0) return [];
+
+        const objectUserId = toObjectId(userId, 'userId');
+        const objectTargetUserIds = targetUserIds.map((id) =>
+            toObjectId(id, 'targetUserId'),
+        );
+
+        const relationships = await this.relationshipModel
+            .find({
+                status: RelationshipStatusEnum.ACCEPTED,
+                $or: [
+                    {
+                        requester: objectUserId,
+                        recipient: { $in: objectTargetUserIds },
+                    },
+                    {
+                        recipient: objectUserId,
+                        requester: { $in: objectTargetUserIds },
+                    },
+                ],
+            })
+            .lean();
+
+        return relationships.map((rel) => {
+            if (rel.requester.equals(objectUserId)) {
+                return rel.recipient.toString();
+            }
+            return rel.requester.toString();
+        });
     }
 
     /**

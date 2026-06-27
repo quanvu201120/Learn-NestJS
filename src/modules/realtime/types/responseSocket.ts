@@ -66,3 +66,19 @@ export type SoftDeleteMessagePayload = {
     messageId: string;
     deletedBy: string;
 };
+
+export type RelationshipCreatedPayload = {
+    recipientId: string;
+};
+
+export type RelationshipAcceptedPayload = {
+    userIds: string[];
+};
+
+export type RelationshipDeletedPayload = {
+    targetUserId: string;
+};
+
+export type RelationshipBlockedPayload = {
+    targetUserId: string;
+};

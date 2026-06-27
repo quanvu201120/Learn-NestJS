@@ -20,6 +20,7 @@ import {
     ParseFilePipe,
     FileTypeValidator,
     MaxFileSizeValidator,
+    BadRequestException,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -75,6 +76,20 @@ export class UsersController {
         );
 
         return { totalPages, users };
+    }
+
+    @Get('search')
+    @ApiOperation({ summary: 'Tìm kiếm người dùng bằng email hoặc sdt' })
+    async searchUser(@Query('query') query: string, @Request() req) {
+        if (!query) {
+            throw new BadRequestException(
+                'Vui lòng nhập email hoặc số điện thoại',
+            );
+        }
+        return await this.usersService.findOneByEmailOrPhone(
+            req.user._id,
+            query,
+        );
     }
 
     @Get(':id')

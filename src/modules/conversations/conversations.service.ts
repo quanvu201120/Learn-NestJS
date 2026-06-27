@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-floating-promises */
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 
@@ -13,6 +14,8 @@ import {
     Injectable,
     forwardRef,
     InternalServerErrorException,
+    NotFoundException,
+    ForbiddenException,
 } from '@nestjs/common';
 import { toObjectId } from '@/utils/utils';
 import { CreateConversationDto } from './dto/create-conversation.dto';
@@ -45,6 +48,7 @@ import {
     CleanupJobEntityEnum,
     CleanupJobResourceEnum,
 } from '../cleanup-jobs/types/cleanup-job';
+import { RelationshipsService } from '../relationships/relationships.service';
 
 @Injectable()
 export class ConversationsService {
@@ -98,6 +102,9 @@ export class ConversationsService {
 
         @Inject(forwardRef(() => MediaService))
         private readonly mediaService: MediaService,
+
+        @Inject(forwardRef(() => RelationshipsService))
+        private readonly relationshipsService: RelationshipsService,
     ) {}
 
     /**
@@ -265,6 +272,33 @@ export class ConversationsService {
                       hiddenAt: new Date(),
                   }))
             : undefined;
+        // Tính toán danh sách acceptedBy (Tin nhắn chờ)
+        const acceptedBy: Types.ObjectId[] = [objectCurrentUserId];
+
+        if (!isGroup) {
+            const targetId = users.find((id) => id !== currentUserId);
+            if (targetId) {
+                const isFriend = await this.relationshipsService.checkIsFriend(
+                    currentUserId,
+                    targetId,
+                );
+                if (isFriend) {
+                    acceptedBy.push(toObjectId(targetId, 'user id'));
+                }
+            }
+        } else {
+            const otherUserIds = users.filter((id) => id !== currentUserId);
+            const friendIds =
+                await this.relationshipsService.getFriendIdsAmongUsers(
+                    currentUserId,
+                    otherUserIds,
+                );
+
+            for (const friendId of friendIds) {
+                acceptedBy.push(toObjectId(friendId, 'user id'));
+            }
+        }
+
         // 2. Nếu là group chat hoặc phòng 1-1 chưa tồn tại -> Tiến hành tạo mới
         const createConversation = await this.conversationModel.create({
             name,
@@ -272,6 +306,7 @@ export class ConversationsService {
             users: listMember,
             adminGroupId,
             hiddenHistory,
+            acceptedBy,
         });
         const { __v, ...result } = (
             createConversation as ConversationDocument
@@ -543,6 +578,7 @@ export class ConversationsService {
                     $pull: {
                         users: objectMemberId,
                         hiddenHistory: { userId: objectMemberId },
+                        acceptedBy: objectMemberId,
                     },
                     $unset: {
                         [`readReceipts.${memberId}`]: 1,
@@ -704,6 +740,7 @@ export class ConversationsService {
         this.ensureGroupConversation(conversation);
         this.ensureGroupAdmin(conversation, currentUserId);
         this.ensureMemberInConversation(conversation, newAdminId);
+        this.ensureMemberAcceptedConversation(conversation, newAdminId);
 
         if (currentUserId === newAdminId) {
             throw new BadRequestException(
@@ -756,8 +793,9 @@ export class ConversationsService {
             await session.endSession();
         }
 
+        const userIds = result.users.map((u: any) => u._id.toString());
         const membersOnline = await this.redisService.getUserOnlineInListIds(
-            result.users,
+            userIds,
         );
         if (membersOnline.length > 0) {
             this.conversationAdminChanged$.next({
@@ -775,8 +813,13 @@ export class ConversationsService {
     /**
      * Ẩn phòng chat khỏi danh sách của một user.
      * Phòng chat sẽ bị ẩn cho tới khi có tin nhắn mới tới, nó sẽ được restore.
+     * Xóa cờ unseen
      */
-    async hiddenHistory(conversationId: string, userId: string) {
+    async hiddenHistory(
+        conversationId: string,
+        userId: string,
+        session?: ClientSession,
+    ) {
         const { conversation, objectConversationId } =
             await this.getConversationOrThrow(conversationId);
 
@@ -794,8 +837,32 @@ export class ConversationsService {
         if (userhiddenHistory?.isHidden) {
             throw new BadRequestException(CONVERSATION_MESSAGES.ALREADY_HIDDEN);
         }
+        // Check if we need to remove from acceptedBy
+        let isFriend = true;
+        if (!conversation.isGroup) {
+            const targetId = conversation.users.find(
+                (user) => user.toString() !== userId,
+            );
+            if (targetId) {
+                isFriend = await this.relationshipsService.checkIsFriend(
+                    userId,
+                    targetId.toString(),
+                );
+            }
+        }
+
         let result: any = null;
         if (userhiddenHistory) {
+            const updateData: any = {
+                $set: {
+                    'hiddenHistory.$.isHidden': true,
+                    'hiddenHistory.$.hiddenAt': new Date(),
+                },
+            };
+            if (!conversation.isGroup && !isFriend) {
+                updateData.$pull = { acceptedBy: objectUserId };
+            }
+
             result = await this.conversationModel
                 .findOneAndUpdate(
                     {
@@ -807,40 +874,84 @@ export class ConversationsService {
                             },
                         },
                     },
-                    {
-                        $set: {
-                            'hiddenHistory.$.isHidden': true,
-                            'hiddenHistory.$.hiddenAt': new Date(),
-                        },
-                    },
-                    { new: true },
+                    updateData,
+                    { new: true, session },
                 )
                 .lean();
         } else {
+            const updateData: any = {
+                $push: {
+                    hiddenHistory: {
+                        userId: objectUserId,
+                        isHidden: true,
+                        hiddenAt: new Date(),
+                    },
+                },
+            };
+            if (!conversation.isGroup && !isFriend) {
+                updateData.$pull = { acceptedBy: objectUserId };
+            }
+
             result = await this.conversationModel
                 .findOneAndUpdate(
                     {
                         _id: objectConversationId,
                         'hiddenHistory.userId': { $ne: objectUserId },
                     },
-                    {
-                        $push: {
-                            hiddenHistory: {
-                                userId: objectUserId,
-                                isHidden: true,
-                                hiddenAt: new Date(),
-                            },
-                        },
-                    },
-                    { new: true },
+                    updateData,
+                    { new: true, session },
                 )
                 .lean();
         }
 
         if (result) {
+            await this.redisService.removeUnseenConversationWithCleanup(
+                userId,
+                conversationId,
+            );
             return CONVERSATION_MESSAGES.DELETE_SUCCESS;
         }
         throw new BadRequestException(CONVERSATION_MESSAGES.DELETE_FAILED);
+    }
+
+    /**
+     * Xóa tin nhắn chờ và block user gửi tin nhắn đó.
+     */
+    async blockAndDelete(conversationId: string, userId: string) {
+        const objectUserId = toObjectId(userId, 'user id');
+        const session = await this.connection.startSession();
+        try {
+            await session.withTransaction(async () => {
+                const { conversation } =
+                    await this.getConversationOrThrow(conversationId);
+                this.ensureMemberInConversation(conversation, userId);
+                if (conversation.isGroup) {
+                    throw new BadRequestException(
+                        CONVERSATION_MESSAGES.CANNOT_BLOCK_IN_GROUP,
+                    );
+                }
+
+                const blockUser = conversation.users.find(
+                    (user) => user.toString() !== objectUserId.toString(),
+                );
+
+                if (!blockUser) {
+                    throw new BadRequestException(
+                        CONVERSATION_MESSAGES.USER_NOT_FOUND,
+                    );
+                }
+
+                await this.relationshipsService.blockUser(
+                    objectUserId.toString(),
+                    blockUser.toString(),
+                    session,
+                );
+                await this.hiddenHistory(conversationId, userId, session);
+            });
+            return true;
+        } finally {
+            await session.endSession();
+        }
     }
 
     /**
@@ -1186,6 +1297,25 @@ export class ConversationsService {
     }
 
     /**
+     * Helper: Kiểm tra user đã chấp nhận cuộc trò chuyện hay chưa.
+     */
+    ensureMemberAcceptedConversation(
+        conversation: ConversationDocument,
+        memberId: string,
+    ) {
+        const objectMemberId = toObjectId(memberId, 'member id');
+        const isAccept = conversation.acceptedBy.some((member) =>
+            member.equals(objectMemberId),
+        );
+
+        if (!isAccept) {
+            throw new BadRequestException(
+                CONVERSATION_MESSAGES.USER_NOT_ACCEPTED_CONVERSATION,
+            );
+        }
+    }
+
+    /**
      * Helper: Kiểm tra xem MongoDB ObjectId hiện tại có lớn hơn (tức là được sinh ra sau) ObjectId kia không.
      * Dùng để check logic xem tin nhắn nào cũ hơn/mới hơn dựa vào ID sinh theo timestamp.
      */
@@ -1195,5 +1325,30 @@ export class ConversationsService {
         }
 
         return currentId.toString() > nextId.toString();
+    }
+    /**
+     * Chấp nhận tin nhắn chờ (Thêm user vào acceptedBy)
+     */
+    async acceptConversation(conversationId: string, currentUserId: string) {
+        const conversation =
+            await this.conversationModel.findById(conversationId);
+        if (!conversation) {
+            throw new NotFoundException('Không tìm thấy cuộc trò chuyện');
+        }
+
+        const objectUserId = toObjectId(currentUserId, 'currentUserId');
+
+        if (!conversation.users.some((id) => id.equals(objectUserId))) {
+            throw new ForbiddenException('Bạn không thuộc cuộc trò chuyện này');
+        }
+
+        if (conversation.acceptedBy.some((id) => id.equals(objectUserId))) {
+            return { message: 'Đã chấp nhận cuộc trò chuyện này rồi' };
+        }
+
+        conversation.acceptedBy.push(objectUserId);
+        await conversation.save();
+
+        return { message: 'Chấp nhận cuộc trò chuyện thành công' };
     }
 }

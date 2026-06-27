@@ -14,6 +14,7 @@ export const CONVERSATION_MESSAGES = {
     CANNOT_READ_OLDER: 'Cannot mark as read to an older message',
     MESSAGE_NOT_FOUND: 'Message not found',
     CONVERSATION_NOT_FOUND: 'Conversation not found',
+    USER_NOT_ACCEPTED_CONVERSATION: 'User not accepted conversation',
     DIRECT_ACTION_NOT_ALLOWED:
         'Cannot perform this action on direct conversation',
     NOT_GROUP_ADMIN: 'You are not admin of this group',
@@ -26,4 +27,5 @@ export const CONVERSATION_MESSAGES = {
     AVATAR_NOT_FOUND: 'Avatar not found',
     AVATAR_DELETE_FAILED: 'Avatar delete failed',
     AVATAR_NOT_EXIST: 'Avatar not exist',
+    CANNOT_BLOCK_IN_GROUP: 'Cannot block user in group conversation',
 } as const;
