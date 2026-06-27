@@ -29,7 +29,8 @@ COPY --from=builder /app/dist ./dist
 # Vì NestJS build không tự gom các file non-JS vào dist nếu không cấu hình assets sao chép chuẩn
 COPY --from=builder /app/dist/mail/template ./dist/mail/template
 
-
+# SAO CHÉP giao diện tĩnh (Frontend)
+COPY --from=builder /app/client ./client
 # Mặc định Hugging Face Spaces yêu cầu Web Server phải lắng nghe trên cổng 7860
 ENV PORT=7860
 EXPOSE 7860
