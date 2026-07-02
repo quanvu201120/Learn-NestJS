@@ -36,7 +36,7 @@ export class MessagesController {
         @Request() req,
     ) {
         const { message } = await this.messagesService.createMessage(
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call
             req.user._id.toString(),
             conversationId,
             MessageEnumType.TEXT,
@@ -62,7 +62,7 @@ export class MessagesController {
         @Request() req,
     ) {
         const { message } = await this.messagesService.createMessage(
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call
             req.user._id.toString(),
             conversationId,
             MessageEnumType.IMAGE,
@@ -91,7 +91,7 @@ export class MessagesController {
         @Request() req,
     ) {
         const { message } = await this.messagesService.createMessage(
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call
             req.user._id.toString(),
             conversationId,
             MessageEnumType.VIDEO,
@@ -122,7 +122,7 @@ export class MessagesController {
         @Request() req,
     ) {
         const { message } = await this.messagesService.createMessage(
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call
             req.user._id.toString(),
             conversationId,
             MessageEnumType.FILE,
@@ -154,7 +154,7 @@ export class MessagesController {
         @Request() req,
     ) {
         const { message } = await this.messagesService.createMessage(
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call
             req.user._id.toString(),
             conversationId,
             MessageEnumType.VOICE,
@@ -181,7 +181,7 @@ export class MessagesController {
     ) {
         return this.messagesService.getMessagesByConversation(
             conversationId,
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call
             req.user._id.toString(),
             cursor,
         );

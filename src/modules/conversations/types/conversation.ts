@@ -14,6 +14,11 @@ export type ConversationResponse = Omit<
     lastMessage?: MessageResponse | Types.ObjectId | string;
 };
 
+export type ListConversationResponse = {
+    conversations: ConversationResponse[];
+    nextCursor?: string | null;
+};
+
 export type UpdateNameConversationResponse = {
     updated: boolean;
 };

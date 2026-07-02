@@ -45,4 +45,3 @@ export type ListMediaResponse = {
     nextCursor: string | null;
     medias: MediaResponse[];
 };
-

@@ -6,6 +6,7 @@ import { User, UserSchema } from './schemas/user.schema';
 import { MediaModule } from '../media/media.module';
 import { SessionModule } from '../session/session.module';
 import { RelationshipsModule } from '../relationships/relationships.module';
+import { StatsModule } from '../stats/stats.module';
 
 @Module({
     imports: [
@@ -13,6 +14,7 @@ import { RelationshipsModule } from '../relationships/relationships.module';
         MediaModule,
         SessionModule,
         forwardRef(() => RelationshipsModule),
+        StatsModule,
     ],
     controllers: [UsersController],
     providers: [UsersService],

@@ -30,6 +30,7 @@ import { MessagesService } from '../messages/messages.service';
 import { UsersService } from '../users/users.service';
 import {
     ConversationResponse,
+    ListConversationResponse,
     UpdateAdminConversationResponse,
     UpdateNameConversationResponse,
 } from './types/conversation';
@@ -49,6 +50,8 @@ import {
     CleanupJobResourceEnum,
 } from '../cleanup-jobs/types/cleanup-job';
 import { RelationshipsService } from '../relationships/relationships.service';
+import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
+import { StatsService } from '../stats/stats.service';
 
 @Injectable()
 export class ConversationsService {
@@ -105,6 +108,8 @@ export class ConversationsService {
 
         @Inject(forwardRef(() => RelationshipsService))
         private readonly relationshipsService: RelationshipsService,
+
+        private readonly statsService: StatsService,
     ) {}
 
     /**
@@ -236,6 +241,9 @@ export class ConversationsService {
                                 $set: {
                                     'hiddenHistory.$[item].isHidden': false,
                                 },
+                                $push: {
+                                    acceptedBy: objectCurrentUserId,
+                                },
                             },
                             {
                                 new: true,
@@ -317,6 +325,9 @@ export class ConversationsService {
                 conversationId: res._id.toString(),
                 memberIds: normalizedUsers,
             });
+            this.statsService.incrementNewGroup();
+        } else {
+            this.statsService.incrementNewDirect();
         }
         return res;
     }
@@ -324,25 +335,37 @@ export class ConversationsService {
     /**
      * Lấy toàn bộ danh sách phòng chat mà user hiện tại tham gia,
      * bỏ qua các phòng chat đã bị user ẩn đi (hiddenHistory).
+     * Lấy danh sách phòng chat phân trang theo cursor (updatedAt)
      */
-    async findAllByUser(userId: string) {
+    async findAllByUser(
+        userId: string,
+        cursor?: string,
+        limit: number = GLOBAL_CONSTANTS.LIMIT_CONVERSATIONS_DEFAULT,
+    ) {
         const objectUserId = toObjectId(userId, 'user id');
         const user = await this.userService.findOne(userId);
         if (!user) {
             throw new BadRequestException(CONVERSATION_MESSAGES.USER_NOT_FOUND);
         }
-        const res = await this.conversationModel
-            .find({
-                users: objectUserId,
-                hiddenHistory: {
-                    $not: {
-                        $elemMatch: {
-                            userId: objectUserId,
-                            isHidden: true,
-                        },
+
+        const query: any = {
+            users: objectUserId,
+            hiddenHistory: {
+                $not: {
+                    $elemMatch: {
+                        userId: objectUserId,
+                        isHidden: true,
                     },
                 },
-            })
+            },
+        };
+
+        if (cursor) {
+            query.updatedAt = { $lt: new Date(cursor) };
+        }
+
+        const resultList = await this.conversationModel
+            .find(query)
             .select('-__v')
             .populate({
                 path: 'users',
@@ -352,10 +375,28 @@ export class ConversationsService {
             .populate('lastMessageId', '-__v')
             .populate('avatar', '-__v')
             .sort({ updatedAt: -1 })
+            .limit(limit + 1)
             .lean();
-        return res.map((conversation) =>
-            this.serializeConversation(conversation),
-        );
+
+        const hasNextPage = resultList.length > limit;
+        const conversations = hasNextPage
+            ? resultList.slice(0, -1)
+            : resultList;
+
+        const nextCursor =
+            conversations.length > 0
+                ? (
+                      conversations[conversations.length - 1] as any
+                  ).updatedAt.toISOString()
+                : null;
+
+        const res: ListConversationResponse = {
+            nextCursor,
+            conversations: conversations.map((conversation) =>
+                this.serializeConversation(conversation as any),
+            ),
+        };
+        return res;
     }
 
     /**
@@ -794,9 +835,8 @@ export class ConversationsService {
         }
 
         const userIds = result.users.map((u: any) => u._id.toString());
-        const membersOnline = await this.redisService.getUserOnlineInListIds(
-            userIds,
-        );
+        const membersOnline =
+            await this.redisService.getUserOnlineInListIds(userIds);
         if (membersOnline.length > 0) {
             this.conversationAdminChanged$.next({
                 conversationId,

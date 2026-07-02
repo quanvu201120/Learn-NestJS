@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable prettier/prettier */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 import {
@@ -24,8 +21,12 @@ import {
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserByAdminDto, UpdateUserDto } from './dto/update-user.dto';
+import {
+    UpdateRoleBySuperAdminDto,
+    UpdateUserDto,
+} from './dto/update-user.dto';
 import { Roles } from '@/utils/decorator-customize';
+import { UserRole } from './types/user';
 import { RolesGuard } from '@/auth/passport/roles.guard';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -55,11 +56,11 @@ export class UsersController {
     }
 
     @Post()
-    @Roles('ADMIN')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
     @UseGuards(RolesGuard)
     @ApiOperation({ summary: 'Tạo mới người dùng (Chỉ ADMIN)' })
-    async create(@Body() createUserDto: CreateUserDto) {
-        return await this.usersService.create(createUserDto);
+    async create(@Body() createUserDto: CreateUserDto, @Request() req) {
+        return await this.usersService.create(createUserDto, req.user?.role);
     }
 
     @Get()
@@ -69,13 +70,10 @@ export class UsersController {
         @Query('current') current: string,
         @Query('pageSize') pageSize: string,
     ) {
-        const { totalPages, users } = await this.usersService.findAll(
-            query,
-            +current,
-            +pageSize,
-        );
+        const { totalPages, totalItems, users } =
+            await this.usersService.findAll(query, +current, +pageSize);
 
-        return { totalPages, users };
+        return { totalPages, totalItems, users };
     }
 
     @Get('search')
@@ -138,36 +136,90 @@ export class UsersController {
         return await this.usersService.disableSelf(req.user._id);
     }
 
-    @Patch(':id')
-    @Roles('ADMIN')
+    @Patch(':id/reset-name')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
     @UseGuards(RolesGuard)
-    @ApiOperation({ summary: 'ADMIN cập nhật thông tin user' })
-    async updateByAdmin(
-        @Param('id') id: string,
-        @Body() updateUserDto: UpdateUserByAdminDto,
-    ) {
-        return await this.usersService.updateByAdmin(id, updateUserDto);
+    @ApiOperation({ summary: 'Admin đặt lại tên user' })
+    async resetNameByAdmin(@Param('id') id: string, @Request() req) {
+        return await this.usersService.resetNameByAdmin(
+            id,
+            req.user._id,
+            req.user.role,
+        );
+    }
+
+    @Patch(':id/clear-bio')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @UseGuards(RolesGuard)
+    @ApiOperation({ summary: 'Admin xóa tiểu sử user' })
+    async clearBioByAdmin(@Param('id') id: string, @Request() req) {
+        return await this.usersService.clearBioByAdmin(
+            id,
+            req.user._id,
+            req.user.role,
+        );
     }
 
     @Patch(':id/disable')
-    @Roles('ADMIN')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
     @UseGuards(RolesGuard)
     @ApiOperation({ summary: 'ADMIN vô hiệu hóa tài khoản user' })
     async disableUser(
         @Param('id') id: string,
         @Request() req,
     ): Promise<UserDisableStateResponse> {
-        return await this.usersService.disableUserByAdmin(id, req.user._id);
+        return await this.usersService.disableUserByAdmin(
+            id,
+            req.user._id,
+            req.user.role,
+        );
     }
 
     @Patch(':id/enable')
-    @Roles('ADMIN')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
     @UseGuards(RolesGuard)
     @ApiOperation({ summary: 'ADMIN gỡ trạng thái vô hiệu hóa user' })
     async enableUser(
         @Param('id') id: string,
         @Request() req,
     ): Promise<UserDisableStateResponse> {
-        return await this.usersService.enableUserByAdmin(id, req.user._id);
+        return await this.usersService.enableUserByAdmin(
+            id,
+            req.user._id,
+            req.user.role,
+        );
+    }
+
+    @Delete(':id/avatar')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @UseGuards(RolesGuard)
+    @ApiOperation({
+        summary: 'Admin xóa ảnh đại diện của user',
+    })
+    async deleteAvatarByAdmin(@Param('id') id: string, @Request() req) {
+        return await this.usersService.deleteAvatarByAdmin(
+            id,
+            req.user._id,
+            req.user.role,
+        );
+    }
+
+    @Patch(':id/role')
+    @Roles(UserRole.SUPER_ADMIN)
+    @UseGuards(RolesGuard)
+    @ApiOperation({
+        summary: 'SUPER_ADMIN thay đổi Role của user (yêu cầu mật khẩu)',
+    })
+    async changeRoleBySuperAdmin(
+        @Param('id') id: string,
+        @Body() updateRoleDto: UpdateRoleBySuperAdminDto,
+        @Request() req,
+    ) {
+        return await this.usersService.changeRoleBySuperAdmin(
+            id,
+            updateRoleDto.role,
+            req.user._id,
+            updateRoleDto.password,
+        );
     }
 }

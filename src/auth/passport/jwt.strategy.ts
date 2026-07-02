@@ -27,6 +27,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         if (user.isDisabled) {
             throw new UnauthorizedException('User has been disabled');
         }
+        if (!user.isActive) {
+            throw new UnauthorizedException('User is not active');
+        }
 
         if (payload.tokenVersion !== user.tokenVersion) {
             throw new UnauthorizedException('Token version invalid');

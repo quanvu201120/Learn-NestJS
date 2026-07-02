@@ -33,5 +33,8 @@ export const serializeUser = (user: any, maskDisabled = true) => {
               ? serializeMedia(user.avatar)
               : user.avatar,
         isDisabled,
+        dateOfBirth: shouldMask ? undefined : user.dateOfBirth,
+        gender: shouldMask ? undefined : user.gender,
+        bio: shouldMask ? undefined : user.bio,
     };
 };

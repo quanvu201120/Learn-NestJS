@@ -19,6 +19,7 @@ import {
 } from './dto/password-auth.dto';
 import { SessionService } from '@/modules/session/session.service';
 import { CreateSessionDto } from '@/modules/session/dto/create-session.dto';
+import { StatsService } from '@/modules/stats/stats.service';
 
 @Injectable()
 export class AuthService {
@@ -27,6 +28,7 @@ export class AuthService {
         private jwtService: JwtService,
         private configService: ConfigService,
         private readonly sessionService: SessionService,
+        private readonly statsService: StatsService,
     ) {}
 
     /**
@@ -88,6 +90,8 @@ export class AuthService {
                 hashRefreshJWT,
                 expireDate,
             );
+
+            this.statsService.incrementLogin();
 
             return {
                 accessToken,

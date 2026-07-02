@@ -15,6 +15,8 @@ export const USER_MESSAGES = {
     ACTIVE_SUCCESS: 'Active user successfully',
     CODE_EXPIRED: 'Code has expired',
     INVALID_CODE: 'Invalid code',
+    ROLE_NOT_CHANGED: 'Role not changed',
+    MISSING_PERMISSION: 'You are missing permission to perform this action',
     INVALID_PASSWORD: 'Invalid password',
     CHANGE_PASSWORD_SUCCESS: 'Change password successfully',
     EMAIL_NOT_FOUND: 'Email not found',
@@ -29,4 +31,5 @@ export const USER_MESSAGES = {
     PASSWORD_NOT_MATCH: 'Password not match',
     EMAIL_NOT_CHANGED: 'Email not changed',
     EMAIL_UPDATE_FAILED: 'Email update failed',
+    CAN_NOT_CHANGE_ME: 'Action cannot be applied to the current user.',
 } as const;

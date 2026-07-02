@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/prefer-promise-reject-errors */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Injectable } from '@nestjs/common';
@@ -28,6 +26,13 @@ export class CloudinaryService {
      */
     async ping() {
         return await cloudinary.api.ping();
+    }
+
+    /**
+     * Lấy thông tin usage (bandwidth, storage) từ Cloudinary cho chu kỳ hiện tại.
+     */
+    async getUsage() {
+        return await cloudinary.api.usage();
     }
 
     /**

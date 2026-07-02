@@ -1,0 +1,24 @@
+export type OverviewAggregateResult = {
+    totalNewUsers: number;
+    totalLogins: number;
+    totalNewGroups: number;
+    totalNewDirects: number;
+    totalMessagesText: number;
+    totalMessagesImage: number;
+    totalMessagesVideo: number;
+    totalMessagesFile: number;
+    totalMessagesVoice: number;
+    totalUploadBytesCloudinary: number;
+    totalUploadBytesR2: number;
+    peakOnlineUsers: number;
+    redisPeakMemoryBytes: number;
+    redisPeakClients: number;
+    cloudinaryStorageBytes: number;
+    currentCloudinaryStorageBytes: number;
+    cloudinaryCreditsUsage: number;
+    r2StorageBytes: number;
+    currentR2StorageBytes: number;
+    mongoStorageBytes: number;
+    cloudinaryBandwidthBytes: number;
+    r2BandwidthBytes: number;
+};

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Match } from '@/utils/decorator-customize';
 import { Transform } from 'class-transformer';
+import { UserRole } from '../types/user';
 import {
     IsEmail,
     IsIn,
@@ -28,14 +29,18 @@ export class CreateUserDto {
     confirmPassword: string;
 
     @IsOptional()
-    @Transform(({ value }) => value === '' ? null : value)
-    @Matches(/^(0|\+84)(3|5|7|8|9)[0-9]{8}$/, { message: 'Số điện thoại không hợp lệ' })
+    @Transform(({ value }) => (value === '' ? null : value))
+    @Matches(/^(0|\+84)(3|5|7|8|9)[0-9]{8}$/, {
+        message: 'Số điện thoại không hợp lệ',
+    })
     phone?: string;
 
     @IsOptional()
     address?: string;
 
     @IsOptional()
-    @IsIn(['USER', 'ADMIN'], { message: 'Role phải là USER hoặc ADMIN' })
-    role?: string = 'USER';
+    @IsIn([UserRole.USER, UserRole.ADMIN], {
+        message: 'Role phải là USER hoặc ADMIN',
+    })
+    role?: UserRole = UserRole.USER;
 }

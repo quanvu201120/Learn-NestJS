@@ -144,6 +144,16 @@ export class RelationshipsService {
                     userId,
                 );
 
+            // Tự động chấp nhận tin nhắn chờ nếu có
+            try {
+                await this.conversationsService.acceptConversation(
+                    conversation._id.toString(),
+                    userId,
+                );
+            } catch (err) {
+                // Bỏ qua lỗi nếu đã accept rồi
+            }
+
             await this.messagesService.createMessage(
                 userId,
                 conversation._id.toString(),

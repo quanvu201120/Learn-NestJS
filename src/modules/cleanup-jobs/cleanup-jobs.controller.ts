@@ -1,4 +1,4 @@
-﻿import {
+import {
     BadRequestException,
     Controller,
     Get,
@@ -17,12 +17,14 @@ import {
     CleanupJobEntityEnum,
     CleanupJobLockedBy,
     CleanupJobResourceEnum,
+    CleanupJobStatusEnum,
 } from './types/cleanup-job';
 import { RolesGuard } from '@/auth/passport/roles.guard';
 import { Roles } from '@/utils/decorator-customize';
+import { UserRole } from '@/modules/users/types/user';
 
 @Controller('cleanup-jobs')
-@Roles('ADMIN')
+@Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
 @UseGuards(RolesGuard)
 export class CleanupJobsController {
     constructor(private readonly cleanupJobsService: CleanupJobsService) {}
@@ -95,5 +97,17 @@ export class CleanupJobsController {
             jobId,
             CleanupJobLockedBy.ADMIN,
         );
+    }
+
+    @Patch(':id/status')
+    async updateCleanupJobStatus(
+        @Param('id') jobId: string,
+        @Query('status') status: CleanupJobStatusEnum,
+    ) {
+        if (status === CleanupJobStatusEnum.IGNORED) {
+            return await this.cleanupJobsService.setIgnoreJob(jobId);
+        }
+        // Có thể mở rộng cho các status khác nếu service hỗ trợ
+        throw new BadRequestException('Status not supported via this endpoint');
     }
 }

@@ -51,8 +51,8 @@ export class ConversationsController {
     }
 
     @Get()
-    findAllByUser(@Request() req) {
-        return this.conversationsService.findAllByUser(req.user._id);
+    findAllByUser(@Request() req, @Query('cursor') cursor?: string) {
+        return this.conversationsService.findAllByUser(req.user._id, cursor);
     }
 
     @Get(':id')

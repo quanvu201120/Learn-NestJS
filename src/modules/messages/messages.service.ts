@@ -1,5 +1,5 @@
+/* eslint-disable @typescript-eslint/no-floating-promises */
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
-/* eslint-disable prettier/prettier */
 
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { MESSAGE_MESSAGES } from './constants/message.constant';
@@ -43,6 +43,7 @@ import {
     CleanupJobResourceEnum,
 } from '../cleanup-jobs/types/cleanup-job';
 import { RelationshipsService } from '../relationships/relationships.service';
+import { StatsService } from '../stats/stats.service';
 
 @Injectable()
 export class MessagesService {
@@ -69,6 +70,7 @@ export class MessagesService {
         private readonly redisService: RedisService,
         @Inject(forwardRef(() => RelationshipsService))
         private readonly relationshipsService: RelationshipsService,
+        private readonly statsService: StatsService,
     ) {}
 
     /**
@@ -324,6 +326,17 @@ export class MessagesService {
             const newMessageId = (newMessage as MessageDocument)._id.toString();
             const message = await this.getMessageById(newMessageId, session);
             this.createdMessage$.next(message);
+
+            // Fire-and-forget: ghi nhận thống kê
+            this.statsService.incrementMessage(type);
+            if (file) {
+                const provider =
+                    type === MessageEnumType.IMAGE
+                        ? MediaProviderEnum.CLOUDINARY
+                        : MediaProviderEnum.R2;
+                this.statsService.incrementUploadBytes(provider, file.size);
+            }
+
             return { message, conversation };
         } catch (error) {
             // nếu có lỗi xảy ra, rollback transaction và cleanup file đã upload

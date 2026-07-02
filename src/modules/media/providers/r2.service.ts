@@ -5,6 +5,7 @@ import {
     DeleteObjectCommand,
     DeleteObjectsCommand,
     PutObjectCommand,
+    HeadBucketCommand,
     S3Client,
 } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
@@ -40,6 +41,24 @@ export class R2Service {
                 secretAccessKey,
             },
         });
+    }
+
+    /**
+     * Ping kết nối với R2 Bucket (Health Check).
+     */
+    async ping(): Promise<boolean> {
+        try {
+            // Sử dụng một command nhẹ nhất để xem S3 client cấu hình đúng chưa
+            // Thay vì ListObjectsV2 tốn kém, gọi phương thức nào nhẹ cũng được.
+            // Có thể bị chặn CORS/Permissions nếu không đủ quyền HeadBucket.
+            // Nếu có lỗi do phân quyền, nó sẽ throw Error.
+            await this.client.send(
+                new HeadBucketCommand({ Bucket: this.bucketName }),
+            );
+            return true;
+        } catch {
+            return false;
+        }
     }
 
     /**

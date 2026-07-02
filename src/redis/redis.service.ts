@@ -126,6 +126,32 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
 
     /**
+     * Lấy tổng số lượng user đang online trong toàn hệ thống.
+     * Sử dụng lệnh SCAN để không làm block server Redis.
+     */
+    async countTotalOnlineUsers(): Promise<number> {
+        return new Promise((resolve, reject) => {
+            let count = 0;
+            const stream = this.redis.scanStream({
+                match: 'presence:user:*',
+                count: 100,
+            });
+
+            stream.on('data', (keys: string[]) => {
+                count += keys.length;
+            });
+
+            stream.on('end', () => {
+                resolve(count);
+            });
+
+            stream.on('error', (err) => {
+                reject(err);
+            });
+        });
+    }
+
+    /**
      * Đánh dấu có tin nhắn mới (Unseen) cho danh sách user đang online.
      * Thêm conversationId vào Set `unseen:conversations:{userId}` của từng user.
      */
@@ -137,7 +163,6 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
         membersOnline.forEach((userId) => {
             pipeline.sadd(
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
                 `unseen:conversations:${userId.toString()}`,
                 conversationId,
             );
@@ -345,7 +370,6 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
             return [];
         }
         const keys = members.map(
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
             (userId) => `presence:user:${userId.toString()}`,
         );
         const results = await this.redis.mget(keys);
@@ -375,6 +399,67 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
             await this.cleanupJobsService.createCleanupJob(createDto);
         } catch (error) {
             console.error('Failed to create cleanup job: ', error);
+        }
+    }
+
+    /**
+     * Lấy thông số server Redis (memory, clients, uptime) cho Admin Dashboard.
+     */
+    async getInfo() {
+        try {
+            const info = await this.redis.info();
+            const parse = (section: string): string | undefined =>
+                info
+                    .split('\n')
+                    .find((l) => l.startsWith(`${section}:`))
+                    ?.split(':')[1]
+                    ?.trim();
+
+            const usedMemoryBytes = Number(parse('used_memory')) || 0;
+            // Lấy maxmemory (nếu có set) hoặc total_system_memory (RAM tổng của server)
+            const maxMemory = Number(parse('maxmemory')) || 0;
+            const systemMemory = Number(parse('total_system_memory')) || 0;
+
+            // Lấy maxmemory từ .env (nếu có cấu hình, tính bằng MB)
+            const envMaxMemoryMB =
+                Number(this.configService.get('REDIS_MAX_MEMORY_MB')) || 0;
+            const envMaxMemoryBytes = envMaxMemoryMB * 1024 * 1024;
+
+            // Ưu tiên: maxmemory thật từ server > cấu hình env > tổng RAM máy chủ
+            const totalMemoryBytes =
+                maxMemory > 0
+                    ? maxMemory
+                    : envMaxMemoryBytes > 0
+                      ? envMaxMemoryBytes
+                      : systemMemory;
+
+            return {
+                usedMemory: parse('used_memory_human') ?? 'N/A',
+                connectedClients: parse('connected_clients') ?? 'N/A',
+                uptimeInSeconds: parse('uptime_in_seconds') ?? 'N/A',
+                usedMemoryBytes,
+                totalMemoryBytes,
+            };
+        } catch {
+            return {
+                usedMemory: 'N/A',
+                connectedClients: 'N/A',
+                uptimeInSeconds: 'N/A',
+                usedMemoryBytes: 0,
+                totalMemoryBytes: 0,
+            };
+        }
+    }
+
+    /**
+     * Ping Redis server để kiểm tra kết nối (Health Check).
+     */
+    async ping(): Promise<boolean> {
+        try {
+            const res = await this.redis.ping();
+            return res === 'PONG';
+        } catch {
+            return false;
         }
     }
 }

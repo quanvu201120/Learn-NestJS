@@ -8,7 +8,6 @@ export class PresenceController {
 
     @Post('users-online')
     getUsersOnline(@Body() body: GetUserOnlineBodyDto) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
         return this.presenceService.getUserOnline(body.userIds);
     }
 }

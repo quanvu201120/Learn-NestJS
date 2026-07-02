@@ -1,18 +1,19 @@
+/* eslint-disable @typescript-eslint/no-unsafe-enum-comparison */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
-
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 import { USER_MESSAGES } from './constants/user.constant';
 import {
     BadRequestException,
+    ForbiddenException,
     forwardRef,
     Inject,
     Injectable,
 } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UserRole } from './types/user';
 import { User } from './schemas/user.schema';
 import { Connection, Model, Types } from 'mongoose';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
@@ -23,8 +24,7 @@ import {
     validateObjectId,
     toObjectId,
 } from '@/utils/utils';
-import aqp from 'api-query-params';
-import { UpdateUserByAdminDto, UpdateUserDto } from './dto/update-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { ConfigService } from '@nestjs/config';
 import ms, { StringValue } from 'ms';
 import { v4 as uuidv4 } from 'uuid';
@@ -39,7 +39,11 @@ import {
 import * as fs from 'fs';
 import * as path from 'path';
 import handlebars from 'handlebars';
-import { UserDisableStateResponse, UserResponse } from './types/user';
+import {
+    UserDisableStateResponse,
+    UserResponse,
+    UserResponseWithPagination,
+} from './types/user';
 import { MediaService } from '../media/media.service';
 import {
     MEDIA_CONSTANTS,
@@ -54,6 +58,7 @@ import {
     CleanupJobResourceEnum,
 } from '../cleanup-jobs/types/cleanup-job';
 import { RelationshipsService } from '../relationships/relationships.service';
+import { StatsService } from '../stats/stats.service';
 
 @Injectable()
 export class UsersService {
@@ -68,6 +73,7 @@ export class UsersService {
         private readonly sessionService: SessionService,
         @Inject(forwardRef(() => RelationshipsService))
         private readonly relationshipsService: RelationshipsService,
+        private readonly statsService: StatsService,
     ) {}
 
     /**
@@ -82,10 +88,43 @@ export class UsersService {
     }
 
     /**
+     * Hàm helper: Kiểm tra quyền chéo (Admin không được sửa Admin/Super Admin)
+     */
+    private checkAdminPermission(targetRole: string, adminRole: string) {
+        if (
+            adminRole === UserRole.ADMIN &&
+            (targetRole === UserRole.ADMIN ||
+                targetRole === UserRole.SUPER_ADMIN)
+        ) {
+            throw new ForbiddenException(USER_MESSAGES.MISSING_PERMISSION);
+        }
+        if (
+            adminRole === UserRole.SUPER_ADMIN &&
+            targetRole === UserRole.SUPER_ADMIN
+        ) {
+            throw new ForbiddenException(USER_MESSAGES.MISSING_PERMISSION);
+        }
+    }
+
+    /**
      * Tạo tài khoản mới, sinh mã OTP lưu vào Redis và gửi email kích hoạt.
      * Mặc định tài khoản tạo ra sẽ ở trạng thái isActive = false.
      */
-    async create(createUserDto: CreateUserDto) {
+    async create(createUserDto: CreateUserDto, creatorRole?: string) {
+        // Chặn tạo SUPER_ADMIN ở mọi trường hợp (kể cả gọi qua service)
+        if (createUserDto.role === UserRole.SUPER_ADMIN) {
+            throw new ForbiddenException(USER_MESSAGES.MISSING_PERMISSION);
+        }
+
+        // Chặn tạo ADMIN nếu người tạo không phải là SUPER_ADMIN
+        // (creatorRole undefined từ register() cũng sẽ bị chặn)
+        if (
+            createUserDto.role === UserRole.ADMIN &&
+            creatorRole !== UserRole.SUPER_ADMIN
+        ) {
+            throw new ForbiddenException(USER_MESSAGES.MISSING_PERMISSION);
+        }
+
         const isEmailExisted = await this.userModel.exists({
             email: createUserDto.email,
         });
@@ -121,6 +160,9 @@ export class UsersService {
 
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password, __v, ...user } = newUser.toObject();
+
+        this.statsService.incrementNewUser();
+
         return user as UserResponse;
     }
 
@@ -132,25 +174,63 @@ export class UsersService {
             email,
             password: pass,
             confirmPassword: pass,
-            role: 'USER',
+            role: UserRole.USER,
             name: email.split('@')[0],
         } as CreateUserDto);
     }
 
     /**
-     * Lấy danh sách user có hỗ trợ phân trang và filter (thường dùng cho Admin dashboard).
+     * Lấy danh sách user có hỗ trợ phân trang và filter.
      */
-    async findAll(query: string, current: number, pageSize: number) {
-        const { filter, sort } = aqp(query);
-        if (filter.current) delete filter.current;
-        if (filter.pageSize) delete filter.pageSize;
-
+    async findAll(query: any, current: number, pageSize: number) {
         if (!current) current = 1;
-        if (!pageSize) pageSize = 10;
+        if (!pageSize) pageSize = GLOBAL_CONSTANTS.LIMIT_USERS_DEFAULT;
+        const filter: any = {};
+        const andConditions: any[] = [];
 
-        const totalItems = (await this.userModel.find(filter)).length;
+        // Lấy keyword từ query
+        const keyword = query.query || '';
+
+        if (keyword) {
+            andConditions.push({
+                $or: [
+                    { name: { $regex: keyword, $options: 'i' } },
+                    { email: { $regex: keyword, $options: 'i' } },
+                    { phone: { $regex: keyword, $options: 'i' } },
+                ],
+            });
+        }
+
+        const status = query.status;
+        if (status) {
+            if (status === 'active') {
+                andConditions.push({ isActive: true, isDisabled: false });
+            } else if (status === 'banned') {
+                andConditions.push({ isDisabled: true });
+            } else if (status === 'unverified') {
+                andConditions.push({ isActive: false, isDisabled: false });
+            }
+        }
+
+        const role = query.role;
+        if (role) {
+            andConditions.push({ role });
+        }
+
+        if (andConditions.length > 0) {
+            filter.$and = andConditions;
+        }
+
+        const totalItems = await this.userModel.countDocuments(filter);
         const totalPages = Math.ceil(totalItems / pageSize);
         const skip = (current - 1) * pageSize;
+
+        let sortCondition: any = { createdAt: -1 };
+        if (query.sort === 'name_asc') {
+            sortCondition = { name: 1 };
+        } else if (query.sort === 'name_desc') {
+            sortCondition = { name: -1 };
+        }
 
         const users: UserResponse[] = await this.userModel
             .find(filter)
@@ -158,13 +238,14 @@ export class UsersService {
             .limit(pageSize)
             .select('-password -__v')
             .populate('avatar', '-__v')
-            .sort(sort as any)
+            .sort(sortCondition)
             .lean();
 
         return {
             totalPages,
+            totalItems,
             users: users.map((user) => this.serializeUserResponse(user)),
-        };
+        } as UserResponseWithPagination;
     }
 
     /**
@@ -265,10 +346,6 @@ export class UsersService {
             throw new BadRequestException(USER_MESSAGES.USER_NOT_DISABLED);
         }
 
-        if (isDisabled && user.role === 'ADMIN') {
-            throw new BadRequestException(USER_MESSAGES.CANNOT_DISABLE_ADMIN);
-        }
-
         user.isDisabled = isDisabled;
         user.disabledAt = isDisabled ? new Date() : undefined;
 
@@ -365,74 +442,68 @@ export class UsersService {
     }
 
     /**
-     * Cập nhật thông tin user cho ADMIN.
+     * Admin reset tên người dùng
      */
-    async updateByAdmin(userId: string, updateUserDto: UpdateUserByAdminDto) {
+    async resetNameByAdmin(
+        userId: string,
+        adminId: string,
+        currentUserRole: string,
+    ) {
         validateObjectId(userId, 'user id');
+        validateObjectId(adminId, 'user id');
+
+        if (userId === adminId) {
+            throw new ForbiddenException(USER_MESSAGES.CAN_NOT_CHANGE_ME);
+        }
 
         const user = await this.userModel.findById(userId);
         if (!user) {
             throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
         }
-        if (user.isDisabled) {
-            throw new BadRequestException(USER_MESSAGES.USER_DISABLED);
-        }
 
-        if (updateUserDto.email) {
-            const isEmailExisted = await this.userModel.exists({
-                email: updateUserDto.email,
-                _id: { $ne: userId },
-            });
+        this.checkAdminPermission(user.role, currentUserRole);
 
-            if (isEmailExisted) {
-                throw new BadRequestException(USER_MESSAGES.EMAIL_EXISTED);
-            }
-        }
-
-        if (updateUserDto.phone) {
-            const isPhoneExisted = await this.userModel.exists({
-                phone: updateUserDto.phone,
-                _id: { $ne: userId },
-            });
-
-            if (isPhoneExisted) {
-                throw new BadRequestException(USER_MESSAGES.PHONE_EXISTED);
-            }
-        }
-
-        const normalizedEntries = Object.entries(updateUserDto).filter(
-            ([key, value]) => key !== '_id' && value !== undefined,
-        );
-        const $set = Object.fromEntries(
-            normalizedEntries.filter(([, value]) => value !== null),
-        );
-        const $unset = Object.fromEntries(
-            normalizedEntries
-                .filter(([, value]) => value === null)
-                .map(([key]) => [key, '']),
-        );
-        const updateQuery: {
-            $set?: Record<string, unknown>;
-            $unset?: Record<string, unknown>;
-        } = {};
-
-        if (Object.keys($set).length > 0) {
-            updateQuery.$set = $set;
-        }
-
-        if (Object.keys($unset).length > 0) {
-            updateQuery.$unset = $unset;
-        }
-
+        const randomSuffix = Math.floor(Math.random() * 1000000);
         const updatedUser = await this.userModel
-            .findByIdAndUpdate(userId, updateQuery, { new: true })
+            .findByIdAndUpdate(
+                userId,
+                { $set: { name: `User_${randomSuffix}` } },
+                { new: true },
+            )
             .select('-password -__v')
             .populate('avatar', '-__v')
             .lean();
 
-        if (!updatedUser) {
+        return this.serializeUserResponse(updatedUser as UserResponse);
+    }
+
+    /**
+     * Admin xóa tiểu sử người dùng
+     */
+    async clearBioByAdmin(
+        userId: string,
+        adminId: string,
+        currentUserRole: string,
+    ) {
+        validateObjectId(userId, 'user id');
+        validateObjectId(adminId, 'user id');
+
+        if (userId === adminId) {
+            throw new ForbiddenException(USER_MESSAGES.CAN_NOT_CHANGE_ME);
+        }
+
+        const user = await this.userModel.findById(userId);
+        if (!user) {
             throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
         }
+
+        this.checkAdminPermission(user.role, currentUserRole);
+
+        const updatedUser = await this.userModel
+            .findByIdAndUpdate(userId, { $unset: { bio: '' } }, { new: true })
+            .select('-password -__v')
+            .populate('avatar', '-__v')
+            .lean();
 
         return this.serializeUserResponse(updatedUser as UserResponse);
     }
@@ -441,6 +512,13 @@ export class UsersService {
      * Vô hiệu hóa chính tài khoản của mình.
      */
     async disableSelf(userId: string): Promise<UserDisableStateResponse> {
+        const user = await this.userModel.findById(userId);
+        if (
+            user &&
+            (user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN)
+        ) {
+            throw new BadRequestException(USER_MESSAGES.CANNOT_DISABLE_ADMIN);
+        }
         return this.setDisabledState(userId, true);
     }
 
@@ -450,8 +528,14 @@ export class UsersService {
     async disableUserByAdmin(
         userId: string,
         currentUserId: string,
+        currentUserRole: string,
     ): Promise<UserDisableStateResponse> {
-        await this.checkUser(currentUserId);
+        validateObjectId(currentUserId, 'current user id');
+        if (userId === currentUserId) {
+            throw new ForbiddenException(USER_MESSAGES.CAN_NOT_CHANGE_ME);
+        }
+        const { existingUser } = await this.checkUser(userId, true, false);
+        this.checkAdminPermission(existingUser.role, currentUserRole);
         return this.setDisabledState(userId, true);
     }
 
@@ -461,12 +545,17 @@ export class UsersService {
     async enableUserByAdmin(
         userId: string,
         currentUserId: string,
+        currentUserRole: string,
     ): Promise<UserDisableStateResponse> {
         validateObjectId(currentUserId, 'current user id');
-        await this.checkUser(currentUserId);
         if (userId === currentUserId) {
-            throw new BadRequestException(USER_MESSAGES.CANNOT_ENABLE_SELF);
+            throw new ForbiddenException(USER_MESSAGES.CAN_NOT_CHANGE_ME);
         }
+        const { existingUser } = await this.checkUser(userId, false, false);
+        if (existingUser.isDisabled === false) {
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_DISABLED);
+        }
+        this.checkAdminPermission(existingUser.role, currentUserRole);
         return this.setDisabledState(userId, false);
     }
 
@@ -1000,6 +1089,140 @@ export class UsersService {
     }
 
     /**
+     * Xóa ảnh đại diện của user (Dành cho Admin)
+     */
+    async deleteAvatarByAdmin(
+        userId: string,
+        adminId: string,
+        adminRole: string,
+    ) {
+        const { existingUser, objectUserId } = await this.checkUser(
+            userId,
+            false,
+            false,
+        );
+
+        if (userId === adminId) {
+            throw new ForbiddenException(USER_MESSAGES.CAN_NOT_CHANGE_ME);
+        }
+
+        this.checkAdminPermission(existingUser.role, adminRole);
+
+        if (!existingUser.avatar) {
+            throw new BadRequestException(USER_MESSAGES.AVATAR_NOT_EXIST);
+        }
+        const avatarOld = await this.mediaService.findById(
+            existingUser.avatar.toString(),
+        );
+        if (!avatarOld) {
+            throw new BadRequestException(MEDIA_MESSAGES.MEDIA_NOT_FOUND);
+        }
+        const session = await this.connection.startSession();
+        try {
+            const user = await session.withTransaction(async () => {
+                const updatedUser = await this.userModel
+                    .findByIdAndUpdate(
+                        objectUserId,
+                        {
+                            $unset: {
+                                avatar: '',
+                            },
+                        },
+                        { new: true, session },
+                    )
+                    .select('-password -__v')
+                    .populate('avatar', '-__v')
+                    .lean();
+                if (!updatedUser) {
+                    throw new BadRequestException(
+                        USER_MESSAGES.AVATAR_DELETE_FAILED,
+                    );
+                }
+                const resultDeleteMedia = await this.mediaService.deleteMedia(
+                    avatarOld._id.toString(),
+                    session,
+                );
+                if (!resultDeleteMedia) {
+                    throw new BadRequestException(
+                        MEDIA_MESSAGES.MEDIA_DELETE_FAILED,
+                    );
+                }
+                return updatedUser as UserResponse;
+            });
+            if (!user) {
+                throw new BadRequestException(
+                    USER_MESSAGES.AVATAR_DELETE_FAILED,
+                );
+            }
+            if (avatarOld?.publicId) {
+                await this.mediaService
+                    .deleteImageFromCloudinaryWithCleanup(avatarOld.publicId, {
+                        entityId: objectUserId.toString(),
+                        entityType: CleanupJobEntityEnum.USER,
+                        resourceType: CleanupJobResourceEnum.USER_AVATAR,
+                    })
+                    .catch((error) => {
+                        console.error('Failed to delete old avatar:', error);
+                    });
+            }
+            return this.serializeUserResponse(user);
+        } finally {
+            await session.endSession();
+        }
+    }
+
+    /**
+     * SUPER_ADMIN thay đổi Role của người dùng
+     */
+    async changeRoleBySuperAdmin(
+        targetUserId: string,
+        newRole: UserRole,
+        superAdminId: string,
+        passwordRaw: string,
+    ) {
+        validateObjectId(targetUserId, 'target user id');
+        validateObjectId(superAdminId, 'super admin id');
+
+        const superAdmin = await this.userModel.findById(superAdminId);
+        if (!superAdmin) {
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
+        }
+        if (superAdmin.role !== UserRole.SUPER_ADMIN) {
+            throw new ForbiddenException(USER_MESSAGES.MISSING_PERMISSION);
+        }
+
+        const isPasswordValid = await bcrypt.compare(
+            passwordRaw,
+            superAdmin.password,
+        );
+        if (!isPasswordValid) {
+            throw new BadRequestException(USER_MESSAGES.PASSWORD_NOT_MATCH);
+        }
+
+        const targetUser = await this.userModel.findById(targetUserId);
+        if (!targetUser) {
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
+        }
+
+        if (targetUserId === superAdminId) {
+            throw new ForbiddenException(USER_MESSAGES.CAN_NOT_CHANGE_ME);
+        }
+
+        this.checkAdminPermission(targetUser.role, superAdmin.role);
+
+        if (targetUser.role === newRole) {
+            throw new BadRequestException(USER_MESSAGES.ROLE_NOT_CHANGED);
+        }
+
+        targetUser.role = newRole;
+        await targetUser.save();
+
+        return this.serializeUserResponse(
+            targetUser.toObject() as UserResponse,
+        );
+    }
+
+    /**
      * Xác nhận mật khẩu
      */
     async confirmPassword(userId: string, password: string) {
@@ -1153,18 +1376,18 @@ export class UsersService {
     }
 
     /**
-     * Kiểm tra user tồn tại, đã kích hoạt và không bị khóa
+     * Kiểm tra user
      */
-    async checkUser(userId: string) {
+    async checkUser(userId: string, checkDisable = true, checkActive = true) {
         const objectUserId = toObjectId(userId, 'user id');
         const existingUser = await this.userModel.findById(objectUserId);
         if (!existingUser) {
             throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
         }
-        if (existingUser.isActive === false) {
+        if (checkActive === true && existingUser.isActive === false) {
             throw new BadRequestException(USER_MESSAGES.USER_NOT_ACTIVE);
         }
-        if (existingUser.isDisabled) {
+        if (checkDisable === true && existingUser.isDisabled) {
             throw new BadRequestException(USER_MESSAGES.USER_DISABLED);
         }
         return { existingUser, objectUserId };

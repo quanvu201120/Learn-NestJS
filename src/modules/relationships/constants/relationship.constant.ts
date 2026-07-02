@@ -1,7 +1,8 @@
 export const RELATIONSHIP_MESSAGES = {
     RELATIONSHIP_NOT_FOUND: 'Relationship not found',
     UPDATE_FAILED: 'Failed to update relationship',
-    FRIEND_REQUEST_ALREADY_SENT: 'You have already sent a friend request to this user',
+    FRIEND_REQUEST_ALREADY_SENT:
+        'You have already sent a friend request to this user',
     CREATE_FAILED: 'Failed to create relationship',
     ALREADY_BLOCKED: 'You have already blocked this user',
     CANNOT_BLOCK: 'Cannot block this user',

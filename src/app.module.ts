@@ -16,6 +16,8 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
 import { PresenceModule } from './modules/presence/presence.module';
 import { MediaModule } from './modules/media/media.module';
 import { RelationshipsModule } from './modules/relationships/relationships.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { StatsModule } from './modules/stats/stats.module';
 
 @Module({
     imports: [
@@ -41,6 +43,8 @@ import { RelationshipsModule } from './modules/relationships/relationships.modul
             exclude: ['/api/(.*)'],
         }),
         RelationshipsModule,
+        ScheduleModule.forRoot(),
+        StatsModule,
     ],
     controllers: [AppController],
     providers: [
