@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { PresenceService } from './presence.service';
 import { GetUserOnlineBodyDto } from './dto/presence.dto';
 
@@ -6,6 +6,7 @@ import { GetUserOnlineBodyDto } from './dto/presence.dto';
 export class PresenceController {
     constructor(private readonly presenceService: PresenceService) {}
 
+    @HttpCode(HttpStatus.OK)
     @Post('users-online')
     getUsersOnline(@Body() body: GetUserOnlineBodyDto) {
         return this.presenceService.getUserOnline(body.userIds);

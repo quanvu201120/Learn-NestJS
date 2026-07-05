@@ -1,94 +1,308 @@
-# Kế hoạch triển khai Thống kê (Daily Stats) cho Admin Dashboard
+# Kế hoạch triển khai Report & Audit Log
 
-Mục tiêu: Áp dụng mô hình Lai (Hybrid) - tự đếm số liệu theo ngày bằng Database, lấy cấu hình Real-time từ Redis và lấy băng thông tải xuống từ API của Cloudinary & Cloudflare R2 kết hợp Cron Job cập nhật liên tục mỗi 15 phút vào bảng thống kê ngày.
+## Bối cảnh & Quyết định kiến trúc
 
-## 1. Cơ chế hoạt động (Hybrid)
-1. **Biểu đồ theo ngày (Upload, Tin nhắn, User, Login, Cloud Usage, Redis):** Tất cả các thông số đều được gom về và lưu chung vào bảng `SystemDailyStat` trong DB theo từng ngày. Khi có upload/tin nhắn, tự động ghi nhận số liệu.
-2. **Riêng phần Download (Bandwidth) và Redis Peak:** Tạo một **Cron Job chạy mỗi 15 phút**. Job này sẽ gọi API của Cloudinary, R2 để lấy "Tổng dung lượng Download & Storage" của tháng, so sánh với ngày hôm qua để lấy ra độ lệch (delta) cập nhật vào ngày hôm nay. Đồng thời lấy thông số RAM/Connections cao nhất của Redis lưu vào ngày hôm nay.
-3. **Chỉ số hệ thống (Redis):** Tình trạng hoạt động của Redis sẽ được lấy Real-time (không lưu vào DB) mỗi khi Admin gọi API Overview.
+HaloChat sẽ có E2EE trong tương lai. Vì server không thể giải mã nội dung tin nhắn text, hệ thống report được thiết kế ngay từ đầu theo mô hình tương thích E2EE:
 
-## 2. Các thay đổi dự kiến
+- **Report tài khoản** là scope duy nhất — không report từng tin nhắn text
+- **Bằng chứng** do chính người report cung cấp (screenshot upload) thay vì server tự thu thập nội dung chat
+- **Snapshot profile** tự động tại thời điểm report để bảo toàn bằng chứng dù user tự sửa sau đó
+- **Audit Log** ghi lại toàn bộ hành động của Admin/Super Admin, chỉ Super Admin xem được
 
-### Stats Module
-Tạo thư mục `src/modules/stats` với kiến trúc 1 Module quản lý 1 Schema:
+---
+
+## 1. Report Module
+
+### 1.1 Schema — `report.schema.ts`
+
+```typescript
+{
+  _id: ObjectId,
+
+  // Người report và đối tượng bị report
+  reporterId:    ObjectId,   // ref: User
+  targetUserId:  ObjectId,   // ref: User
+
+  // Nội dung report
+  reason: enum [
+    'spam',
+    'harassment',
+    'inappropriate_content',  // avatar/tên/bio vi phạm
+    'impersonation',
+    'other'
+  ],
+  description: String,        // Mô tả thêm (optional, tối đa 500 ký tự)
+
+  // Bằng chứng do người report upload
+  evidenceUrls: [String],     // Tối đa 5 ảnh, mỗi ảnh ≤ 5MB (jpg/png/webp)
+
+  // Snapshot tự động tại thời điểm report (bảo toàn dù user tự sửa)
+  snapshot: {
+    avatarUrl:   String,
+    displayName: String,
+    bio:         String,
+    capturedAt:  Date,
+  },
+
+  // Trạng thái xử lý
+  status:     enum ['pending', 'resolved', 'dismissed'],
+  resolvedBy: ObjectId,   // ref: User (Admin/Super Admin)
+  resolvedAt: Date,
+  adminNote:  String,     // Ghi chú của admin khi đóng report
+
+  createdAt: Date,
+}
+```
+
+**Index:** `{ targetUserId, status }`, `{ reporterId }`, `{ createdAt }`
+
+### 1.2 Cấu trúc thư mục
 
 ```text
 src/
 └── modules/
-    └── stats/
+    └── reports/
         ├── schemas/
-        │   └── system-daily-stat.schema.ts        <-- Bảng 1: Đếm thao tác nội bộ & Lưu Cloud/Redis usage
-        ├── cron/
-        │   └── stats.cron.ts                      <-- Job chạy ngầm mỗi 15 phút
-        ├── stats.controller.ts                    <-- API Dashboard
-        ├── stats.service.ts                       <-- Logic lưu trữ DB
-        └── stats.module.ts                        <-- Đóng gói Module
+        │   └── report.schema.ts
+        ├── dto/
+        │   ├── create-report.dto.ts
+        │   └── resolve-report.dto.ts
+        ├── reports.controller.ts
+        ├── reports.service.ts
+        └── reports.module.ts
 ```
 
-#### `schemas/system-daily-stat.schema.ts`
-Khai báo Mongoose schema cho bảng `SystemDailyStat`:
-- `date`: String (Format `YYYY-MM-DD`, unique index - làm khóa chính cho mỗi ngày).
-- `newUsers`: Number (mặc định 0).
-- `logins`: Number (mặc định 0).
-- `newGroups`: Number (mặc định 0).
-- `newDirects`: Number (mặc định 0).
-- `messagesText`: Number (mặc định 0).
-- `messagesImage`: Number (mặc định 0).
-- `messagesVideo`: Number (mặc định 0).
-- `messagesFile`: Number (mặc định 0).
-- `messagesVoice`: Number (mặc định 0).
-- `uploadBytesCloudinary`: Number (mặc định 0) - tổng dung lượng upload lên Cloudinary.
-- `uploadBytesR2`: Number (mặc định 0) - tổng dung lượng upload lên R2.
-- `cloudinaryBandwidthBytes`: Number (mặc định 0) - tổng băng thông tải xuống trên Cloudinary trong ngày.
-- `cloudinaryStorageBytes`: Number (mặc định 0) - dung lượng lưu trữ max trên Cloudinary trong ngày.
-- `r2BandwidthBytes`: Number (mặc định 0) - tổng băng thông tải xuống trên R2 trong ngày.
-- `r2StorageBytes`: Number (mặc định 0) - dung lượng lưu trữ max trên R2 trong ngày.
-- `redisPeakMemoryBytes`: Number (mặc định 0) - RAM cao nhất Redis sử dụng trong ngày.
-- `redisPeakClients`: Number (mặc định 0) - kết nối cao nhất Redis nhận được trong ngày.
+### 1.3 API Endpoints
 
-#### `stats.service.ts`
-Chứa các logic đếm:
-- `incrementNewUser()`, `incrementLogin()`, `incrementNewGroup()`, `incrementNewDirect()`, `incrementMessage(type: string)`, `incrementUploadBytes(provider: 'cloudinary' | 'r2', bytes: number)`: 
-  Sử dụng `Model.updateOne({ date: today }, { $inc: { field: 1 } }, { upsert: true })`.
+| Method  | Path                   | Quyền  | Mô tả                                     |
+| ------- | ---------------------- | ------ | ----------------------------------------- |
+| `POST`  | `/reports`             | User   | Tạo report mới                            |
+| `GET`   | `/reports`             | Admin+ | Danh sách report (filter: status, reason) |
+| `GET`   | `/reports/:id`         | Admin+ | Chi tiết 1 report                         |
+| `PATCH` | `/reports/:id/resolve` | Admin+ | Đóng report (resolved/dismissed)          |
 
-#### `stats.controller.ts`
-Cung cấp API cho trang Admin Dashboard (bảo vệ bởi `@Roles('ADMIN')`):
-- `GET /stats/overview`: Lấy số liệu tổng cộng dồn (Tổng messages, uploads, users,...), số liệu Cloud của tháng hiện tại (lấy từ dữ liệu cộng dồn của ngày gần nhất), và thực thi `redis.info()` để lấy thông số RAM/Connections real-time của Redis trả về.
-- `GET /stats/chart`: Lấy mảng số liệu từ bảng `SystemDailyStat` để vẽ biểu đồ. Cho phép filter theo query: `?type=daily|monthly|yearly`, `startDate`, `endDate`, `limit`.
-- `POST /stats/sync`: API cập nhật thủ công. Lấy tức thời dữ liệu Cloud & Redis lưu vào bảng `SystemDailyStat` của ngày hôm nay.
+### 1.4 Logic tạo Report (`reports.service.ts`)
 
-#### `cron/stats.cron.ts`
-Sử dụng `@nestjs/schedule` để cài đặt Cron Job.
-- `@Cron('*/15 * * * *')` (Chạy tự động mỗi 15 phút).
-- Logic `handleCloudUsageTracking`: 
-  1. Gọi `cloudinary.api.usage()`.
-  2. Dùng `fetch` gọi Cloudflare GraphQL Analytics API để lấy băng thông của R2.
-  3. Lấy con số trả về trừ đi con số cộng dồn của ngày hôm qua để ra mức độ sử dụng của riêng ngày hôm nay.
-  4. Cập nhật vào bản ghi ngày hôm nay trong `SystemDailyStat`.
-- Logic `handleRedisPeakTracking`: Lấy info Redis để lấy max memory/clients trong ngày.
+Khi nhận `POST /reports`:
 
-#### `stats.module.ts`
-Khai báo module, import Mongoose Model của `SystemDailyStat`, export `StatsService`.
+1. Validate: `reporterId` không được trùng `targetUserId`
+2. Validate: không được report cùng 1 user quá 3 lần trong 24h (chống spam report)
+3. **Tự động fetch và lưu snapshot** của `targetUser` tại thời điểm đó:
+    ```typescript
+    const targetUser = await this.usersService.findById(targetUserId);
+    snapshot = {
+        avatarUrl: targetUser.avatarUrl,
+        displayName: targetUser.displayName,
+        bio: targetUser.bio,
+        capturedAt: new Date(),
+    };
+    ```
+4. Lưu report vào DB với `status: 'pending'`
+5. (Tùy chọn sau) Notify Admin qua socket/email khi có report mới
+
+### 1.5 Giới hạn upload bằng chứng
+
+- Tối đa **5 ảnh** mỗi report
+- Mỗi ảnh ≤ **5MB**
+- Format: `jpg`, `png`, `webp`
+- Upload lên Cloudinary folder `evidence/reports/{reportId}/`
+- URL trả về lưu vào `evidenceUrls[]`
 
 ---
 
-### Cập nhật các module hiện có
+## 2. Audit Log Module
 
-#### `src/app.module.ts`
-Import `StatsModule` và kích hoạt `ScheduleModule.forRoot()`. Bổ sung biến môi trường `CLOUDFLARE_API_TOKEN` và `CLOUDFLARE_ACCOUNT_ID` vào `.env`.
+### 2.1 Nguyên tắc thiết kế
 
-#### `src/modules/users/users.module.ts` & `src/modules/users/users.service.ts`
-- Import `StatsModule`. Trong hàm tạo user mới, gọi `this.statsService.incrementNewUser()`.
+- **Immutable**: Không ai được xóa hoặc sửa log, kể cả Super Admin
+- **Chỉ Super Admin xem được**
+- Ghi lại toàn bộ hành động Admin/Super Admin tác động lên tài khoản người dùng hoặc hệ thống quyền
 
-#### `src/modules/conversations/conversations.module.ts` & `src/modules/conversations/conversations.service.ts`
-- Import `StatsModule`. Trong hàm `createConversation`, gọi `incrementNewGroup()` hoặc `incrementNewDirect()`.
+### 2.2 Hành động nào cần log
 
-#### `src/modules/messages/messages.module.ts` & `src/modules/messages/messages.service.ts`
-- Import `StatsModule`. Trong hàm tạo tin nhắn, gọi `this.statsService.incrementMessage(message.type)`.
+| Hành động                          | Actor              |
+| ---------------------------------- | ------------------ |
+| Khóa / Mở khóa tài khoản           | Admin, Super Admin |
+| Xóa avatar                         | Admin, Super Admin |
+| Reset tên hiển thị                 | Admin, Super Admin |
+| Xóa tiểu sử                        | Admin, Super Admin |
+| Đăng xuất tất cả thiết bị của user | Admin, Super Admin |
+| Tạo tài khoản User                 | Admin, Super Admin |
+| Tạo tài khoản Admin                | Super Admin        |
+| Cấp / Thu hồi quyền Admin          | Super Admin        |
+| Đóng report (resolved/dismissed)   | Admin, Super Admin |
 
-#### `src/modules/media/media.module.ts` & `src/modules/media/media.service.ts` & Providers
-- Bổ sung hàm call API GraphQL vào `r2.service.ts` và hàm `usage()` vào `cloudinary.service.ts`.
-- Lúc upload thành công, gọi `this.statsService.incrementUploadBytes(provider, file.size)`.
+> **Không cần log:** Xem danh sách, tìm kiếm, đọc report (read-only operations)
 
-#### `src/auth/auth.service.ts`
-Khi xác thực login thành công, gọi `this.statsService.incrementLogin()`.
+### 2.3 Schema — `admin-log.schema.ts`
+
+```typescript
+{
+  _id: ObjectId,
+
+  actorId:    ObjectId,   // ref: User — Admin nào thực hiện
+  actorRole:  String,     // Role tại thời điểm thực hiện ('admin' | 'superadmin')
+
+  action: enum [
+    'LOCK_USER',
+    'UNLOCK_USER',
+    'DELETE_AVATAR',
+    'RESET_DISPLAY_NAME',
+    'DELETE_BIO',
+    'FORCE_LOGOUT',
+    'CREATE_USER',
+    'CREATE_ADMIN',
+    'GRANT_ADMIN',
+    'REVOKE_ADMIN',
+    'DELETE_USER',
+    'RESOLVE_REPORT',
+    'DISMISS_REPORT',
+  ],
+
+  targetId:   ObjectId,   // ID của user/report bị tác động
+  targetType: enum ['user', 'report'],
+
+  // Trạng thái trước khi thay đổi
+  metadata: {
+    // Tùy action, ví dụ:
+    oldAvatarUrl:  String,   // DELETE_AVATAR
+    oldName:       String,   // RESET_DISPLAY_NAME
+    oldRole:       String,   // GRANT_ADMIN / REVOKE_ADMIN
+    newRole:       String,
+    reason:        String,   // Lý do admin ghi chú khi thực hiện
+    reportId:      ObjectId, // Nếu action liên quan đến report
+  },
+
+  // Thông tin phiên
+  ip:        String,
+  userAgent: String,
+
+  createdAt: Date,   // Immutable — không update sau khi tạo
+}
+```
+
+**Index:** `{ actorId }`, `{ targetId }`, `{ action }`, `{ createdAt: -1 }`
+
+### 2.4 Cấu trúc thư mục
+
+```text
+src/
+└── modules/
+    └── admin-logs/
+        ├── schemas/
+        │   └── admin-log.schema.ts
+        ├── dto/
+        │   └── query-log.dto.ts
+        ├── admin-logs.controller.ts
+        ├── admin-logs.service.ts
+        └── admin-logs.module.ts
+```
+
+### 2.5 API Endpoints
+
+| Method | Path              | Quyền                | Mô tả                               |
+| ------ | ----------------- | -------------------- | ----------------------------------- |
+| `GET`  | `/admin-logs`     | **Super Admin only** | Danh sách log (filter + phân trang) |
+| `GET`  | `/admin-logs/:id` | **Super Admin only** | Chi tiết 1 log                      |
+
+> Không có `POST`, `PATCH`, `DELETE` — Log chỉ được tạo nội bộ, không có API public
+
+### 2.6 `AdminLogsService` — cách sử dụng
+
+`AdminLogsService` export một method duy nhất để các module khác gọi:
+
+```typescript
+// admin-logs.service.ts
+async log(params: {
+  actorId:    string
+  actorRole:  string
+  action:     AdminAction
+  targetId:   string
+  targetType: 'user' | 'report'
+  metadata?:  Record<string, any>
+  ip?:        string
+  userAgent?: string
+}): Promise<void>
+```
+
+Các service khác inject `AdminLogsService` và gọi sau khi hoàn thành hành động:
+
+```typescript
+// users.service.ts (ví dụ)
+async deleteAvatar(adminId: string, adminRole: string, userId: string, ip: string) {
+  const user = await this.userModel.findById(userId)
+  const oldAvatarUrl = user.avatarUrl
+
+  // 1. Xóa trên Cloudinary
+  await this.cloudinaryService.delete(user.avatarPublicId)
+
+  // 2. Cập nhật DB
+  await this.userModel.updateOne({ _id: userId }, { $unset: { avatarUrl: 1 } })
+
+  // 3. Ghi Audit Log
+  await this.adminLogsService.log({
+    actorId:    adminId,
+    actorRole:  adminRole,
+    action:     'DELETE_AVATAR',
+    targetId:   userId,
+    targetType: 'user',
+    metadata:   { oldAvatarUrl },
+    ip,
+  })
+}
+```
+
+### 2.7 Query & Filter cho Admin Log
+
+```
+GET /admin-logs?actorId=...&targetId=...&action=DELETE_AVATAR&startDate=...&endDate=...&page=1&limit=20
+```
+
+---
+
+## 3. Tích hợp với các module hiện có
+
+### `UsersModule`
+
+- Import `AdminLogsModule`, `ReportsModule`
+- Các hàm: `lockUser`, `unlockUser`, `deleteAvatar`, `resetDisplayName`, `deleteBio`, `forceLogout`, `deleteUser`, `grantAdmin`, `revokeAdmin` → đều phải gọi `adminLogsService.log()` sau khi thực hiện
+
+### `ReportsModule`
+
+- Import `AdminLogsModule`, `UsersModule` (để lấy snapshot)
+- Khi resolve/dismiss report → gọi `adminLogsService.log()` với action tương ứng
+
+---
+
+## 4. Bảo mật Admin Session (FE — ghi nhớ để implement sau)
+
+Quy tắc đã thống nhất, implement phía Frontend:
+
+- **Blur/Visibility → Unmount ngay**: Khi tab mất focus (`visibilitychange` + `window.blur`) → xóa sạch admin state, unmount component, yêu cầu xác thực lại
+- **Không cache admin data**: `gcTime: 0`, `staleTime: 0` cho mọi query trong Admin scope
+- **Không localStorage**: Admin state chỉ tồn tại trong memory, mất khi F5 hoặc unmount
+- **Component isolation**: Admin dashboard là inner component riêng, unmount hoàn toàn khi mất xác thực
+
+### Hành động cần xác nhận mật khẩu (Super Admin)
+
+| Hành động                 | Lý do                       |
+| ------------------------- | --------------------------- |
+| Tạo tài khoản Admin       | Leo thang đặc quyền         |
+| Cấp / Thu hồi quyền Admin | Thay đổi cấu trúc quyền lực |
+| Xóa user vĩnh viễn        | Irreversible                |
+
+### Hành động chỉ cần Confirm Dialog
+
+Tất cả các hành động còn lại: khóa/mở khóa, xóa avatar, reset tên, xóa bio, đăng xuất thiết bị.
+
+---
+
+## 5. Thứ tự triển khai đề xuất
+
+1. `AdminLogsModule` — schema + service (không có controller trước)
+2. Tích hợp `adminLogsService.log()` vào các hành động admin hiện có trong `UsersModule`
+3. `AdminLogsController` — API GET cho Super Admin
+4. `ReportsModule` — schema + service + controller
+5. FE: Admin session security (blur unmount)
+6. FE: Trang quản lý Report
+7. FE: Trang Audit Log (chỉ Super Admin)

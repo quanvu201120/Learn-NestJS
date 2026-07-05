@@ -30,6 +30,10 @@ export class UpdateUserDto {
     @IsOptional()
     @IsNotEmpty({ message: 'Name must not be empty' })
     @IsString({ message: 'Name must be a string' })
+    @Transform(({ value }) =>
+        typeof value === 'string' ? value.trim() : value,
+    )
+    @MaxLength(50)
     name?: string;
 
     @IsOptional()
@@ -67,6 +71,12 @@ export class UpdateRoleBySuperAdminDto {
     })
     role: UserRole;
 
+    @IsNotEmpty({ message: 'Password must not be empty' })
+    @IsString()
+    password: string;
+}
+
+export class AdminActionWithPasswordDto {
     @IsNotEmpty({ message: 'Password must not be empty' })
     @IsString()
     password: string;

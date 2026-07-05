@@ -71,8 +71,17 @@ export class CleanupJobsController {
     async getCleanUpJobs(
         @Query('page') page?: number,
         @Query('limit') limit?: number,
+        @Query('type') type?: string,
+        @Query('status') status?: string,
+        @Query('sort') sort?: string,
     ) {
-        return await this.cleanupJobsService.getCleanUpJobs(page, limit);
+        return await this.cleanupJobsService.getCleanUpJobs(
+            page,
+            limit,
+            type,
+            status,
+            sort,
+        );
     }
 
     @Get('/pending-retry')

@@ -24,6 +24,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import {
     UpdateRoleBySuperAdminDto,
     UpdateUserDto,
+    AdminActionWithPasswordDto,
 } from './dto/update-user.dto';
 import { Roles } from '@/utils/decorator-customize';
 import { UserRole } from './types/user';
@@ -166,12 +167,14 @@ export class UsersController {
     @ApiOperation({ summary: 'ADMIN vô hiệu hóa tài khoản user' })
     async disableUser(
         @Param('id') id: string,
+        @Body() body: AdminActionWithPasswordDto,
         @Request() req,
     ): Promise<UserDisableStateResponse> {
         return await this.usersService.disableUserByAdmin(
             id,
             req.user._id,
             req.user.role,
+            body.password,
         );
     }
 
@@ -181,12 +184,14 @@ export class UsersController {
     @ApiOperation({ summary: 'ADMIN gỡ trạng thái vô hiệu hóa user' })
     async enableUser(
         @Param('id') id: string,
+        @Body() body: AdminActionWithPasswordDto,
         @Request() req,
     ): Promise<UserDisableStateResponse> {
         return await this.usersService.enableUserByAdmin(
             id,
             req.user._id,
             req.user.role,
+            body.password,
         );
     }
 

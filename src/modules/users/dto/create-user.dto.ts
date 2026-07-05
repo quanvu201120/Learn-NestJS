@@ -8,11 +8,17 @@ import {
     IsNotEmpty,
     IsOptional,
     Matches,
+    MaxLength,
 } from 'class-validator';
 
 export class CreateUserDto {
+    @IsOptional()
+    @MaxLength(50)
     @IsNotEmpty({ message: 'Tên không được để trống' })
-    name: string;
+    @Transform(({ value }) =>
+        typeof value === 'string' ? value.trim() : value,
+    )
+    name?: string;
 
     @IsNotEmpty({ message: 'Email không được để trống' })
     @IsEmail({}, { message: 'Email không đúng định dạng' })

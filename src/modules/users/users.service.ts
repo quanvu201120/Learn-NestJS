@@ -148,6 +148,7 @@ export class UsersService {
 
         const newUser = await this.userModel.create({
             ...createUserDto,
+            name: createUserDto.name || createUserDto.email.split('@')[0],
             password: passwordHash,
             isActive: false,
         });
@@ -529,8 +530,28 @@ export class UsersService {
         userId: string,
         currentUserId: string,
         currentUserRole: string,
+        passwordRaw: string,
     ): Promise<UserDisableStateResponse> {
         validateObjectId(currentUserId, 'current user id');
+
+        const currentUser = await this.userModel
+            .findById(currentUserId)
+            .select('password role');
+
+        if (!currentUser) {
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
+        }
+        if (currentUser.role !== currentUserRole) {
+            throw new ForbiddenException(USER_MESSAGES.MISSING_PERMISSION);
+        }
+        const isPasswordValid = await bcrypt.compare(
+            passwordRaw,
+            currentUser.password,
+        );
+        if (!isPasswordValid) {
+            throw new BadRequestException(USER_MESSAGES.PASSWORD_NOT_MATCH);
+        }
+
         if (userId === currentUserId) {
             throw new ForbiddenException(USER_MESSAGES.CAN_NOT_CHANGE_ME);
         }
@@ -546,8 +567,28 @@ export class UsersService {
         userId: string,
         currentUserId: string,
         currentUserRole: string,
+        passwordRaw: string,
     ): Promise<UserDisableStateResponse> {
         validateObjectId(currentUserId, 'current user id');
+
+        const currentUser = await this.userModel
+            .findById(currentUserId)
+            .select('password role');
+
+        if (!currentUser) {
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
+        }
+        if (currentUser.role !== currentUserRole) {
+            throw new ForbiddenException(USER_MESSAGES.MISSING_PERMISSION);
+        }
+        const isPasswordValid = await bcrypt.compare(
+            passwordRaw,
+            currentUser.password,
+        );
+        if (!isPasswordValid) {
+            throw new BadRequestException(USER_MESSAGES.PASSWORD_NOT_MATCH);
+        }
+
         if (userId === currentUserId) {
             throw new ForbiddenException(USER_MESSAGES.CAN_NOT_CHANGE_ME);
         }
