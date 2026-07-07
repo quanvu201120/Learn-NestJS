@@ -19,6 +19,7 @@ import {
     CLEANUP_JOB_CONSTANTS,
     CLEANUP_JOB_MESSAGES,
     CLEANUP_RETRY_DELAYS_MINUTES,
+    CLEANUP_MAX_RETRIES,
 } from './constants/cleanup-job.constant';
 import { toObjectId } from '@/utils/utils';
 import {
@@ -46,7 +47,13 @@ export class CleanupJobsService {
 
     /** Tạo job dọn rác (media claudinaty - R2, session, redis) */
     async createCleanupJob(createDto: CreateCleanupJobDto) {
-        const cleanupJob = await this.cleanupJobModel.create(createDto);
+        const maxRetries =
+            CLEANUP_MAX_RETRIES[createDto.action] ??
+            CLEANUP_JOB_CONSTANTS.DEFAULT_MAX_RETRIES;
+        const cleanupJob = await this.cleanupJobModel.create({
+            ...createDto,
+            maxRetries,
+        });
 
         if (!cleanupJob) {
             throw new BadRequestException(
@@ -54,6 +61,29 @@ export class CleanupJobsService {
             );
         }
         return cleanupJob;
+    }
+
+    /** Mở khóa các job bị kẹt (lockedUntil đã hết hạn) */
+    async unlockStuckJobs(): Promise<number> {
+        const result = await this.cleanupJobModel.updateMany(
+            {
+                lockedUntil: { $lt: new Date() },
+                status: {
+                    $in: [
+                        CleanupJobStatusEnum.PENDING,
+                        CleanupJobStatusEnum.RETRY,
+                    ],
+                },
+            },
+            {
+                $unset: {
+                    lockedAt: 1,
+                    lockedUntil: 1,
+                    lockedBy: 1,
+                },
+            },
+        );
+        return result.modifiedCount;
     }
 
     /** Lấy tất cả job dọn rác, có pagination và sort desc theo creation date */
@@ -230,39 +260,6 @@ export class CleanupJobsService {
         return cleanupJob as CleanupJob;
     }
 
-    /** Lấy job dọn rác ở trạng thái PENDING hoặc RETRY có phân trang và sort asc theo nextRetryAt, job đến hạn dọn trước nằm trước*/
-    async getPendingAndRetryJobs(
-        page: number = CLEANUP_JOB_CONSTANTS.DEFAULT_PAGE,
-        limit: number = CLEANUP_JOB_CONSTANTS.DEFAULT_LIMIT,
-    ) {
-        if (page <= 0 || limit <= 0) {
-            throw new BadRequestException(
-                CLEANUP_JOB_MESSAGES.GET_JOB_PAGINATION_INVALID,
-            );
-        }
-
-        const filter = this.getRunnableCleanupJobFilter();
-        const [totalItems, foundJobs] = await Promise.all([
-            this.cleanupJobModel.countDocuments(filter),
-            this.cleanupJobModel
-                .find(filter)
-                .skip((page - 1) * limit)
-                .limit(limit)
-                .sort({ nextRetryAt: 1, _id: 1 }),
-        ]);
-        const totalPages = Math.ceil(totalItems / limit);
-
-        return {
-            cleanupJobs: foundJobs,
-            pagination: {
-                totalItems,
-                totalPages,
-                currentPage: page,
-                limit,
-            },
-        } as CleanupJobRespone;
-    }
-
     /** Set job thành IGNORED và remove lock */
     async setIgnoreJob(jobId: string) {
         const objectId = toObjectId(jobId, 'job id');
@@ -332,10 +329,15 @@ export class CleanupJobsService {
             return await this.handleCompletedJob(cleanupJob);
         } catch (error) {
             const newRetryCount = cleanupJob.retryCount + 1;
-            if (newRetryCount > cleanupJob.maxRetries) {
+            const hasMoreDelays =
+                (CLEANUP_RETRY_DELAYS_MINUTES[cleanupJob.action]?.length ||
+                    0) >= newRetryCount;
+
+            if (newRetryCount > cleanupJob.maxRetries || !hasMoreDelays) {
                 return await this.handleFailedJob(
                     cleanupJob,
                     (error as Error)?.message || 'Unknown error',
+                    cleanupJob.maxRetries,
                 );
             }
             return await this.handleRetryJob(
@@ -540,7 +542,18 @@ export class CleanupJobsService {
     private async handleFailedJob(
         cleanupJob: CleanupJobDocument,
         errorMessage?: string,
+        finalRetryCount?: number,
     ) {
+        const updateSet: any = {
+            status: CleanupJobStatusEnum.FAILED,
+            error: errorMessage,
+            lastTriedAt: new Date(),
+        };
+
+        if (finalRetryCount !== undefined) {
+            updateSet.retryCount = finalRetryCount;
+        }
+
         const result = await this.cleanupJobModel.findOneAndUpdate(
             {
                 _id: cleanupJob._id,
@@ -548,11 +561,7 @@ export class CleanupJobsService {
                 lockedUntil: { $gt: new Date() },
             },
             {
-                $set: {
-                    status: CleanupJobStatusEnum.FAILED,
-                    error: errorMessage,
-                    lastTriedAt: new Date(),
-                },
+                $set: updateSet,
                 $unset: {
                     nextRetryAt: 1,
                     lockedAt: 1,

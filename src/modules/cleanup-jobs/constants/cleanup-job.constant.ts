@@ -2,7 +2,7 @@ import { CleanupJobActionEnum } from '../types/cleanup-job';
 
 export const CLEANUP_JOB_CONSTANTS = {
     DEFAULT_RETRY_COUNT: 0,
-    DEFAULT_MAX_RETRIES: 10,
+    DEFAULT_MAX_RETRIES: 9,
     DEFAULT_PAGE: 1,
     DEFAULT_LIMIT: 20,
     LOCK_DURATION_MS: 10 * 60 * 1000,
@@ -48,15 +48,13 @@ export const CLEANUP_JOB_MESSAGES = {
     GET_JOB_PAGINATION_INVALID: 'Page or limit is invalid',
 } as const;
 
-const MEDIA_RETRY_DELAYS = [
-    10, 30, 60, 240, 720, 1440, 2880, 4320, 5760, 10080,
-];
-const REDIS_RETRY_DELAYS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
-const SESSION_RETRY_DELAYS = Array(10).fill(10);
+const MEDIA_RETRY_DELAYS = [30, 60, 240, 720, 1440, 2880, 4320, 5760, 10080];
+const REDIS_RETRY_DELAYS = [20, 30, 40, 50, 60, 70, 80, 90, 100];
+const SESSION_RETRY_DELAYS = Array(1008).fill(10); // Đủ retry 10p/lần trong 7 ngày
 
-/** Mảng delay cho các lần retry, tối đa 10 lần tương ứng với:
- * Media: 10m, 30m, 1h, 4h, 12h, 24h, 2d, 3d, 4d, 7d
- * Redis: 10m, 20m, 30m, 40m, 50m, 60m, 70m, 80m, 90m, 100m
+/** Mảng delay cho các lần retry, tối đa 9 lần tương ứng với:
+ * Media: 30m, 1h, 4h, 12h, 24h, 2d, 3d, 4d, 7d
+ * Redis: 20m, 30m, 40m, 50m, 60m, 70m, 80m, 90m, 100m
  * Session: 10m liên tục cho đến khi refresh token hết hạn
  */
 export const CLEANUP_RETRY_DELAYS_MINUTES: Record<
@@ -76,4 +74,20 @@ export const CLEANUP_RETRY_DELAYS_MINUTES: Record<
     // Session Revoke
     [CleanupJobActionEnum.SESSION_REVOKE]: SESSION_RETRY_DELAYS,
     [CleanupJobActionEnum.SESSION_REVOKE_ALL]: SESSION_RETRY_DELAYS,
+};
+
+export const CLEANUP_MAX_RETRIES: Record<CleanupJobActionEnum, number> = {
+    // Media (Cloudinary & R2)
+    [CleanupJobActionEnum.CLOUDINARY_DELETE_ONE]: MEDIA_RETRY_DELAYS.length,
+    [CleanupJobActionEnum.CLOUDINARY_DELETE_MANY]: MEDIA_RETRY_DELAYS.length,
+    [CleanupJobActionEnum.R2_DELETE_ONE]: MEDIA_RETRY_DELAYS.length,
+    [CleanupJobActionEnum.R2_DELETE_MANY]: MEDIA_RETRY_DELAYS.length,
+
+    // Redis Unseen
+    [CleanupJobActionEnum.REDIS_REMOVE_UNSEEN_ONE]: REDIS_RETRY_DELAYS.length,
+    [CleanupJobActionEnum.REDIS_REMOVE_UNSEEN_MANY]: REDIS_RETRY_DELAYS.length,
+
+    // Session Revoke
+    [CleanupJobActionEnum.SESSION_REVOKE]: SESSION_RETRY_DELAYS.length,
+    [CleanupJobActionEnum.SESSION_REVOKE_ALL]: SESSION_RETRY_DELAYS.length,
 };

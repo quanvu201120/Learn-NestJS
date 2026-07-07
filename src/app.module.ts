@@ -18,11 +18,12 @@ import { MediaModule } from './modules/media/media.module';
 import { RelationshipsModule } from './modules/relationships/relationships.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { StatsModule } from './modules/stats/stats.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
+import { AuditLogModule } from './modules/audit-log/audit-log.module';
 
 @Module({
     imports: [
         UsersModule,
-        ConfigModule.forRoot({ isGlobal: true }),
         AuthModule,
         RedisModule,
         ConversationsModule,
@@ -30,6 +31,11 @@ import { StatsModule } from './modules/stats/stats.module';
         RealtimeModule,
         PresenceModule,
         MediaModule,
+        AuditLogModule,
+        ConfigModule.forRoot({ isGlobal: true }),
+        EventEmitterModule.forRoot(),
+        RelationshipsModule,
+        StatsModule,
         MongooseModule.forRootAsync({
             imports: [ConfigModule],
             // eslint-disable-next-line @typescript-eslint/require-await
@@ -42,9 +48,7 @@ import { StatsModule } from './modules/stats/stats.module';
             rootPath: join(__dirname, '..', 'client'),
             exclude: ['/api/(.*)'],
         }),
-        RelationshipsModule,
         ScheduleModule.forRoot(),
-        StatsModule,
     ],
     controllers: [AppController],
     providers: [

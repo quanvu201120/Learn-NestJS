@@ -141,9 +141,8 @@ describe('UsersService', () => {
     const mockedHashPassword = hashPassword as jest.MockedFunction<
         typeof hashPassword
     >;
-    const mockedHashCodeVerifyEmail = hashCodeVerifyEmail as jest.MockedFunction<
-        typeof hashCodeVerifyEmail
-    >;
+    const mockedHashCodeVerifyEmail =
+        hashCodeVerifyEmail as jest.MockedFunction<typeof hashCodeVerifyEmail>;
     const mockedValidateObjectId = validateObjectId as jest.MockedFunction<
         typeof validateObjectId
     >;
@@ -212,7 +211,7 @@ describe('UsersService', () => {
             userModel.exists.mockResolvedValue(null);
             userModel.create.mockResolvedValue(userDocument);
             redisService.setWithTTL.mockResolvedValue(undefined);
-            jest.spyOn(service, 'sendEmailActive').mockResolvedValue({} as never);
+            jest.spyOn(service, 'sendEmailActive').mockResolvedValue({});
 
             const result = await service.create(createUserDto);
 
@@ -253,7 +252,9 @@ describe('UsersService', () => {
         it('Case: lấy danh sách user có phân trang thành công', async () => {
             const users = [createUserDocument(), createUserDocument()];
             const chain = createFindChain(users);
-            userModel.find.mockReturnValueOnce(users).mockReturnValueOnce(chain);
+            userModel.find
+                .mockReturnValueOnce(users)
+                .mockReturnValueOnce(chain);
             mockedAqp.mockReturnValue({
                 filter: { role: 'USER', current: 1, pageSize: 10 },
                 sort: { createdAt: -1 },
@@ -272,7 +273,9 @@ describe('UsersService', () => {
 
     describe('findOne', () => {
         it('Case: lấy chi tiết user theo id thành công', async () => {
-            const userDocument = createUserDocument({ _id: new Types.ObjectId(userId) });
+            const userDocument = createUserDocument({
+                _id: new Types.ObjectId(userId),
+            });
             userModel.findById.mockResolvedValue(userDocument);
 
             const result = await service.findOne(userId);
@@ -322,9 +325,9 @@ describe('UsersService', () => {
             };
             userModel.exists.mockResolvedValue(true);
 
-            await expect(service.update(updateDto, userId, 'ADMIN')).rejects.toThrow(
-                new BadRequestException('Email already existed'),
-            );
+            await expect(
+                service.update(updateDto, userId, 'ADMIN'),
+            ).rejects.toThrow(new BadRequestException('Email already existed'));
         });
     });
 
@@ -362,10 +365,17 @@ describe('UsersService', () => {
                 isActive: true,
             });
 
-            const result = await service.activateUser(createUserDto.email, '123');
+            const result = await service.activateUser(
+                createUserDto.email,
+                '123',
+            );
 
-            expect(redisService.get).toHaveBeenCalledWith(`auth:active:${userId}`);
-            expect(redisService.del).toHaveBeenCalledWith(`auth:active:${userId}`);
+            expect(redisService.get).toHaveBeenCalledWith(
+                `auth:active:${userId}`,
+            );
+            expect(redisService.del).toHaveBeenCalledWith(
+                `auth:active:${userId}`,
+            );
             expect(userDocument.save).toHaveBeenCalled();
             expect(result).toMatchObject({
                 isActive: true,
@@ -408,7 +418,7 @@ describe('UsersService', () => {
             );
             redisService.ttl.mockResolvedValue(-1);
             redisService.setWithTTL.mockResolvedValue(undefined);
-            jest.spyOn(service, 'sendEmailActive').mockResolvedValue({} as never);
+            jest.spyOn(service, 'sendEmailActive').mockResolvedValue({});
 
             const result = await service.reSendCodeActive(createUserDto.email);
 
@@ -510,9 +520,10 @@ describe('UsersService', () => {
             );
             redisService.ttl.mockResolvedValue(-1);
             redisService.setWithTTL.mockResolvedValue(undefined);
-            jest.spyOn(service as never, 'sendEmailViaResend' as never).mockResolvedValue(
-                {} as never,
-            );
+            jest.spyOn(
+                service as never,
+                'sendEmailViaResend' as never,
+            ).mockResolvedValue({} as never);
 
             const result = await service.sendMailForgotPassword(
                 createUserDto.email,
@@ -523,7 +534,9 @@ describe('UsersService', () => {
         });
 
         it('Case: gửi mail quên mật khẩu thất bại khi email không tồn tại', async () => {
-            userModel.findOne.mockReturnValue(createFindOneSelectLeanChain(null));
+            userModel.findOne.mockReturnValue(
+                createFindOneSelectLeanChain(null),
+            );
 
             await expect(
                 service.sendMailForgotPassword(createUserDto.email),
@@ -566,10 +579,7 @@ describe('UsersService', () => {
 
     describe('countUserIdsExist', () => {
         it('Case: đếm số lượng user id tồn tại thành công', async () => {
-            const objectUserIds = [
-                new Types.ObjectId(),
-                new Types.ObjectId(),
-            ];
+            const objectUserIds = [new Types.ObjectId(), new Types.ObjectId()];
             userModel.countDocuments.mockResolvedValue(2);
 
             const result = await service.countUserIdsExist(objectUserIds);

@@ -1,9 +1,13 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { AUTH_MESSAGES } from './constants/auth.constant';
 import { PayloadJWT, User } from '@/modules/users/schemas/user.schema';
 import { UsersService } from '@/modules/users/users.service';
-import { generateJWT, hashRefreshToken } from '@/utils/utils';
+import { generateJWT, hashRefreshToken, validateObjectId } from '@/utils/utils';
 import {
+    BadRequestException,
+    ForbiddenException,
     HttpException,
     Injectable,
     InternalServerErrorException,
@@ -20,6 +24,13 @@ import {
 import { SessionService } from '@/modules/session/session.service';
 import { CreateSessionDto } from '@/modules/session/dto/create-session.dto';
 import { StatsService } from '@/modules/stats/stats.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+    AuditLogActionEnum,
+    AuditLogTargetEnum,
+} from '@/modules/audit-log/types/audit-log.type';
+import { UserRole } from '@/modules/users/types/user';
+import { USER_MESSAGES } from '@/modules/users/constants/user.constant';
 
 @Injectable()
 export class AuthService {
@@ -29,6 +40,7 @@ export class AuthService {
         private configService: ConfigService,
         private readonly sessionService: SessionService,
         private readonly statsService: StatsService,
+        private readonly eventEmitter: EventEmitter2,
     ) {}
 
     /**
@@ -290,7 +302,72 @@ export class AuthService {
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (error) {
             throw new InternalServerErrorException(
-                'Đăng xuất tất cả các thiết bị thất bại',
+                AUTH_MESSAGES.LOGOUT_ALL_FAILED,
+            );
+        }
+    }
+
+    /**
+     * Đăng xuất khỏi toàn bộ các thiết bị (Dành cho Admin).
+     */
+    async logoutAllDevicesByAdmin(
+        userId: string,
+        adminId: string,
+        adminRole: UserRole,
+        reason: string | undefined,
+        req: any,
+    ) {
+        try {
+            validateObjectId(userId, 'userId');
+            validateObjectId(adminId, 'adminId');
+
+            if (userId === adminId && adminRole !== UserRole.SUPER_ADMIN) {
+                throw new BadRequestException(USER_MESSAGES.CAN_NOT_CHANGE_ME);
+            }
+
+            const { existingUser: user } =
+                await this.usersService.checkUser(userId);
+
+            // Allow SUPER_ADMIN to logout anyone, ADMIN can logout USER, but not ADMIN/SUPER_ADMIN
+            if (
+                adminRole === UserRole.ADMIN &&
+                (user.role === UserRole.ADMIN ||
+                    user.role === UserRole.SUPER_ADMIN)
+            ) {
+                throw new ForbiddenException(AUTH_MESSAGES.MISSING_PERMISSION);
+            }
+
+            if (
+                adminRole === UserRole.SUPER_ADMIN &&
+                user.role === UserRole.SUPER_ADMIN &&
+                userId !== adminId
+            ) {
+                throw new ForbiddenException(AUTH_MESSAGES.MISSING_PERMISSION);
+            }
+
+            user.tokenVersion += 1;
+            await user.save();
+            await this.sessionService.revokeAllByUserIdWithCleanup(userId);
+
+            this.eventEmitter.emit('audit.log.create', {
+                req,
+                actorId: adminId,
+                actorRole: adminRole,
+                action: AuditLogActionEnum.FORCE_LOGOUT,
+                targetId: userId,
+                targetType: AuditLogTargetEnum.USER,
+                metadata: { reason },
+            });
+
+            return {
+                message: AUTH_MESSAGES.LOGOUT_ALL_SUCCESS,
+            };
+        } catch (error) {
+            if (error instanceof UnauthorizedException) {
+                throw error;
+            }
+            throw new InternalServerErrorException(
+                AUTH_MESSAGES.LOGOUT_ALL_FAILED,
             );
         }
     }

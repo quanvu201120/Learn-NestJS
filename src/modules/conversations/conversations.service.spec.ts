@@ -334,7 +334,11 @@ describe('ConversationsService', () => {
                     },
                 },
             });
-            expect(query.populate).toHaveBeenNthCalledWith(1, 'users', '-password');
+            expect(query.populate).toHaveBeenNthCalledWith(
+                1,
+                'users',
+                '-password',
+            );
             expect(query.populate).toHaveBeenNthCalledWith(2, 'lastMessageId');
             expect(query.sort).toHaveBeenCalledWith({ updatedAt: -1 });
             expect(result).toBe(conversations);
@@ -382,11 +386,12 @@ describe('ConversationsService', () => {
                 updatedConversation,
             );
 
-            const result = await service.updateLastMessageAndRestoreConversation(
-                conversationId.toString(),
-                messageId.toString(),
-                currentUserId,
-            );
+            const result =
+                await service.updateLastMessageAndRestoreConversation(
+                    conversationId.toString(),
+                    messageId.toString(),
+                    currentUserId,
+                );
 
             expect(conversationModel.findByIdAndUpdate).toHaveBeenCalledWith(
                 conversationId,
@@ -411,7 +416,10 @@ describe('ConversationsService', () => {
             const conversation = createConversationDocument({
                 isGroup: true,
                 adminGroupId: new Types.ObjectId(currentUserId),
-                users: [new Types.ObjectId(currentUserId), new Types.ObjectId(otherUserId)],
+                users: [
+                    new Types.ObjectId(currentUserId),
+                    new Types.ObjectId(otherUserId),
+                ],
             });
             const updatedConversation = createConversationDocument({
                 ...conversation,
@@ -525,7 +533,10 @@ describe('ConversationsService', () => {
                 {
                     $addToSet: {
                         users: {
-                            $each: [expect.any(Types.ObjectId), expect.any(Types.ObjectId)],
+                            $each: [
+                                expect.any(Types.ObjectId),
+                                expect.any(Types.ObjectId),
+                            ],
                         },
                     },
                 },
@@ -542,11 +553,9 @@ describe('ConversationsService', () => {
             conversationModel.findById.mockResolvedValue(conversation);
 
             await expect(
-                service.addMembers(
-                    conversation._id.toString(),
-                    currentUserId,
-                    [thirdUserId],
-                ),
+                service.addMembers(conversation._id.toString(), currentUserId, [
+                    thirdUserId,
+                ]),
             ).rejects.toThrow(
                 new BadRequestException('You are not admin of this group'),
             );
@@ -559,11 +568,9 @@ describe('ConversationsService', () => {
             conversationModel.findById.mockResolvedValue(conversation);
 
             await expect(
-                service.addMembers(
-                    conversation._id.toString(),
-                    currentUserId,
-                    [thirdUserId],
-                ),
+                service.addMembers(conversation._id.toString(), currentUserId, [
+                    thirdUserId,
+                ]),
             ).rejects.toThrow(
                 new BadRequestException(
                     'Cannot perform this action on direct conversation',
@@ -580,11 +587,10 @@ describe('ConversationsService', () => {
             userService.countUserIdsExist.mockResolvedValue(1);
 
             await expect(
-                service.addMembers(
-                    conversation._id.toString(),
-                    currentUserId,
-                    [thirdUserId, fourthUserId],
-                ),
+                service.addMembers(conversation._id.toString(), currentUserId, [
+                    thirdUserId,
+                    fourthUserId,
+                ]),
             ).rejects.toThrow(
                 new BadRequestException('One or more users do not exist'),
             );
@@ -837,4 +843,3 @@ describe('ConversationsService', () => {
         });
     });
 });
-

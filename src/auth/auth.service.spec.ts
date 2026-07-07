@@ -144,7 +144,7 @@ describe('AuthService', () => {
     describe('validateUser', () => {
         it('Case: xác thực user thành công khi email tồn tại và password đúng', async () => {
             const user = createUser();
-            usersService.findByEmail.mockResolvedValue(user as never);
+            usersService.findByEmail.mockResolvedValue(user);
             mockedBcryptCompare.mockResolvedValue(true as never);
 
             const result = await service.validateUser(
@@ -165,7 +165,7 @@ describe('AuthService', () => {
         });
 
         it('Case: xác thực user thất bại khi không tìm thấy email', async () => {
-            usersService.findByEmail.mockResolvedValue(null as never);
+            usersService.findByEmail.mockResolvedValue(null);
 
             const result = await service.validateUser(
                 'missing@example.com',
@@ -177,7 +177,7 @@ describe('AuthService', () => {
 
         it('Case: xác thực user thất bại khi password không đúng', async () => {
             const user = createUser();
-            usersService.findByEmail.mockResolvedValue(user as never);
+            usersService.findByEmail.mockResolvedValue(user);
             mockedBcryptCompare.mockResolvedValue(false as never);
 
             const result = await service.validateUser(
@@ -200,7 +200,7 @@ describe('AuthService', () => {
                 accessToken: 'access-token',
                 refreshToken,
                 expireDate,
-            } as never);
+            });
             mockedHashRefreshToken.mockReturnValue('hashed-refresh');
             sessionService.rotateSession.mockResolvedValue({} as never);
 
@@ -244,7 +244,10 @@ describe('AuthService', () => {
             await expect(service.login(user as never)).rejects.toThrow(
                 InternalServerErrorException,
             );
-            expect(sessionService.revoke).toHaveBeenCalledWith(sessionId, user._id);
+            expect(sessionService.revoke).toHaveBeenCalledWith(
+                sessionId,
+                user._id,
+            );
         });
     });
 
@@ -285,7 +288,7 @@ describe('AuthService', () => {
             };
             const expireDate = new Date(Date.now() + 120_000);
 
-            jwtService.verifyAsync.mockResolvedValue(payload as never);
+            jwtService.verifyAsync.mockResolvedValue(payload);
             usersService.findOne.mockResolvedValue(user as never);
             sessionService.findSessionById.mockResolvedValue(session as never);
             mockedHashRefreshToken
@@ -295,7 +298,7 @@ describe('AuthService', () => {
                 accessToken: 'new-access',
                 refreshToken: 'new-refresh',
                 expireDate,
-            } as never);
+            });
             sessionService.rotateSession.mockResolvedValue({} as never);
 
             const result = await service.refreshToken(refreshToken);
@@ -329,14 +332,16 @@ describe('AuthService', () => {
             };
             const user = createUser({ tokenVersion: 1 });
 
-            jwtService.verifyAsync.mockResolvedValue(payload as never);
+            jwtService.verifyAsync.mockResolvedValue(payload);
             usersService.findOne.mockResolvedValue(user as never);
             sessionService.revokeAllByUserId.mockResolvedValue({} as never);
 
             await expect(service.refreshToken(refreshToken)).rejects.toThrow(
                 new UnauthorizedException('Token không hợp lệ'),
             );
-            expect(sessionService.revokeAllByUserId).toHaveBeenCalledWith(userId);
+            expect(sessionService.revokeAllByUserId).toHaveBeenCalledWith(
+                userId,
+            );
         });
 
         it('Case: làm mới token thất bại khi session đã hết hạn và phải revoke session đó', async () => {
@@ -355,7 +360,7 @@ describe('AuthService', () => {
                 refreshTokenHash: 'old-hash',
             };
 
-            jwtService.verifyAsync.mockResolvedValue(payload as never);
+            jwtService.verifyAsync.mockResolvedValue(payload);
             usersService.findOne.mockResolvedValue(user as never);
             sessionService.findSessionById.mockResolvedValue(session as never);
             sessionService.revoke.mockResolvedValue({} as never);
@@ -363,7 +368,10 @@ describe('AuthService', () => {
             await expect(service.refreshToken(refreshToken)).rejects.toThrow(
                 new UnauthorizedException('Session đã hết hạn'),
             );
-            expect(sessionService.revoke).toHaveBeenCalledWith(sessionId, userId);
+            expect(sessionService.revoke).toHaveBeenCalledWith(
+                sessionId,
+                userId,
+            );
         });
 
         it('Case: làm mới token thất bại khi refresh token hash không khớp', async () => {
@@ -382,7 +390,7 @@ describe('AuthService', () => {
                 refreshTokenHash: 'stored-hash',
             };
 
-            jwtService.verifyAsync.mockResolvedValue(payload as never);
+            jwtService.verifyAsync.mockResolvedValue(payload);
             usersService.findOne.mockResolvedValue(user as never);
             sessionService.findSessionById.mockResolvedValue(session as never);
             mockedHashRefreshToken.mockReturnValue('different-hash');
@@ -402,7 +410,7 @@ describe('AuthService', () => {
             jwtService.decode.mockReturnValue({
                 _id: userId,
                 sessionId,
-            } as never);
+            });
             sessionService.revoke.mockResolvedValue({} as never);
 
             await expect(service.refreshToken(refreshToken)).rejects.toThrow(
@@ -410,7 +418,10 @@ describe('AuthService', () => {
                     'Refresh Token không hợp lệ hoặc đã hết hạn',
                 ),
             );
-            expect(sessionService.revoke).toHaveBeenCalledWith(sessionId, userId);
+            expect(sessionService.revoke).toHaveBeenCalledWith(
+                sessionId,
+                userId,
+            );
         });
     });
 
@@ -419,12 +430,15 @@ describe('AuthService', () => {
             jwtService.verifyAsync.mockResolvedValue({
                 _id: userId,
                 sessionId,
-            } as never);
+            });
             sessionService.revoke.mockResolvedValue({} as never);
 
             const result = await service.logout(refreshToken, userId);
 
-            expect(sessionService.revoke).toHaveBeenCalledWith(sessionId, userId);
+            expect(sessionService.revoke).toHaveBeenCalledWith(
+                sessionId,
+                userId,
+            );
             expect(result).toBeNull();
         });
 
@@ -449,14 +463,16 @@ describe('AuthService', () => {
 
             expect(user.tokenVersion).toBe(1);
             expect(user.save).toHaveBeenCalled();
-            expect(sessionService.revokeAllByUserId).toHaveBeenCalledWith(userId);
+            expect(sessionService.revokeAllByUserId).toHaveBeenCalledWith(
+                userId,
+            );
             expect(result).toEqual({
                 message: 'Đăng xuất tất cả các thiết bị thành công',
             });
         });
 
         it('Case: đăng xuất tất cả thiết bị thất bại thì ném lỗi nội bộ', async () => {
-            usersService.findOne.mockResolvedValue(null as never);
+            usersService.findOne.mockResolvedValue(null);
 
             await expect(service.logoutAllDevices(userId)).rejects.toThrow(
                 InternalServerErrorException,
@@ -478,7 +494,7 @@ describe('AuthService', () => {
         });
 
         it('Case: reSendCodeActive gọi đúng qua usersService.reSendCodeActive', async () => {
-            usersService.reSendCodeActive.mockResolvedValue('OK' as never);
+            usersService.reSendCodeActive.mockResolvedValue('OK');
 
             const result = await service.reSendCodeActive('a@example.com');
 
@@ -494,16 +510,21 @@ describe('AuthService', () => {
                 passwordNew: 'new-pass',
                 confirmPassword: 'new-pass',
             };
-            usersService.updatePassword.mockResolvedValue({ ok: true } as never);
+            usersService.updatePassword.mockResolvedValue({
+                ok: true,
+            } as never);
 
             const result = await service.changePassword(userId, dto);
 
-            expect(usersService.updatePassword).toHaveBeenCalledWith(userId, dto);
+            expect(usersService.updatePassword).toHaveBeenCalledWith(
+                userId,
+                dto,
+            );
             expect(result).toEqual({ ok: true });
         });
 
         it('Case: forgotPassword gọi đúng qua usersService.sendMailForgotPassword', async () => {
-            usersService.sendMailForgotPassword.mockResolvedValue('OK' as never);
+            usersService.sendMailForgotPassword.mockResolvedValue('OK');
 
             const result = await service.forgotPassword('a@example.com');
 

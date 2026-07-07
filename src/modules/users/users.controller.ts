@@ -25,6 +25,7 @@ import {
     UpdateRoleBySuperAdminDto,
     UpdateUserDto,
     AdminActionWithPasswordDto,
+    AdminActionReasonDto,
 } from './dto/update-user.dto';
 import { Roles } from '@/utils/decorator-customize';
 import { UserRole } from './types/user';
@@ -141,11 +142,17 @@ export class UsersController {
     @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
     @UseGuards(RolesGuard)
     @ApiOperation({ summary: 'Admin đặt lại tên user' })
-    async resetNameByAdmin(@Param('id') id: string, @Request() req) {
+    async resetNameByAdmin(
+        @Param('id') id: string,
+        @Body() body: AdminActionReasonDto,
+        @Request() req,
+    ) {
         return await this.usersService.resetNameByAdmin(
             id,
             req.user._id,
             req.user.role,
+            body.reason,
+            req,
         );
     }
 
@@ -153,11 +160,17 @@ export class UsersController {
     @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
     @UseGuards(RolesGuard)
     @ApiOperation({ summary: 'Admin xóa tiểu sử user' })
-    async clearBioByAdmin(@Param('id') id: string, @Request() req) {
+    async clearBioByAdmin(
+        @Param('id') id: string,
+        @Body() body: AdminActionReasonDto,
+        @Request() req,
+    ) {
         return await this.usersService.clearBioByAdmin(
             id,
             req.user._id,
             req.user.role,
+            body.reason,
+            req,
         );
     }
 
@@ -175,6 +188,8 @@ export class UsersController {
             req.user._id,
             req.user.role,
             body.password,
+            body.reason,
+            req,
         );
     }
 
@@ -192,6 +207,8 @@ export class UsersController {
             req.user._id,
             req.user.role,
             body.password,
+            body.reason,
+            req,
         );
     }
 
@@ -201,11 +218,17 @@ export class UsersController {
     @ApiOperation({
         summary: 'Admin xóa ảnh đại diện của user',
     })
-    async deleteAvatarByAdmin(@Param('id') id: string, @Request() req) {
+    async deleteAvatarByAdmin(
+        @Param('id') id: string,
+        @Body() body: AdminActionReasonDto,
+        @Request() req,
+    ) {
         return await this.usersService.deleteAvatarByAdmin(
             id,
             req.user._id,
             req.user.role,
+            body.reason,
+            req,
         );
     }
 
@@ -225,6 +248,8 @@ export class UsersController {
             updateRoleDto.role,
             req.user._id,
             updateRoleDto.password,
+            updateRoleDto.reason,
+            req,
         );
     }
 }

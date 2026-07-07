@@ -168,9 +168,9 @@ describe('SessionService', () => {
         });
 
         it('Case: revoke session thất bại khi user id không hợp lệ', async () => {
-            await expect(service.revoke(sessionId, 'invalid-id')).rejects.toThrow(
-                new BadRequestException('Invalid user id'),
-            );
+            await expect(
+                service.revoke(sessionId, 'invalid-id'),
+            ).rejects.toThrow(new BadRequestException('Invalid user id'));
         });
     });
 

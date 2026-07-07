@@ -13,6 +13,7 @@ export const USER_MESSAGES = {
     CANNOT_ENABLE_SELF: 'You cannot enable yourself from this endpoint',
     USER_ALREADY_ACTIVE: 'User is already active',
     ACTIVE_SUCCESS: 'Active user successfully',
+    BIO_NOT_EXISTED: 'User not have bio',
     CODE_EXPIRED: 'Code has expired',
     INVALID_CODE: 'Invalid code',
     ROLE_NOT_CHANGED: 'Role not changed',

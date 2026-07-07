@@ -14,10 +14,11 @@ import {
     Res,
     InternalServerErrorException,
     Patch,
+    Param,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './passport/local-auth-guard';
-import { Cookies, Public } from '@/utils/decorator-customize';
+import { Cookies, Public, Roles } from '@/utils/decorator-customize';
 import * as express from 'express';
 import { ConfigService } from '@nestjs/config';
 import ms, { StringValue } from 'ms';
@@ -39,6 +40,9 @@ import {
     SendCodeUpdateEmailAuthDto,
     UpdateEmailAuthDto,
 } from './dto/mail-auth.dto';
+import { UserResponse, UserRole } from '@/modules/users/types/user';
+import { RolesGuard } from './passport/roles.guard';
+import { AdminActionReasonDto } from '@/modules/users/dto/update-user.dto';
 
 @ApiTags('Auth - Xác thực')
 @Controller('auth')
@@ -270,5 +274,25 @@ export class AuthController {
         );
 
         return await this.authService.logoutAllDevices(req.user._id);
+    }
+
+    @Post(':id/logoutAll-by-admin')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @UseGuards(RolesGuard)
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Đăng xuất tất cả các thiết bị (Admin)' })
+    @ApiBearerAuth('JWT-auth')
+    async handleLogoutAllByAdmin(
+        @Request() req,
+        @Param('id') id: string,
+        @Body() body: AdminActionReasonDto,
+    ) {
+        return await this.authService.logoutAllDevicesByAdmin(
+            id,
+            req.user._id,
+            req.user.role,
+            body.reason,
+            req,
+        );
     }
 }

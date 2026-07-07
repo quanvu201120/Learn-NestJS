@@ -64,6 +64,15 @@ export class UpdateUserDto {
     bio?: string | null;
 }
 
+export class AdminActionReasonDto {
+    @IsNotEmpty({ message: 'Lý do không được để trống' })
+    @IsString({ message: 'Lý do phải là chuỗi' })
+    @Transform(({ value }) =>
+        typeof value === 'number' ? String(value) : value,
+    )
+    reason: string;
+}
+
 export class UpdateRoleBySuperAdminDto {
     @IsNotEmpty({ message: 'Role must not be empty' })
     @IsIn([UserRole.USER, UserRole.ADMIN], {
@@ -74,9 +83,16 @@ export class UpdateRoleBySuperAdminDto {
     @IsNotEmpty({ message: 'Password must not be empty' })
     @IsString()
     password: string;
+
+    @IsOptional()
+    @IsString({ message: 'Lý do phải là chuỗi' })
+    @Transform(({ value }) =>
+        typeof value === 'number' ? String(value) : value,
+    )
+    reason?: string;
 }
 
-export class AdminActionWithPasswordDto {
+export class AdminActionWithPasswordDto extends AdminActionReasonDto {
     @IsNotEmpty({ message: 'Password must not be empty' })
     @IsString()
     password: string;

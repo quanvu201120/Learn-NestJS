@@ -59,6 +59,11 @@ import {
 } from '../cleanup-jobs/types/cleanup-job';
 import { RelationshipsService } from '../relationships/relationships.service';
 import { StatsService } from '../stats/stats.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+    AuditLogActionEnum,
+    AuditLogTargetEnum,
+} from '../audit-log/types/audit-log.type';
 
 @Injectable()
 export class UsersService {
@@ -74,6 +79,7 @@ export class UsersService {
         @Inject(forwardRef(() => RelationshipsService))
         private readonly relationshipsService: RelationshipsService,
         private readonly statsService: StatsService,
+        private readonly eventEmitter: EventEmitter2,
     ) {}
 
     /**
@@ -449,6 +455,8 @@ export class UsersService {
         userId: string,
         adminId: string,
         currentUserRole: string,
+        reason: string | undefined,
+        req: any,
     ) {
         validateObjectId(userId, 'user id');
         validateObjectId(adminId, 'user id');
@@ -475,6 +483,16 @@ export class UsersService {
             .populate('avatar', '-__v')
             .lean();
 
+        this.eventEmitter.emit('audit.log.create', {
+            req,
+            actorId: adminId,
+            actorRole: currentUserRole,
+            action: AuditLogActionEnum.RESET_DISPLAY_NAME,
+            targetId: userId,
+            targetType: AuditLogTargetEnum.USER,
+            metadata: { oldName: user.name, reason },
+        });
+
         return this.serializeUserResponse(updatedUser as UserResponse);
     }
 
@@ -485,6 +503,8 @@ export class UsersService {
         userId: string,
         adminId: string,
         currentUserRole: string,
+        reason: string | undefined,
+        req: any,
     ) {
         validateObjectId(userId, 'user id');
         validateObjectId(adminId, 'user id');
@@ -498,6 +518,10 @@ export class UsersService {
             throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
         }
 
+        if (!user.bio) {
+            throw new BadRequestException(USER_MESSAGES.BIO_NOT_EXISTED);
+        }
+
         this.checkAdminPermission(user.role, currentUserRole);
 
         const updatedUser = await this.userModel
@@ -505,6 +529,16 @@ export class UsersService {
             .select('-password -__v')
             .populate('avatar', '-__v')
             .lean();
+
+        this.eventEmitter.emit('audit.log.create', {
+            req,
+            actorId: adminId,
+            actorRole: currentUserRole,
+            action: AuditLogActionEnum.DELETE_BIO,
+            targetId: userId,
+            targetType: AuditLogTargetEnum.USER,
+            metadata: { oldBio: user.bio, reason },
+        });
 
         return this.serializeUserResponse(updatedUser as UserResponse);
     }
@@ -531,6 +565,8 @@ export class UsersService {
         currentUserId: string,
         currentUserRole: string,
         passwordRaw: string,
+        reason: string | undefined,
+        req: any,
     ): Promise<UserDisableStateResponse> {
         validateObjectId(currentUserId, 'current user id');
 
@@ -557,7 +593,20 @@ export class UsersService {
         }
         const { existingUser } = await this.checkUser(userId, true, false);
         this.checkAdminPermission(existingUser.role, currentUserRole);
-        return this.setDisabledState(userId, true);
+
+        const result = await this.setDisabledState(userId, true);
+
+        this.eventEmitter.emit('audit.log.create', {
+            req,
+            actorId: currentUserId,
+            actorRole: currentUserRole,
+            action: AuditLogActionEnum.LOCK_USER,
+            targetId: userId,
+            targetType: AuditLogTargetEnum.USER,
+            metadata: { reason },
+        });
+
+        return result;
     }
 
     /**
@@ -568,6 +617,8 @@ export class UsersService {
         currentUserId: string,
         currentUserRole: string,
         passwordRaw: string,
+        reason: string | undefined,
+        req: any,
     ): Promise<UserDisableStateResponse> {
         validateObjectId(currentUserId, 'current user id');
 
@@ -597,7 +648,20 @@ export class UsersService {
             throw new BadRequestException(USER_MESSAGES.USER_NOT_DISABLED);
         }
         this.checkAdminPermission(existingUser.role, currentUserRole);
-        return this.setDisabledState(userId, false);
+
+        const result = await this.setDisabledState(userId, false);
+
+        this.eventEmitter.emit('audit.log.create', {
+            req,
+            actorId: currentUserId,
+            actorRole: currentUserRole,
+            action: AuditLogActionEnum.UNLOCK_USER,
+            targetId: userId,
+            targetType: AuditLogTargetEnum.USER,
+            metadata: { reason },
+        });
+
+        return result;
     }
 
     /**
@@ -1136,6 +1200,8 @@ export class UsersService {
         userId: string,
         adminId: string,
         adminRole: string,
+        reason: string | undefined,
+        req: any,
     ) {
         const { existingUser, objectUserId } = await this.checkUser(
             userId,
@@ -1206,6 +1272,17 @@ export class UsersService {
                         console.error('Failed to delete old avatar:', error);
                     });
             }
+
+            this.eventEmitter.emit('audit.log.create', {
+                req,
+                actorId: adminId,
+                actorRole: adminRole,
+                action: AuditLogActionEnum.DELETE_AVATAR,
+                targetId: userId,
+                targetType: AuditLogTargetEnum.USER,
+                metadata: { oldAvatarUrl: avatarOld?.url, reason },
+            });
+
             return this.serializeUserResponse(user);
         } finally {
             await session.endSession();
@@ -1220,6 +1297,8 @@ export class UsersService {
         newRole: UserRole,
         superAdminId: string,
         passwordRaw: string,
+        reason: string | undefined,
+        req: any,
     ) {
         validateObjectId(targetUserId, 'target user id');
         validateObjectId(superAdminId, 'super admin id');
@@ -1254,9 +1333,19 @@ export class UsersService {
         if (targetUser.role === newRole) {
             throw new BadRequestException(USER_MESSAGES.ROLE_NOT_CHANGED);
         }
-
+        const oldRole = targetUser.role;
         targetUser.role = newRole;
         await targetUser.save();
+
+        this.eventEmitter.emit('audit.log.create', {
+            req,
+            actorId: superAdminId,
+            actorRole: superAdmin.role,
+            action: AuditLogActionEnum.UPDATE_ROLE,
+            targetId: targetUserId,
+            targetType: AuditLogTargetEnum.USER,
+            metadata: { oldRole, newRole, reason },
+        });
 
         return this.serializeUserResponse(
             targetUser.toObject() as UserResponse,

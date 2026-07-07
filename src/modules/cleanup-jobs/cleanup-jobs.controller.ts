@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 import {
     BadRequestException,
     Controller,
@@ -6,6 +8,7 @@ import {
     Patch,
     Post,
     Query,
+    Request,
     UploadedFile,
     UseGuards,
     UseInterceptors,
@@ -84,27 +87,16 @@ export class CleanupJobsController {
         );
     }
 
-    @Get('/pending-retry')
-    async getPendingAndRetryJobs(
-        @Query('page') page?: number,
-        @Query('limit') limit?: number,
-    ) {
-        return await this.cleanupJobsService.getPendingAndRetryJobs(
-            page,
-            limit,
-        );
-    }
-
     @Get('/:id')
     async getCleanupJobById(@Param('id') jobId: string) {
         return await this.cleanupJobsService.getCleanupJobById(jobId);
     }
 
     @Patch('process/:id')
-    async processCleanupJob(@Param('id') jobId: string) {
+    async processCleanupJob(@Param('id') jobId: string, @Request() req) {
         return await this.cleanupJobsService.processCleanupJob(
             jobId,
-            CleanupJobLockedBy.ADMIN,
+            req.user.role,
         );
     }
 
