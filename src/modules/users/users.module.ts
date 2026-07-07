@@ -8,12 +8,15 @@ import { SessionModule } from '../session/session.module';
 import { RelationshipsModule } from '../relationships/relationships.module';
 import { StatsModule } from '../stats/stats.module';
 
+import { ReportsModule } from '../reports/reports.module';
+
 @Module({
     imports: [
         MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
         MediaModule,
         SessionModule,
         forwardRef(() => RelationshipsModule),
+        forwardRef(() => ReportsModule),
         StatsModule,
     ],
     controllers: [UsersController],

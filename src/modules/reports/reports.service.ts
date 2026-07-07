@@ -1,0 +1,900 @@
+/* eslint-disable prefer-const */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+import {
+    BadRequestException,
+    ForbiddenException,
+    Inject,
+    Injectable,
+    Logger,
+    forwardRef,
+} from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
+import { Report, ReportDocument } from './schemas/report.schema';
+import { CreateReportDto } from './dto/create-report.dto';
+import { ResolveReportDto } from './dto/resolve-report.dto';
+import { GetReportsDto } from './dto/get-reports.dto';
+import { ManualBanDto } from './dto/manual-ban.dto';
+import { QuickPenaltyDto } from './dto/quick-penalty.dto';
+import {
+    CleanupJobEntityEnum,
+    CleanupJobResourceEnum,
+} from '../cleanup-jobs/types/cleanup-job';
+import { AdminActionWithPasswordDto } from '@/modules/users/dto/update-user.dto';
+import { UsersService } from '../users/users.service';
+import { SessionService } from '../session/session.service';
+import {
+    PenaltyActionEnum,
+    ReportReasonEnum,
+    ReportStatusEnum,
+} from './types/report.type';
+import { PENALTY_RULES } from './constants/penalty.constant';
+import { validateObjectId } from '@/utils/utils';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+    AuditLogActionEnum,
+    AuditLogTargetEnum,
+} from '../audit-log/types/audit-log.type';
+import bcrypt from 'bcrypt';
+import { UserRole } from '../users/types/user';
+import { CleanupJobsService } from '../cleanup-jobs/cleanup-jobs.service';
+import { MediaService } from '../media/media.service';
+import { REPORT_MESSAGES } from './constants/report.constant';
+import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
+
+@Injectable()
+export class ReportsService {
+    private readonly logger = new Logger(ReportsService.name);
+
+    constructor(
+        @InjectModel(Report.name) private reportModel: Model<ReportDocument>,
+        @Inject(forwardRef(() => UsersService))
+        private readonly usersService: UsersService,
+        private readonly sessionService: SessionService,
+        private readonly cleanupJobsService: CleanupJobsService,
+        private readonly mediaService: MediaService,
+        private readonly eventEmitter: EventEmitter2,
+    ) {}
+
+    async create(createReportDto: CreateReportDto, reporterId: string) {
+        validateObjectId(createReportDto.targetUserId, 'targetUserId');
+
+        if (reporterId === createReportDto.targetUserId) {
+            throw new BadRequestException(REPORT_MESSAGES.CANNOT_REPORT_SELF);
+        }
+
+        const reporter = await this.usersService.findOne(reporterId);
+        const isAdmin =
+            reporter &&
+            (reporter.role === UserRole.ADMIN ||
+                reporter.role === UserRole.SUPER_ADMIN);
+
+        if (!isAdmin) {
+            // Validate rate limit: Max 3 reports per 24h from this reporter to this target
+            const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            const reportCount = await this.reportModel.countDocuments({
+                reporterId,
+                targetUserId: createReportDto.targetUserId,
+                createdAt: { $gte: oneDayAgo },
+            });
+
+            if (reportCount >= 3) {
+                throw new BadRequestException(REPORT_MESSAGES.TOO_MANY_REPORTS);
+            }
+        }
+
+        const targetUser = await this.usersService.findOne(
+            createReportDto.targetUserId,
+        );
+        if (!targetUser) {
+            throw new BadRequestException(
+                REPORT_MESSAGES.TARGET_USER_NOT_FOUND,
+            );
+        }
+
+        const report = new this.reportModel({
+            ...createReportDto,
+            reporterId,
+            snapshot: {
+                avatarMediaId: targetUser.avatar,
+                displayName: targetUser.name,
+                bio: targetUser.bio,
+                role: targetUser.role,
+            },
+            status: ReportStatusEnum.PENDING,
+            description:
+                createReportDto.reason === ReportReasonEnum.OTHER
+                    ? createReportDto.description
+                    : createReportDto.optionalDescription,
+        });
+
+        await report.save();
+        return { message: REPORT_MESSAGES.REPORT_SUBMITTED_SUCCESS, report };
+    }
+
+    async findAll(query: GetReportsDto) {
+        const {
+            current = '1',
+            pageSize = GLOBAL_CONSTANTS.LIMIT_REPORTS_DEFAULT,
+            startDate,
+            endDate,
+            ...filters
+        } = query;
+        const page = Number(current);
+        const limit = Number(pageSize);
+        const skip = (page - 1) * limit;
+
+        const filterQuery: any = { ...filters };
+
+        if (startDate || endDate) {
+            filterQuery.createdAt = {};
+            if (startDate) filterQuery.createdAt.$gte = new Date(startDate);
+            if (endDate) filterQuery.createdAt.$lte = new Date(endDate);
+        }
+
+        const totalItems = await this.reportModel.countDocuments(filterQuery);
+        const totalPages = Math.ceil(totalItems / limit);
+
+        const reports = await this.reportModel
+            .find(filterQuery)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .populate({
+                path: 'reporterId',
+                select: 'name email avatar',
+                populate: { path: 'avatar', select: '-__v' },
+            })
+            .populate({
+                path: 'targetUserId',
+                select: 'name email avatar',
+                populate: { path: 'avatar', select: '-__v' },
+            })
+            .populate('resolvedBy', 'name email')
+            .lean();
+
+        return { totalPages, totalItems, reports };
+    }
+
+    async findOne(id: string) {
+        validateObjectId(id, 'reportId');
+        const report = await this.reportModel
+            .findById(id)
+            .populate({
+                path: 'reporterId',
+                select: 'name email avatar',
+                populate: { path: 'avatar', select: '-__v' },
+            })
+            .populate({
+                path: 'targetUserId',
+                select: 'name email avatar',
+                populate: { path: 'avatar', select: '-__v' },
+            })
+            .populate('resolvedBy', 'name email')
+            .lean();
+
+        if (!report) {
+            throw new BadRequestException(REPORT_MESSAGES.REPORT_NOT_FOUND);
+        }
+        return report;
+    }
+
+    private async verifyAdminPassword(
+        adminId: string,
+        adminRole: UserRole,
+        passwordRaw: string,
+    ) {
+        const adminUser = await this.usersService.findOne(adminId);
+        if (!adminUser) {
+            throw new BadRequestException(REPORT_MESSAGES.ADMIN_NOT_FOUND);
+        }
+        if (adminUser.role !== adminRole) {
+            throw new ForbiddenException(REPORT_MESSAGES.MISSING_PERMISSION);
+        }
+        const isPasswordValid = await bcrypt.compare(
+            passwordRaw,
+            adminUser.password,
+        );
+        if (!isPasswordValid) {
+            throw new BadRequestException(REPORT_MESSAGES.INVALID_PASSWORD);
+        }
+        return adminUser;
+    }
+
+    private async calculateAndApplyPenalty(
+        targetUserId: string,
+        reason: ReportReasonEnum,
+        adminId: string,
+        adminRole: UserRole,
+        overrideAction?: PenaltyActionEnum,
+        overrideDurationDays?: number,
+        resetAvatar?: boolean,
+        resetBio?: boolean,
+        resetName?: boolean,
+    ): Promise<string> {
+        const targetUser = await this.usersService.findOne(targetUserId);
+        if (!targetUser) {
+            throw new BadRequestException(
+                REPORT_MESSAGES.TARGET_USER_NOT_FOUND,
+            );
+        }
+
+        if (targetUser.role === UserRole.SUPER_ADMIN) {
+            throw new ForbiddenException(
+                REPORT_MESSAGES.CANNOT_PENALIZE_SUPER_ADMIN,
+            );
+        }
+
+        // Prevent applying penalty to admin by lower role
+        if (
+            adminRole === UserRole.ADMIN &&
+            targetUser.role === UserRole.ADMIN
+        ) {
+            throw new ForbiddenException(REPORT_MESSAGES.CANNOT_PENALIZE_USER);
+        }
+
+        if (adminId === targetUserId) {
+            throw new BadRequestException(REPORT_MESSAGES.CANNOT_PENALIZE_SELF);
+        }
+
+        // Count previous resolved reports for this reason
+        const strikeCount = await this.reportModel.countDocuments({
+            targetUserId,
+            reason,
+            status: ReportStatusEnum.RESOLVED,
+        });
+
+        // Current strike is existing + 1 (for the current report)
+        const currentStrike = strikeCount + 1;
+
+        let actionToApply: PenaltyActionEnum | null = null;
+        let duration = 0;
+
+        if (overrideAction) {
+            actionToApply = overrideAction;
+            duration = overrideDurationDays || 0;
+        } else {
+            const rules = PENALTY_RULES[reason];
+            if (rules && rules.length > 0) {
+                // Find the rule for current strike, or use the maximum rule if strike exceeds defined rules
+                let rule = rules.find((r: any) => r.strike === currentStrike);
+                if (!rule) {
+                    rule = rules[rules.length - 1]; // Use the most severe rule if they exceed max
+                }
+                actionToApply = rule.action;
+                duration = rule.durationDays;
+            }
+        }
+
+        if (!actionToApply) {
+            return REPORT_MESSAGES.NO_AUTO_PENALTY;
+        }
+
+        const now = new Date();
+        let penaltyAppliedStr = '';
+
+        if (actionToApply === PenaltyActionEnum.WARNING) {
+            penaltyAppliedStr = REPORT_MESSAGES.WARNING_SENT;
+        } else if (actionToApply === PenaltyActionEnum.MUTE) {
+            const until = new Date(
+                now.getTime() + duration * 24 * 60 * 60 * 1000,
+            );
+            targetUser.muteUntil = until;
+            penaltyAppliedStr = REPORT_MESSAGES.MUTE_APPLIED(
+                duration,
+                until.toISOString(),
+            );
+        } else if (actionToApply === PenaltyActionEnum.RESET_AND_WARNING) {
+            let hasSpecificReset = false;
+            if (resetAvatar) {
+                targetUser.avatar = undefined;
+                hasSpecificReset = true;
+            }
+            if (resetBio) {
+                targetUser.bio = undefined;
+                hasSpecificReset = true;
+            }
+            if (resetName) {
+                targetUser.name = `User_${Math.floor(100000 + Math.random() * 900000)}`;
+                hasSpecificReset = true;
+            }
+            if (!hasSpecificReset) {
+                targetUser.avatar = undefined;
+                targetUser.bio = undefined;
+            }
+            penaltyAppliedStr = REPORT_MESSAGES.RESET_AND_WARNING;
+        } else if (actionToApply === PenaltyActionEnum.RESET_AND_BAN) {
+            let hasSpecificReset = false;
+            if (resetAvatar) {
+                targetUser.avatar = undefined;
+                hasSpecificReset = true;
+            }
+            if (resetBio) {
+                targetUser.bio = undefined;
+                hasSpecificReset = true;
+            }
+            if (resetName) {
+                targetUser.name = `User_${Math.floor(100000 + Math.random() * 900000)}`;
+                hasSpecificReset = true;
+            }
+            if (!hasSpecificReset) {
+                targetUser.avatar = undefined;
+                targetUser.bio = undefined;
+            }
+            const until = new Date(
+                now.getTime() + duration * 24 * 60 * 60 * 1000,
+            );
+            targetUser.banUntil = until;
+            targetUser.tokenVersion += 1;
+            penaltyAppliedStr = REPORT_MESSAGES.RESET_AND_BAN(
+                duration,
+                until.toISOString(),
+            );
+        } else if (actionToApply === PenaltyActionEnum.BAN) {
+            const until = new Date(
+                now.getTime() + duration * 24 * 60 * 60 * 1000,
+            );
+            targetUser.banUntil = until;
+            targetUser.tokenVersion += 1;
+            penaltyAppliedStr = REPORT_MESSAGES.BAN_APPLIED(
+                duration,
+                until.toISOString(),
+            );
+        }
+
+        await targetUser.save();
+
+        if (
+            actionToApply === PenaltyActionEnum.BAN ||
+            actionToApply === PenaltyActionEnum.RESET_AND_BAN
+        ) {
+            await this.sessionService.revokeAllByUserIdWithCleanup(
+                targetUserId,
+            );
+        }
+
+        // Bắn event để Gateway disconnect user nếu bị ban
+        if (targetUser.banUntil && targetUser.banUntil > now) {
+            this.eventEmitter.emit('user.banned', {
+                userId: targetUserId,
+                banUntil: targetUser.banUntil,
+            });
+        }
+
+        return penaltyAppliedStr;
+    }
+
+    async resolve(
+        id: string,
+        resolveDto: ResolveReportDto,
+        adminId: string,
+        adminRole: UserRole,
+        req: any,
+    ) {
+        validateObjectId(id, 'reportId');
+        const report = await this.reportModel.findById(id);
+
+        if (!report) {
+            throw new BadRequestException(REPORT_MESSAGES.REPORT_NOT_FOUND);
+        }
+
+        if (
+            report.status !== ReportStatusEnum.PENDING &&
+            report.status !== ReportStatusEnum.APPEAL_PENDING
+        ) {
+            throw new BadRequestException(
+                REPORT_MESSAGES.REPORT_ALREADY_RESOLVED,
+            );
+        }
+
+        if (
+            report.status === ReportStatusEnum.PENDING &&
+            !(
+                resolveDto.status === ReportStatusEnum.RESOLVED ||
+                resolveDto.status === ReportStatusEnum.DISMISSED
+            )
+        ) {
+            throw new BadRequestException(
+                REPORT_MESSAGES.REPORT_INVALID_STATUS,
+            );
+        }
+
+        if (
+            report.status === ReportStatusEnum.APPEAL_PENDING &&
+            !(
+                resolveDto.status === ReportStatusEnum.APPEAL_REJECTED ||
+                resolveDto.status === ReportStatusEnum.APPEAL_SUCCESS
+            )
+        ) {
+            throw new BadRequestException(
+                REPORT_MESSAGES.REPORT_INVALID_STATUS,
+            );
+        }
+
+        report.status = resolveDto.status;
+        report.adminNote = resolveDto.adminNote;
+        report.resolvedBy = new Types.ObjectId(adminId);
+        report.resolvedAt = new Date();
+
+        if (resolveDto.status === ReportStatusEnum.RESOLVED) {
+            // Tính toán và áp dụng phạt
+            const penaltyDesc = await this.calculateAndApplyPenalty(
+                report.targetUserId.toString(),
+                report.reason,
+                adminId,
+                adminRole,
+                resolveDto.overridePenaltyAction,
+                resolveDto.overridePenaltyDurationDays,
+                resolveDto.resetAvatar,
+                resolveDto.resetBio,
+                resolveDto.resetName,
+            );
+            report.penaltyApplied = penaltyDesc;
+
+            // Set thời hạn kháng cáo 30 ngày
+            report.appealDeadline = new Date(
+                Date.now() + 30 * 24 * 60 * 60 * 1000,
+            );
+        }
+
+        await report.save();
+
+        this.eventEmitter.emit('audit.log.create', {
+            req,
+            actorId: adminId,
+            actorRole: adminRole,
+            action: AuditLogActionEnum.RESOLVE_REPORT,
+            targetId: report._id.toString(),
+            targetType: AuditLogTargetEnum.REPORT,
+            metadata: {
+                reportStatus: resolveDto.status,
+                penaltyApplied: report.penaltyApplied,
+                reason: resolveDto.adminNote,
+            },
+        });
+
+        return { message: REPORT_MESSAGES.REPORT_RESOLVED_SUCCESS, report };
+    }
+
+    async quickPenalty(
+        targetUserId: string,
+        adminId: string,
+        adminRole: UserRole,
+        dto: QuickPenaltyDto,
+        req: any,
+    ) {
+        const targetUser = await this.usersService.findOne(targetUserId);
+        if (!targetUser) {
+            throw new BadRequestException(
+                REPORT_MESSAGES.TARGET_USER_NOT_FOUND,
+            );
+        }
+
+        // Tạo ngầm 1 report
+        const report = new this.reportModel({
+            reporterId: adminId,
+            targetUserId,
+            reason: dto.reason as ReportReasonEnum,
+            snapshot: {
+                avatarMediaId: targetUser.avatar,
+                displayName: targetUser.name,
+                bio: targetUser.bio,
+                role: targetUser.role,
+            },
+            status: ReportStatusEnum.PENDING,
+            description: dto.reason || REPORT_MESSAGES.QUICK_PENALTY_DESC,
+        });
+        await report.save();
+
+        // Tự động resolve nó luôn
+        return await this.resolve(
+            report._id.toString(),
+            {
+                status: ReportStatusEnum.RESOLVED,
+                adminNote: dto.reason || REPORT_MESSAGES.QUICK_PENALTY_NOTE,
+                resetAvatar: dto.resetAvatar,
+                resetBio: dto.resetBio,
+                resetName: dto.resetName,
+            },
+            adminId,
+            adminRole,
+            req,
+        );
+    }
+
+    async manualBan(
+        targetUserId: string,
+        adminId: string,
+        adminRole: UserRole,
+        dto: ManualBanDto,
+        req: any,
+    ) {
+        await this.verifyAdminPassword(adminId, adminRole, dto.password);
+
+        const targetUser = await this.usersService.findOne(targetUserId);
+        if (!targetUser) {
+            throw new BadRequestException(
+                REPORT_MESSAGES.TARGET_USER_NOT_FOUND,
+            );
+        }
+
+        // Tạo ngầm 1 report
+        const report = new this.reportModel({
+            reporterId: adminId,
+            targetUserId,
+            reason: ReportReasonEnum.OTHER,
+            snapshot: {
+                avatarMediaId: targetUser.avatar,
+                displayName: targetUser.name,
+                bio: targetUser.bio,
+                role: targetUser.role,
+            },
+            status: ReportStatusEnum.PENDING,
+            description: dto.reason || REPORT_MESSAGES.MANUAL_BAN_DESC,
+        });
+        await report.save();
+
+        // Tự động resolve nó luôn và ghi đè penalty
+        return await this.resolve(
+            report._id.toString(),
+            {
+                status: ReportStatusEnum.RESOLVED,
+                adminNote: dto.reason,
+                overridePenaltyAction: PenaltyActionEnum.BAN,
+                overridePenaltyDurationDays: dto.durationDays,
+            },
+            adminId,
+            adminRole,
+            req,
+        );
+    }
+
+    async unban(
+        targetUserId: string,
+        adminId: string,
+        adminRole: UserRole,
+        dto: AdminActionWithPasswordDto,
+        req: any,
+    ) {
+        await this.verifyAdminPassword(adminId, adminRole, dto.password);
+        validateObjectId(targetUserId, 'targetUserId');
+
+        const targetUser = await this.usersService.findOne(targetUserId);
+        if (!targetUser)
+            throw new BadRequestException(REPORT_MESSAGES.USER_NOT_FOUND);
+
+        targetUser.banUntil = undefined;
+        await targetUser.save();
+
+        // Tìm report resolved gần nhất và đổi thành dismissed để kháng cáo (trừ án tích)
+        const lastReport = await this.reportModel
+            .findOne({ targetUserId, status: ReportStatusEnum.RESOLVED })
+            .sort({ resolvedAt: -1 });
+        if (lastReport) {
+            lastReport.status = ReportStatusEnum.DISMISSED;
+            lastReport.adminNote =
+                (lastReport.adminNote ? lastReport.adminNote + ' | ' : '') +
+                REPORT_MESSAGES.APPEAL_SUCCESS(dto.reason);
+            lastReport.appealDeadline = undefined;
+            await lastReport.save();
+        }
+
+        this.eventEmitter.emit('audit.log.create', {
+            req,
+            actorId: adminId,
+            actorRole: adminRole,
+            action: AuditLogActionEnum.UNLOCK_USER,
+            targetId: targetUserId,
+            targetType: AuditLogTargetEnum.USER,
+            metadata: { reason: dto.reason },
+        });
+
+        const { password, tokenVersion, ...userObj } = targetUser.toObject();
+
+        return { message: REPORT_MESSAGES.UNBAN_SUCCESS, user: userObj };
+    }
+
+    async unmute(
+        targetUserId: string,
+        adminId: string,
+        adminRole: UserRole,
+        dto: AdminActionWithPasswordDto,
+        req: any,
+    ) {
+        await this.verifyAdminPassword(adminId, adminRole, dto.password);
+        validateObjectId(targetUserId, 'targetUserId');
+
+        const targetUser = await this.usersService.findOne(targetUserId);
+        if (!targetUser)
+            throw new BadRequestException(REPORT_MESSAGES.USER_NOT_FOUND);
+
+        targetUser.muteUntil = undefined;
+        await targetUser.save();
+
+        // Tìm report resolved gần nhất và đổi thành dismissed để kháng cáo (trừ án tích)
+        const lastReport = await this.reportModel
+            .findOne({ targetUserId, status: ReportStatusEnum.RESOLVED })
+            .sort({ resolvedAt: -1 });
+        if (lastReport) {
+            lastReport.status = ReportStatusEnum.DISMISSED;
+            lastReport.adminNote =
+                (lastReport.adminNote ? lastReport.adminNote + ' | ' : '') +
+                REPORT_MESSAGES.APPEAL_SUCCESS(dto.reason);
+            lastReport.appealDeadline = undefined;
+            await lastReport.save();
+        }
+
+        this.eventEmitter.emit('audit.log.create', {
+            req,
+            actorId: adminId,
+            actorRole: adminRole,
+            action: AuditLogActionEnum.UNMUTE_USER, // Hoặc một enum chuyên cho UNMUTE
+            targetId: targetUserId,
+            targetType: AuditLogTargetEnum.USER,
+            metadata: { reason: dto.reason, action: 'unmute' },
+        });
+
+        const { password, tokenVersion, ...userObj } = targetUser.toObject();
+        return { message: REPORT_MESSAGES.UNMUTE_SUCCESS, user: userObj };
+    }
+
+    async clearStrike(
+        targetUserId: string,
+        adminId: string,
+        adminRole: UserRole,
+        dto: AdminActionWithPasswordDto,
+        req: any,
+    ) {
+        await this.verifyAdminPassword(adminId, adminRole, dto.password);
+        validateObjectId(targetUserId, 'targetUserId');
+
+        const targetUser = await this.usersService.findOne(targetUserId);
+        if (!targetUser)
+            throw new BadRequestException(REPORT_MESSAGES.USER_NOT_FOUND);
+
+        const lastReport = await this.reportModel
+            .findOne({ targetUserId, status: ReportStatusEnum.RESOLVED })
+            .sort({ resolvedAt: -1 });
+        if (lastReport) {
+            lastReport.status = ReportStatusEnum.DISMISSED;
+            lastReport.adminNote =
+                (lastReport.adminNote ? lastReport.adminNote + ' | ' : '') +
+                REPORT_MESSAGES.APPEAL_SUCCESS(dto.reason);
+            lastReport.appealDeadline = undefined;
+            await lastReport.save();
+        }
+
+        this.eventEmitter.emit('audit.log.create', {
+            req,
+            actorId: adminId,
+            actorRole: adminRole,
+            action: AuditLogActionEnum.APPEAL_REPORT,
+            targetId: targetUserId,
+            targetType: AuditLogTargetEnum.USER,
+            metadata: { reason: dto.reason, action: 'clear_strike' },
+        });
+
+        const { password, tokenVersion, ...userObj } = targetUser.toObject();
+        return {
+            message: REPORT_MESSAGES.STRIKE_CLEARED_SUCCESS,
+            user: userObj,
+        };
+    }
+
+    async deleteMediasAndReportDismissed() {
+        const now = new Date();
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        //Lấy danh sách report nằm trong diện dọn dẹp:
+        // report super_admin sẽ bị tự động được dọn dẹp (không quan tâm thời gian, status)
+        // đã từ chối (DISMISSED) -> xóa report và media,
+        // đã xử lý và hết hạn kháng cáo (RESOLVED) -> xóa media, giữ report làm án tích,
+        // kháng cáo thành công(APPEAL_SUCCESS) -> xóa report và media,
+        // kháng cáo thất bại (APPEAL_REJECTED) -> xóa media, giữ report làm án tích
+        //Đối với DISMISSED, APPEAL_SUCCESS, APPEAL_REJECTED: Phải thỏa mãn updatedAt < 30 ngày (tức là hệ thống cố tình lưu lại ít nhất 30 ngày trước khi dọn dẹp vĩnh viễn).
+        const oldReports = await this.reportModel
+            .find({
+                $or: [
+                    {
+                        status: ReportStatusEnum.RESOLVED,
+                        appealDeadline: { $lt: now },
+                    },
+                    {
+                        status: ReportStatusEnum.DISMISSED,
+                        updatedAt: { $lt: thirtyDaysAgo },
+                    },
+                    {
+                        status: ReportStatusEnum.APPEAL_SUCCESS,
+                        updatedAt: { $lt: thirtyDaysAgo },
+                    },
+                    {
+                        status: ReportStatusEnum.APPEAL_REJECTED,
+                        updatedAt: { $lt: thirtyDaysAgo },
+                    },
+                    {
+                        'snapshot.role': UserRole.SUPER_ADMIN,
+                    },
+                ],
+            })
+            .populate([
+                'evidenceMediaIds',
+                'appealEvidenceMediaIds',
+                'snapshot.avatarMediaId',
+            ]);
+
+        if (oldReports.length === 0) return;
+
+        // 1. Kiểm tra avatar song song nhưng gom nhóm để tránh vòng lặp (Deadlock)
+
+        //key là avatarId, value là {avatar, targetUserId}
+        const uniqueAvatars = new Map<string, any>();
+        const oldReportIds = oldReports.map((r) => r._id);
+
+        //1.1 lọc ra mảng avatar không trùng lặp
+        for (const report of oldReports) {
+            if (report.snapshot?.avatarMediaId) {
+                const avatar: any = report.snapshot.avatarMediaId;
+                const avatarIdStr = avatar._id.toString();
+                if (!uniqueAvatars.has(avatarIdStr)) {
+                    uniqueAvatars.set(avatarIdStr, {
+                        avatar,
+                        targetUserId: report.targetUserId,
+                    });
+                }
+            }
+        }
+
+        //1.2 kiểm tra xem avatar có vô chủ
+        // hay đang được sử dụng  bởi report khác không nằm trong danh sách dọn dẹp
+        const deletableAvatarIds = new Set<string>(); //value là avatarIdStr
+        await Promise.all(
+            Array.from(uniqueAvatars.entries()).map(
+                async ([avatarIdStr, data]) => {
+                    const targetUser = await this.usersService.findOne(
+                        data.targetUserId.toString(),
+                    );
+                    const isStillUsing =
+                        targetUser &&
+                        targetUser.avatar?.toString() === avatarIdStr;
+
+                    if (!isStillUsing) {
+                        // Chỉ kiểm tra các report ĐANG ACTIVE (không nằm trong danh sách chuẩn bị xoá)
+                        const isUsedByActiveReport =
+                            await this.reportModel.exists({
+                                'snapshot.avatarMediaId': data.avatar._id,
+                                _id: { $nin: oldReportIds },
+                            });
+
+                        if (!isUsedByActiveReport) {
+                            deletableAvatarIds.add(avatarIdStr);
+                        }
+                    }
+                },
+            ),
+        );
+
+        //1.3 sau khi đã xã định được avatar có thể xóa
+        // ta sẽ đánh dấu report nào đang có snapshot liên quan đến avt đó
+        //value mảng là object {report: ReportDocument, shouldDeleteAvatar: boolean}
+        const checkedReports = oldReports.map((report) => {
+            let shouldDeleteAvatar = false;
+            if (report.snapshot?.avatarMediaId) {
+                const avatarIdStr = (
+                    report.snapshot.avatarMediaId as any
+                )._id.toString();
+                if (deletableAvatarIds.has(avatarIdStr)) {
+                    shouldDeleteAvatar = true;
+                }
+            }
+            return { report, shouldDeleteAvatar };
+        });
+
+        //value sẽ là mediaDocument do đã populate
+        let validMedias: any[] = [];
+        //chứa các câu lệnh truy vấn update/delete report
+        const bulkOps: any[] = [];
+
+        // 2. Gom danh sách Media và Report cần xóa, update unset nếu chỉ dọn dẹp media
+        // report đã nằm trong danh sách thì tất cả media đều bị dọn dẹp
+        // bao gồm avt vô chủ, bằng chứng report và bằng chứng kháng cáo
+        // trừ những media avt nào còn được sử dụng
+        for (const { report, shouldDeleteAvatar } of checkedReports) {
+            const evidences = (report.evidenceMediaIds as any[]) || [];
+            if (evidences.length > 0) {
+                validMedias.push(...evidences.filter((m) => m != null));
+            }
+
+            const appealEvidences =
+                (report.appealEvidenceMediaIds as any[]) || [];
+            if (appealEvidences.length > 0) {
+                validMedias.push(...appealEvidences.filter((m) => m != null));
+            }
+
+            if (shouldDeleteAvatar && report.snapshot?.avatarMediaId) {
+                validMedias.push(report.snapshot.avatarMediaId as any);
+            }
+
+            if (
+                report.status === ReportStatusEnum.DISMISSED ||
+                report.status === ReportStatusEnum.APPEAL_SUCCESS ||
+                report.snapshot?.role === UserRole.SUPER_ADMIN
+            ) {
+                bulkOps.push({
+                    deleteOne: {
+                        filter: { _id: report._id },
+                    },
+                });
+            } else {
+                const unsetPayload: any = {
+                    evidenceMediaIds: 1,
+                    appealEvidenceMediaIds: 1,
+                };
+                if (shouldDeleteAvatar) {
+                    unsetPayload['snapshot.avatarMediaId'] = 1;
+                }
+                bulkOps.push({
+                    updateOne: {
+                        filter: { _id: report._id },
+                        update: { $unset: unsetPayload },
+                    },
+                });
+            }
+        }
+
+        //Nếu có 2 report khác nhau (cùng nằm trong diện dọn dẹp) đều snapshot lại CÙNG 1 avatar , thì cái avatar đó sẽ bị push() vào mảng validMedias 2 lần.
+        const uniqueValidMediasMap = new Map();
+        for (const media of validMedias) {
+            uniqueValidMediasMap.set(media._id.toString(), media);
+        }
+        validMedias = Array.from(uniqueValidMediasMap.values());
+
+        // 3. Thực thi cập nhật/xóa Report VÀ xóa DB của Media trong Transaction (ATOMIC)
+        if (bulkOps.length > 0 || validMedias.length > 0) {
+            const session = await this.reportModel.db.startSession();
+            try {
+                await session.withTransaction(async () => {
+                    if (bulkOps.length > 0) {
+                        await this.reportModel.bulkWrite(bulkOps, { session });
+                    }
+                    if (validMedias.length > 0) {
+                        await Promise.all(
+                            validMedias.map((media) =>
+                                this.mediaService.deleteMedia(
+                                    media._id.toString(),
+                                    session,
+                                ),
+                            ),
+                        );
+                    }
+                });
+            } finally {
+                await session.endSession();
+            }
+        }
+
+        // 4. CHỈ KHI DATABASE THÀNH CÔNG, mới gọi lên Cloudinary để xóa file cứng
+        if (validMedias.length > 0) {
+            //map từ array media đã populated -> array chứa publicId
+            const publicIds = validMedias.map((media) => media.publicId);
+            await this.mediaService.deleteImagesFromCloudinaryWithCleanup(
+                publicIds,
+                {
+                    resourceType: CleanupJobResourceEnum.REPORT_MEDIA,
+                    entityType: CleanupJobEntityEnum.REPORT,
+                },
+            );
+        }
+    }
+
+    async isMediaInReport(mediaId: string) {
+        const count = await this.reportModel.countDocuments({
+            'snapshot.avatarMediaId': mediaId,
+        });
+        return count > 0;
+    }
+}

@@ -17,6 +17,7 @@ import {
     WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { OnEvent } from '@nestjs/event-emitter';
 import { MessagesService } from '../messages/messages.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { PayloadJWT } from '../users/schemas/user.schema';
@@ -416,6 +417,15 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         );
     }
 
+    @OnEvent('user.banned')
+    handleUserBanned(payload: { userId: string; banUntil: Date }) {
+        const roomName = getRoomNameUser(payload.userId);
+        this.server
+            .to(roomName)
+            .emit('user:banned', { banUntil: payload.banUntil });
+        this.server.in(roomName).disconnectSockets(true);
+    }
+
     /**
      * Lắng nghe sự kiện `chat:join-conversation`.
      * Khi user click mở một khung chat, hệ thống cho user join vào room Socket.IO của phòng đó.
@@ -482,6 +492,15 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     ) {
         try {
             const payload = await this.validateActiveSession(client);
+
+            const user = await this.usersService.findOne(payload._id);
+            if (user && user.muteUntil && user.muteUntil > new Date()) {
+                const time = user.muteUntil.toLocaleString('vi-VN', {
+                    timeZone: 'Asia/Ho_Chi_Minh',
+                });
+                throw new Error(REALTIME_MESSAGES.USER_MUTED(time));
+            }
+
             const { conversationId, content, replyTo } = body;
             const { message, conversation } =
                 await this.messageService.createMessage(

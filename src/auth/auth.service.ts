@@ -72,6 +72,15 @@ export class AuthService {
         userAgent?: string,
         deviceName?: string,
     ) {
+        if (user.banUntil && user.banUntil > new Date()) {
+            const time = user.banUntil.toLocaleString('vi-VN', {
+                timeZone: 'Asia/Ho_Chi_Minh',
+            });
+            throw new UnauthorizedException(
+                `Your account has been banned until ${time}`,
+            );
+        }
+
         let sessionId = '';
         try {
             const createSessionDto: CreateSessionDto = {
@@ -160,6 +169,17 @@ export class AuthService {
                     payload._id,
                 );
                 throw new UnauthorizedException(AUTH_MESSAGES.USER_DISABLED);
+            }
+            if (user.banUntil && user.banUntil > new Date()) {
+                await this.sessionService.revokeAllByUserIdWithCleanup(
+                    payload._id,
+                );
+                const time = user.banUntil.toLocaleString('vi-VN', {
+                    timeZone: 'Asia/Ho_Chi_Minh',
+                });
+                throw new UnauthorizedException(
+                    `Your account has been banned until ${time}`,
+                );
             }
 
             if (payload.tokenVersion !== user.tokenVersion) {

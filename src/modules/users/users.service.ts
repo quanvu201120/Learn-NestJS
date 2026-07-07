@@ -58,6 +58,7 @@ import {
     CleanupJobResourceEnum,
 } from '../cleanup-jobs/types/cleanup-job';
 import { RelationshipsService } from '../relationships/relationships.service';
+import { ReportsService } from '../reports/reports.service';
 import { StatsService } from '../stats/stats.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -78,6 +79,8 @@ export class UsersService {
         private readonly sessionService: SessionService,
         @Inject(forwardRef(() => RelationshipsService))
         private readonly relationshipsService: RelationshipsService,
+        @Inject(forwardRef(() => ReportsService))
+        private readonly reportsService: ReportsService,
         private readonly statsService: StatsService,
         private readonly eventEmitter: EventEmitter2,
     ) {}
@@ -449,101 +452,6 @@ export class UsersService {
     }
 
     /**
-     * Admin reset tên người dùng
-     */
-    async resetNameByAdmin(
-        userId: string,
-        adminId: string,
-        currentUserRole: string,
-        reason: string | undefined,
-        req: any,
-    ) {
-        validateObjectId(userId, 'user id');
-        validateObjectId(adminId, 'user id');
-
-        if (userId === adminId) {
-            throw new ForbiddenException(USER_MESSAGES.CAN_NOT_CHANGE_ME);
-        }
-
-        const user = await this.userModel.findById(userId);
-        if (!user) {
-            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
-        }
-
-        this.checkAdminPermission(user.role, currentUserRole);
-
-        const randomSuffix = Math.floor(Math.random() * 1000000);
-        const updatedUser = await this.userModel
-            .findByIdAndUpdate(
-                userId,
-                { $set: { name: `User_${randomSuffix}` } },
-                { new: true },
-            )
-            .select('-password -__v')
-            .populate('avatar', '-__v')
-            .lean();
-
-        this.eventEmitter.emit('audit.log.create', {
-            req,
-            actorId: adminId,
-            actorRole: currentUserRole,
-            action: AuditLogActionEnum.RESET_DISPLAY_NAME,
-            targetId: userId,
-            targetType: AuditLogTargetEnum.USER,
-            metadata: { oldName: user.name, reason },
-        });
-
-        return this.serializeUserResponse(updatedUser as UserResponse);
-    }
-
-    /**
-     * Admin xóa tiểu sử người dùng
-     */
-    async clearBioByAdmin(
-        userId: string,
-        adminId: string,
-        currentUserRole: string,
-        reason: string | undefined,
-        req: any,
-    ) {
-        validateObjectId(userId, 'user id');
-        validateObjectId(adminId, 'user id');
-
-        if (userId === adminId) {
-            throw new ForbiddenException(USER_MESSAGES.CAN_NOT_CHANGE_ME);
-        }
-
-        const user = await this.userModel.findById(userId);
-        if (!user) {
-            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
-        }
-
-        if (!user.bio) {
-            throw new BadRequestException(USER_MESSAGES.BIO_NOT_EXISTED);
-        }
-
-        this.checkAdminPermission(user.role, currentUserRole);
-
-        const updatedUser = await this.userModel
-            .findByIdAndUpdate(userId, { $unset: { bio: '' } }, { new: true })
-            .select('-password -__v')
-            .populate('avatar', '-__v')
-            .lean();
-
-        this.eventEmitter.emit('audit.log.create', {
-            req,
-            actorId: adminId,
-            actorRole: currentUserRole,
-            action: AuditLogActionEnum.DELETE_BIO,
-            targetId: userId,
-            targetType: AuditLogTargetEnum.USER,
-            metadata: { oldBio: user.bio, reason },
-        });
-
-        return this.serializeUserResponse(updatedUser as UserResponse);
-    }
-
-    /**
      * Vô hiệu hóa chính tài khoản của mình.
      */
     async disableSelf(userId: string): Promise<UserDisableStateResponse> {
@@ -555,58 +463,6 @@ export class UsersService {
             throw new BadRequestException(USER_MESSAGES.CANNOT_DISABLE_ADMIN);
         }
         return this.setDisabledState(userId, true);
-    }
-
-    /**
-     * Vô hiệu hóa tài khoản của người khác bởi Admin.
-     */
-    async disableUserByAdmin(
-        userId: string,
-        currentUserId: string,
-        currentUserRole: string,
-        passwordRaw: string,
-        reason: string | undefined,
-        req: any,
-    ): Promise<UserDisableStateResponse> {
-        validateObjectId(currentUserId, 'current user id');
-
-        const currentUser = await this.userModel
-            .findById(currentUserId)
-            .select('password role');
-
-        if (!currentUser) {
-            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
-        }
-        if (currentUser.role !== currentUserRole) {
-            throw new ForbiddenException(USER_MESSAGES.MISSING_PERMISSION);
-        }
-        const isPasswordValid = await bcrypt.compare(
-            passwordRaw,
-            currentUser.password,
-        );
-        if (!isPasswordValid) {
-            throw new BadRequestException(USER_MESSAGES.PASSWORD_NOT_MATCH);
-        }
-
-        if (userId === currentUserId) {
-            throw new ForbiddenException(USER_MESSAGES.CAN_NOT_CHANGE_ME);
-        }
-        const { existingUser } = await this.checkUser(userId, true, false);
-        this.checkAdminPermission(existingUser.role, currentUserRole);
-
-        const result = await this.setDisabledState(userId, true);
-
-        this.eventEmitter.emit('audit.log.create', {
-            req,
-            actorId: currentUserId,
-            actorRole: currentUserRole,
-            action: AuditLogActionEnum.LOCK_USER,
-            targetId: userId,
-            targetType: AuditLogTargetEnum.USER,
-            metadata: { reason },
-        });
-
-        return result;
     }
 
     /**
@@ -1045,6 +901,7 @@ export class UsersService {
                       existingUser.avatar.toString(),
                   )
                 : null;
+            let isMediaInReport = false;
             const user = await session.withTransaction(async () => {
                 const createdMedia = await this.mediaService.createMedia(
                     uploadedAvatar as Media,
@@ -1068,16 +925,22 @@ export class UsersService {
                         USER_MESSAGES.AVATAR_UPLOAD_FAILED,
                     );
                 }
+
                 if (avatarOld) {
-                    const resultDeleteMedia =
-                        await this.mediaService.deleteMedia(
-                            avatarOld._id.toString(),
-                            session,
-                        );
-                    if (!resultDeleteMedia) {
-                        throw new BadRequestException(
-                            MEDIA_MESSAGES.MEDIA_DELETE_FAILED,
-                        );
+                    isMediaInReport = await this.reportsService.isMediaInReport(
+                        avatarOld._id.toString(),
+                    );
+                    if (!isMediaInReport) {
+                        const resultDeleteMedia =
+                            await this.mediaService.deleteMedia(
+                                avatarOld._id.toString(),
+                                session,
+                            );
+                        if (!resultDeleteMedia) {
+                            throw new BadRequestException(
+                                MEDIA_MESSAGES.MEDIA_DELETE_FAILED,
+                            );
+                        }
                     }
                 }
                 return updatedUser as UserResponse;
@@ -1088,7 +951,8 @@ export class UsersService {
                 );
             }
             isUpdatedUser = true;
-            if (avatarOld?.publicId) {
+
+            if (avatarOld?.publicId && !isMediaInReport) {
                 await this.mediaService
                     .deleteImageFromCloudinaryWithCleanup(avatarOld.publicId, {
                         entityId: user._id.toString(),
@@ -1138,6 +1002,7 @@ export class UsersService {
 
         const session = await this.connection.startSession();
         try {
+            let isMediaInReport = false;
             const user = await session.withTransaction(async () => {
                 const updatedUser = await this.userModel
                     .findByIdAndUpdate(
@@ -1157,16 +1022,22 @@ export class UsersService {
                         USER_MESSAGES.AVATAR_DELETE_FAILED,
                     );
                 }
+
                 if (avatarOld) {
-                    const resultDeleteMedia =
-                        await this.mediaService.deleteMedia(
-                            avatarOld._id.toString(),
-                            session,
-                        );
-                    if (!resultDeleteMedia) {
-                        throw new BadRequestException(
-                            MEDIA_MESSAGES.MEDIA_DELETE_FAILED,
-                        );
+                    isMediaInReport = await this.reportsService.isMediaInReport(
+                        avatarOld._id.toString(),
+                    );
+                    if (!isMediaInReport) {
+                        const resultDeleteMedia =
+                            await this.mediaService.deleteMedia(
+                                avatarOld._id.toString(),
+                                session,
+                            );
+                        if (!resultDeleteMedia) {
+                            throw new BadRequestException(
+                                MEDIA_MESSAGES.MEDIA_DELETE_FAILED,
+                            );
+                        }
                     }
                 }
                 return updatedUser as UserResponse;
@@ -1176,7 +1047,8 @@ export class UsersService {
                     USER_MESSAGES.AVATAR_DELETE_FAILED,
                 );
             }
-            if (avatarOld?.publicId) {
+
+            if (avatarOld?.publicId && !isMediaInReport) {
                 await this.mediaService
                     .deleteImageFromCloudinaryWithCleanup(avatarOld.publicId, {
                         entityId: objectUserId.toString(),
@@ -1193,101 +1065,7 @@ export class UsersService {
         }
     }
 
-    /**
-     * Xóa ảnh đại diện của user (Dành cho Admin)
-     */
-    async deleteAvatarByAdmin(
-        userId: string,
-        adminId: string,
-        adminRole: string,
-        reason: string | undefined,
-        req: any,
-    ) {
-        const { existingUser, objectUserId } = await this.checkUser(
-            userId,
-            false,
-            false,
-        );
 
-        if (userId === adminId) {
-            throw new ForbiddenException(USER_MESSAGES.CAN_NOT_CHANGE_ME);
-        }
-
-        this.checkAdminPermission(existingUser.role, adminRole);
-
-        if (!existingUser.avatar) {
-            throw new BadRequestException(USER_MESSAGES.AVATAR_NOT_EXIST);
-        }
-        const avatarOld = await this.mediaService.findById(
-            existingUser.avatar.toString(),
-        );
-        if (!avatarOld) {
-            throw new BadRequestException(MEDIA_MESSAGES.MEDIA_NOT_FOUND);
-        }
-        const session = await this.connection.startSession();
-        try {
-            const user = await session.withTransaction(async () => {
-                const updatedUser = await this.userModel
-                    .findByIdAndUpdate(
-                        objectUserId,
-                        {
-                            $unset: {
-                                avatar: '',
-                            },
-                        },
-                        { new: true, session },
-                    )
-                    .select('-password -__v')
-                    .populate('avatar', '-__v')
-                    .lean();
-                if (!updatedUser) {
-                    throw new BadRequestException(
-                        USER_MESSAGES.AVATAR_DELETE_FAILED,
-                    );
-                }
-                const resultDeleteMedia = await this.mediaService.deleteMedia(
-                    avatarOld._id.toString(),
-                    session,
-                );
-                if (!resultDeleteMedia) {
-                    throw new BadRequestException(
-                        MEDIA_MESSAGES.MEDIA_DELETE_FAILED,
-                    );
-                }
-                return updatedUser as UserResponse;
-            });
-            if (!user) {
-                throw new BadRequestException(
-                    USER_MESSAGES.AVATAR_DELETE_FAILED,
-                );
-            }
-            if (avatarOld?.publicId) {
-                await this.mediaService
-                    .deleteImageFromCloudinaryWithCleanup(avatarOld.publicId, {
-                        entityId: objectUserId.toString(),
-                        entityType: CleanupJobEntityEnum.USER,
-                        resourceType: CleanupJobResourceEnum.USER_AVATAR,
-                    })
-                    .catch((error) => {
-                        console.error('Failed to delete old avatar:', error);
-                    });
-            }
-
-            this.eventEmitter.emit('audit.log.create', {
-                req,
-                actorId: adminId,
-                actorRole: adminRole,
-                action: AuditLogActionEnum.DELETE_AVATAR,
-                targetId: userId,
-                targetType: AuditLogTargetEnum.USER,
-                metadata: { oldAvatarUrl: avatarOld?.url, reason },
-            });
-
-            return this.serializeUserResponse(user);
-        } finally {
-            await session.endSession();
-        }
-    }
 
     /**
      * SUPER_ADMIN thay đổi Role của người dùng

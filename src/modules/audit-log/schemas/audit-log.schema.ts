@@ -5,6 +5,7 @@ import {
     AuditLogActionEnum,
     AuditLogTargetEnum,
 } from '../types/audit-log.type';
+import { ReportStatusEnum } from '@/modules/reports/types/report.type';
 
 export type AuditLogDocument = HydratedDocument<AuditLog>;
 
@@ -27,6 +28,12 @@ export class AuditLogMetadata {
 
     @Prop()
     reason?: string;
+
+    @Prop({ type: String, enum: ReportStatusEnum })
+    reportStatus?: ReportStatusEnum;
+
+    @Prop()
+    penaltyApplied?: string;
 }
 
 @Schema({ timestamps: true })

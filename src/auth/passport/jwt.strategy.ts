@@ -27,6 +27,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         if (user.isDisabled) {
             throw new UnauthorizedException('User has been disabled');
         }
+        if (user.banUntil && user.banUntil > new Date()) {
+            const time = user.banUntil.toLocaleString('vi-VN', {
+                timeZone: 'Asia/Ho_Chi_Minh',
+            });
+            throw new UnauthorizedException(
+                `Your account has been banned until ${time}`,
+            );
+        }
         if (!user.isActive) {
             throw new UnauthorizedException('User is not active');
         }

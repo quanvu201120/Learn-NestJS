@@ -20,6 +20,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { StatsModule } from './modules/stats/stats.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
+import { ReportsModule } from './modules/reports/reports.module';
 
 @Module({
     imports: [
@@ -32,6 +33,7 @@ import { AuditLogModule } from './modules/audit-log/audit-log.module';
         PresenceModule,
         MediaModule,
         AuditLogModule,
+        ReportsModule,
         ConfigModule.forRoot({ isGlobal: true }),
         EventEmitterModule.forRoot(),
         RelationshipsModule,

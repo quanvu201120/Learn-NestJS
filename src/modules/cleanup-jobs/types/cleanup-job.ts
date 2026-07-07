@@ -26,12 +26,14 @@ export enum CleanupJobResourceEnum {
     CONVERSATION_MEDIA = 'CONVERSATION_MEDIA',
     UNSEEN_CONVERSATION = 'UNSEEN_CONVERSATION',
     SESSION = 'SESSION',
+    REPORT_MEDIA = 'REPORT_MEDIA',
 }
 
 export enum CleanupJobEntityEnum {
     CONVERSATION = 'CONVERSATION',
     MESSAGE = 'MESSAGE',
     USER = 'USER',
+    REPORT = 'REPORT',
 }
 
 export enum CleanupJobLockedBy {

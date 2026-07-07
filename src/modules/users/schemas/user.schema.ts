@@ -57,6 +57,12 @@ export class User {
 
     @Prop()
     lastOnlineAt?: Date;
+
+    @Prop()
+    banUntil?: Date;
+
+    @Prop()
+    muteUntil?: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

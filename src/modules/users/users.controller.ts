@@ -138,61 +138,6 @@ export class UsersController {
         return await this.usersService.disableSelf(req.user._id);
     }
 
-    @Patch(':id/reset-name')
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
-    @UseGuards(RolesGuard)
-    @ApiOperation({ summary: 'Admin đặt lại tên user' })
-    async resetNameByAdmin(
-        @Param('id') id: string,
-        @Body() body: AdminActionReasonDto,
-        @Request() req,
-    ) {
-        return await this.usersService.resetNameByAdmin(
-            id,
-            req.user._id,
-            req.user.role,
-            body.reason,
-            req,
-        );
-    }
-
-    @Patch(':id/clear-bio')
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
-    @UseGuards(RolesGuard)
-    @ApiOperation({ summary: 'Admin xóa tiểu sử user' })
-    async clearBioByAdmin(
-        @Param('id') id: string,
-        @Body() body: AdminActionReasonDto,
-        @Request() req,
-    ) {
-        return await this.usersService.clearBioByAdmin(
-            id,
-            req.user._id,
-            req.user.role,
-            body.reason,
-            req,
-        );
-    }
-
-    @Patch(':id/disable')
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
-    @UseGuards(RolesGuard)
-    @ApiOperation({ summary: 'ADMIN vô hiệu hóa tài khoản user' })
-    async disableUser(
-        @Param('id') id: string,
-        @Body() body: AdminActionWithPasswordDto,
-        @Request() req,
-    ): Promise<UserDisableStateResponse> {
-        return await this.usersService.disableUserByAdmin(
-            id,
-            req.user._id,
-            req.user.role,
-            body.password,
-            body.reason,
-            req,
-        );
-    }
-
     @Patch(':id/enable')
     @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
     @UseGuards(RolesGuard)
@@ -207,26 +152,6 @@ export class UsersController {
             req.user._id,
             req.user.role,
             body.password,
-            body.reason,
-            req,
-        );
-    }
-
-    @Delete(':id/avatar')
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
-    @UseGuards(RolesGuard)
-    @ApiOperation({
-        summary: 'Admin xóa ảnh đại diện của user',
-    })
-    async deleteAvatarByAdmin(
-        @Param('id') id: string,
-        @Body() body: AdminActionReasonDto,
-        @Request() req,
-    ) {
-        return await this.usersService.deleteAvatarByAdmin(
-            id,
-            req.user._id,
-            req.user.role,
             body.reason,
             req,
         );
