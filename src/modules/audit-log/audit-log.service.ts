@@ -157,7 +157,14 @@ export class AuditLogService {
             .populate({
                 path: 'targetId',
                 select: '-password -__v',
-                populate: { path: 'avatar', select: '-__v' },
+                populate: [
+                    { path: 'avatar', select: '-__v', strictPopulate: false },
+                    {
+                        path: 'snapshot.avatarMediaId',
+                        select: '-__v',
+                        strictPopulate: false,
+                    },
+                ],
             })
             .lean();
 

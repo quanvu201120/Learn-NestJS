@@ -4,7 +4,8 @@ export const PENALTY_RULES = {
     spam_harassment: [
         { strike: 1, action: PenaltyActionEnum.MUTE, durationDays: 1 },
         { strike: 2, action: PenaltyActionEnum.MUTE, durationDays: 7 },
-        { strike: 3, action: PenaltyActionEnum.BAN, durationDays: 36500 },
+        { strike: 3, action: PenaltyActionEnum.MUTE, durationDays: 30 },
+        { strike: 4, action: PenaltyActionEnum.BAN, durationDays: 36500 },
     ],
     inappropriate_content: [
         {
@@ -15,6 +16,11 @@ export const PENALTY_RULES = {
         { strike: 2, action: PenaltyActionEnum.RESET_AND_BAN, durationDays: 7 },
         {
             strike: 3,
+            action: PenaltyActionEnum.RESET_AND_BAN,
+            durationDays: 30,
+        },
+        {
+            strike: 4,
             action: PenaltyActionEnum.RESET_AND_BAN,
             durationDays: 36500,
         },

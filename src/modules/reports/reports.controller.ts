@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 import {
@@ -10,6 +12,8 @@ import {
     UseGuards,
     Request,
     Query,
+    NotFoundException,
+    BadRequestException,
 } from '@nestjs/common';
 import { CreateReportDto } from './dto/create-report.dto';
 import { ResolveReportDto } from './dto/resolve-report.dto';
@@ -18,13 +22,11 @@ import { Roles } from '@/utils/decorator-customize';
 import { UserRole } from '@/modules/users/types/user';
 import { GetReportsDto } from './dto/get-reports.dto';
 import { ManualBanDto } from './dto/manual-ban.dto';
-import {
-    AdminActionReasonDto,
-    AdminActionWithPasswordDto,
-} from '@/modules/users/dto/update-user.dto';
+import { AdminActionWithPasswordDto } from '@/modules/users/dto/update-user.dto';
 import { QuickPenaltyDto } from './dto/quick-penalty.dto';
 import { ReportsService } from './reports.service';
-import { ReportReasonEnum } from './types/report.type';
+import { REPORT_MESSAGES } from './constants/report.constant';
+import { ReportStatusEnum } from './types/report.type';
 
 @Controller('reports')
 export class ReportsController {
@@ -47,6 +49,26 @@ export class ReportsController {
     @UseGuards(RolesGuard)
     async findOne(@Param('id') id: string) {
         return await this.reportsService.findOne(id);
+    }
+
+    @Get(':id/calculate-penalty')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @UseGuards(RolesGuard)
+    async calculatePenalty(@Param('id') id: string) {
+        const report = await this.reportsService.findByIdForApi(id);
+        if (!report) {
+            throw new NotFoundException(REPORT_MESSAGES.REPORT_NOT_FOUND);
+        }
+        if (report.status !== ReportStatusEnum.PENDING) {
+            throw new BadRequestException(
+                REPORT_MESSAGES.REPORT_ALREADY_RESOLVED,
+            );
+        }
+
+        return await this.reportsService.calculatePenaltyInfo(
+            report.targetUserId.toString(),
+            report.reason,
+        );
     }
 
     @Patch(':id/resolve')

@@ -1,7 +1,7 @@
 import { IsBoolean, IsOptional } from 'class-validator';
-import { AdminActionReasonDto } from '@/modules/users/dto/update-user.dto';
+import { AdminActionWithPasswordDto } from '@/modules/users/dto/update-user.dto';
 
-export class QuickPenaltyDto extends AdminActionReasonDto {
+export class QuickPenaltyDto extends AdminActionWithPasswordDto {
     @IsOptional()
     @IsBoolean()
     resetAvatar?: boolean;
@@ -13,4 +13,7 @@ export class QuickPenaltyDto extends AdminActionReasonDto {
     @IsOptional()
     @IsBoolean()
     resetName?: boolean;
+
+    @IsOptional()
+    adminNote?: string;
 }

@@ -11,8 +11,8 @@ export type AuditLogDocument = HydratedDocument<AuditLog>;
 
 @Schema({ _id: false })
 export class AuditLogMetadata {
-    @Prop()
-    oldAvatarUrl?: string;
+    @Prop({ type: Types.ObjectId, ref: 'Media' })
+    oldAvatar?: Types.ObjectId;
 
     @Prop()
     oldName?: string;
@@ -27,13 +27,28 @@ export class AuditLogMetadata {
     newRole?: UserRole;
 
     @Prop()
-    reason?: string;
+    reason?: string; // Kept for backward compatibility with older logs
 
     @Prop({ type: String, enum: ReportStatusEnum })
-    reportStatus?: ReportStatusEnum;
+    rp_status?: ReportStatusEnum;
 
     @Prop()
-    penaltyApplied?: string;
+    rp_penaltyApplied?: string;
+
+    @Prop()
+    rp_adminNote?: string;
+
+    @Prop({ type: Types.ObjectId, ref: 'User' })
+    rp_reporterId?: Types.ObjectId;
+
+    @Prop({ type: Types.ObjectId, ref: 'User' })
+    rp_targetUserId?: Types.ObjectId;
+
+    @Prop()
+    rp_description?: string;
+
+    @Prop()
+    rp_reason?: string;
 }
 
 @Schema({ timestamps: true })

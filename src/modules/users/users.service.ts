@@ -219,6 +219,8 @@ export class UsersService {
                 andConditions.push({ isDisabled: true });
             } else if (status === 'unverified') {
                 andConditions.push({ isActive: false, isDisabled: false });
+            } else if (status === 'suspended') {
+                andConditions.push({ banUntil: { $gt: new Date() } });
             }
         }
 

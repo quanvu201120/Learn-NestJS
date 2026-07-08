@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 /* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
@@ -122,6 +123,8 @@ export class ReportsService {
             pageSize = GLOBAL_CONSTANTS.LIMIT_REPORTS_DEFAULT,
             startDate,
             endDate,
+            reportId,
+            sort,
             ...filters
         } = query;
         const page = Number(current);
@@ -130,10 +133,26 @@ export class ReportsService {
 
         const filterQuery: any = { ...filters };
 
+        if (filterQuery.targetRole) {
+            filterQuery['snapshot.role'] = filterQuery.targetRole;
+            delete filterQuery.targetRole;
+        }
+
         if (startDate || endDate) {
             filterQuery.createdAt = {};
             if (startDate) filterQuery.createdAt.$gte = new Date(startDate);
             if (endDate) filterQuery.createdAt.$lte = new Date(endDate);
+        }
+
+        if (reportId) {
+            filterQuery._id = reportId;
+        }
+
+        const sortQuery: any = {};
+        if (sort === 'oldest') {
+            sortQuery.createdAt = 1;
+        } else {
+            sortQuery.createdAt = -1; // newest by default
         }
 
         const totalItems = await this.reportModel.countDocuments(filterQuery);
@@ -141,23 +160,30 @@ export class ReportsService {
 
         const reports = await this.reportModel
             .find(filterQuery)
-            .sort({ createdAt: -1 })
+            .sort(sortQuery)
             .skip(skip)
             .limit(limit)
             .populate({
                 path: 'reporterId',
-                select: 'name email avatar',
+                select: 'name email avatar bio role',
                 populate: { path: 'avatar', select: '-__v' },
             })
             .populate({
                 path: 'targetUserId',
-                select: 'name email avatar',
+                select: 'name email avatar bio role',
                 populate: { path: 'avatar', select: '-__v' },
             })
             .populate('resolvedBy', 'name email')
+            .populate('evidenceMediaIds', '-__v')
+            .populate('appealEvidenceMediaIds', '-__v')
+            .populate('snapshot.avatarMediaId', '-__v')
             .lean();
 
         return { totalPages, totalItems, reports };
+    }
+
+    async findByIdForApi(id: string) {
+        return await this.reportModel.findById(id);
     }
 
     async findOne(id: string) {
@@ -166,15 +192,18 @@ export class ReportsService {
             .findById(id)
             .populate({
                 path: 'reporterId',
-                select: 'name email avatar',
+                select: 'name email avatar bio role',
                 populate: { path: 'avatar', select: '-__v' },
             })
             .populate({
                 path: 'targetUserId',
-                select: 'name email avatar',
+                select: 'name email avatar bio role',
                 populate: { path: 'avatar', select: '-__v' },
             })
             .populate('resolvedBy', 'name email')
+            .populate('evidenceMediaIds', '-__v')
+            .populate('appealEvidenceMediaIds', '-__v')
+            .populate('snapshot.avatarMediaId', '-__v')
             .lean();
 
         if (!report) {
@@ -335,15 +364,28 @@ export class ReportsService {
                 until.toISOString(),
             );
         } else if (actionToApply === PenaltyActionEnum.BAN) {
+            let hasSpecificReset = false;
+            if (resetAvatar) {
+                targetUser.avatar = undefined;
+                hasSpecificReset = true;
+            }
+            if (resetBio) {
+                targetUser.bio = undefined;
+                hasSpecificReset = true;
+            }
+            if (resetName) {
+                targetUser.name = `User_${Math.floor(100000 + Math.random() * 900000)}`;
+                hasSpecificReset = true;
+            }
+
             const until = new Date(
                 now.getTime() + duration * 24 * 60 * 60 * 1000,
             );
             targetUser.banUntil = until;
             targetUser.tokenVersion += 1;
-            penaltyAppliedStr = REPORT_MESSAGES.BAN_APPLIED(
-                duration,
-                until.toISOString(),
-            );
+            penaltyAppliedStr = hasSpecificReset
+                ? REPORT_MESSAGES.RESET_AND_BAN(duration, until.toISOString())
+                : REPORT_MESSAGES.BAN_APPLIED(duration, until.toISOString());
         }
 
         await targetUser.save();
@@ -366,6 +408,36 @@ export class ReportsService {
         }
 
         return penaltyAppliedStr;
+    }
+
+    async calculatePenaltyInfo(targetUserId: string, reason: ReportReasonEnum) {
+        // Count previous resolved reports for this reason
+        const strikeCount = await this.reportModel.countDocuments({
+            targetUserId,
+            reason,
+            status: ReportStatusEnum.RESOLVED,
+        });
+
+        const currentStrike = strikeCount + 1;
+
+        let actionToApply: PenaltyActionEnum | null = null;
+        let duration = 0;
+
+        const rules = PENALTY_RULES[reason];
+        if (rules && rules.length > 0) {
+            let rule = rules.find((r: any) => r.strike === currentStrike);
+            if (!rule) {
+                rule = rules[rules.length - 1];
+            }
+            actionToApply = rule.action;
+            duration = rule.durationDays;
+        }
+
+        return {
+            action: actionToApply,
+            durationDays: duration,
+            strike: currentStrike,
+        };
     }
 
     async resolve(
@@ -415,33 +487,59 @@ export class ReportsService {
             );
         }
 
-        report.status = resolveDto.status;
-        report.adminNote = resolveDto.adminNote;
-        report.resolvedBy = new Types.ObjectId(adminId);
-        report.resolvedAt = new Date();
+        const session = await this.reportModel.db.startSession();
+        try {
+            await session.withTransaction(async () => {
+                report.status = resolveDto.status;
+                report.adminNote = resolveDto.adminNote;
+                report.resolvedBy = new Types.ObjectId(adminId);
+                report.resolvedAt = new Date();
 
-        if (resolveDto.status === ReportStatusEnum.RESOLVED) {
-            // Tính toán và áp dụng phạt
-            const penaltyDesc = await this.calculateAndApplyPenalty(
-                report.targetUserId.toString(),
-                report.reason,
-                adminId,
-                adminRole,
-                resolveDto.overridePenaltyAction,
-                resolveDto.overridePenaltyDurationDays,
-                resolveDto.resetAvatar,
-                resolveDto.resetBio,
-                resolveDto.resetName,
-            );
-            report.penaltyApplied = penaltyDesc;
+                if (resolveDto.status === ReportStatusEnum.RESOLVED) {
+                    // Tính toán và áp dụng phạt
+                    const penaltyDesc = await this.calculateAndApplyPenalty(
+                        report.targetUserId.toString(),
+                        report.reason,
+                        adminId,
+                        adminRole,
+                        resolveDto.overridePenaltyAction,
+                        resolveDto.overridePenaltyDurationDays,
+                        resolveDto.resetAvatar,
+                        resolveDto.resetBio,
+                        resolveDto.resetName,
+                    );
+                    report.penaltyApplied = penaltyDesc;
 
-            // Set thời hạn kháng cáo 30 ngày
-            report.appealDeadline = new Date(
-                Date.now() + 30 * 24 * 60 * 60 * 1000,
-            );
+                    // Set thời hạn kháng cáo 30 ngày
+                    report.appealDeadline = new Date(
+                        Date.now() + 30 * 24 * 60 * 60 * 1000,
+                    );
+
+                    // Auto-dismiss other PENDING reports for the same user and reason
+                    await this.reportModel.updateMany(
+                        {
+                            targetUserId: report.targetUserId,
+                            reason: report.reason,
+                            status: ReportStatusEnum.PENDING,
+                            _id: { $ne: report._id },
+                        },
+                        {
+                            $set: {
+                                status: ReportStatusEnum.DISMISSED,
+                                adminNote: `Đã xử lý gộp chung với báo cáo #${report._id.toString()}`,
+                                resolvedBy: new Types.ObjectId(adminId),
+                                resolvedAt: new Date(),
+                            },
+                        },
+                        { session },
+                    );
+                }
+
+                await report.save({ session });
+            });
+        } finally {
+            await session.endSession();
         }
-
-        await report.save();
 
         this.eventEmitter.emit('audit.log.create', {
             req,
@@ -451,9 +549,17 @@ export class ReportsService {
             targetId: report._id.toString(),
             targetType: AuditLogTargetEnum.REPORT,
             metadata: {
-                reportStatus: resolveDto.status,
-                penaltyApplied: report.penaltyApplied,
-                reason: resolveDto.adminNote,
+                rp_status: resolveDto.status,
+                rp_penaltyApplied: report.penaltyApplied,
+                rp_adminNote: resolveDto.adminNote,
+                rp_reporterId: report.reporterId,
+                rp_targetUserId: report.targetUserId,
+                rp_description: report.description,
+                rp_reason: report.reason,
+                oldAvatar: report.snapshot?.avatarMediaId,
+                oldName: report.snapshot?.displayName,
+                oldBio: report.snapshot?.bio,
+                oldRole: report.snapshot?.role,
             },
         });
 
@@ -467,6 +573,8 @@ export class ReportsService {
         dto: QuickPenaltyDto,
         req: any,
     ) {
+        await this.verifyAdminPassword(adminId, adminRole, dto.password);
+
         const targetUser = await this.usersService.findOne(targetUserId);
         if (!targetUser) {
             throw new BadRequestException(
@@ -486,7 +594,7 @@ export class ReportsService {
                 role: targetUser.role,
             },
             status: ReportStatusEnum.PENDING,
-            description: dto.reason || REPORT_MESSAGES.QUICK_PENALTY_DESC,
+            description: dto.adminNote || REPORT_MESSAGES.QUICK_PENALTY_DESC,
         });
         await report.save();
 
@@ -546,6 +654,9 @@ export class ReportsService {
                 adminNote: dto.reason,
                 overridePenaltyAction: PenaltyActionEnum.BAN,
                 overridePenaltyDurationDays: dto.durationDays,
+                resetAvatar: dto.resetAvatar,
+                resetBio: dto.resetBio,
+                resetName: dto.resetName,
             },
             adminId,
             adminRole,

@@ -16,9 +16,9 @@ export const REPORT_MESSAGES = {
     REPORT_INVALID_STATUS: 'Report invalid status',
     MUTE_APPLIED: (duration: number, until: string) =>
         `Muted for ${duration} days (Until ${until}).`,
-    RESET_AND_WARNING: 'Avatar/Bio reset and warning sent.',
+    RESET_AND_WARNING: 'Reset info and warning sent.',
     RESET_AND_BAN: (duration: number, until: string) =>
-        `Avatar/Bio reset and account banned for ${duration} days (Until ${until}).`,
+        `Reset info and account banned for ${duration} days (Until ${until}).`,
     BAN_APPLIED: (duration: number, until: string) =>
         `Account banned for ${duration} days (Until ${until}).`,
     REPORT_ALREADY_RESOLVED: 'This report has already been processed',
