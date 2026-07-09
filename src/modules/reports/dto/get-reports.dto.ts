@@ -1,6 +1,16 @@
-import { IsEnum, IsMongoId, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+    IsEnum,
+    IsInt,
+    IsMongoId,
+    IsOptional,
+    IsString,
+    Max,
+    Min,
+} from 'class-validator';
 import { ReportReasonEnum, ReportStatusEnum } from '../types/report.type';
 import { UserRole } from '../../users/types/user';
+import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
 
 export class GetReportsDto {
     @IsOptional()
@@ -44,8 +54,15 @@ export class GetReportsDto {
     sort?: string;
 
     @IsOptional()
-    current?: string;
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    current?: number;
 
     @IsOptional()
-    pageSize?: string;
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(GLOBAL_CONSTANTS.LIMIT_REPORTS_MAX)
+    pageSize?: number;
 }

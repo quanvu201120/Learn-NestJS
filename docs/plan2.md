@@ -1,60 +1,64 @@
-# Kế Hoạch Cứng Hóa AuditLog + Reports
+# Plan 2 - Git Changes Summary
 
-## Tóm tắt
+## Tong quan
+- Cap nhat luong `reports` de ho tro upload anh chung cu, xu ly trang thai an toan hon khi admin resolve report, va chuan hoa pagination/validation.
+- Cap nhat `audit-log` de loc IP an toan hon va lam sach metadata truoc khi luu.
+- Bo sung them vai hang so dung chung cho gioi han query va upload file.
 
-Rà soát và harden hai feature `audit-log` và `report` theo hướng an toàn dữ liệu, chỉ sửa đúng những chỗ cần thiết và không đổi behavior ngoài phạm vi yêu cầu.
+## Cac thay doi chinh
 
-Ưu tiên cao nhất là luồng bằng chứng của report: user sẽ upload tối đa 5 ảnh, hệ thống tạo `Media` trước, rồi lấy đúng các `mediaId` đó để gắn vào report. Những media này phải chỉ thuộc đúng luồng report đó, không thể lấy media của người khác gắn vào, và cleanup chỉ được phép xử lý trên media thực sự liên quan đến report.
+### 1. Report evidence upload
+- `POST /reports` gio nhan nhieu file anh qua `FilesInterceptor('files', 5, ...)`.
+- Chi cho phep file `image/*`, gioi han toi da 5 file, moi file toi da 5MB.
+- Khi tao report, cac file duoc upload len Cloudinary va luu thanh `evidenceMediaIds`.
+- Neu luu report that bai, media da upload se duoc don lai de tranh rac du lieu.
 
-## Cách Xử Lý Theo Findings
+### 2. Report validation and pagination
+- `CreateReportDto` bo field `evidenceMediaIds` vi evidence gio den tu upload file.
+- `GetReportsDto` doi `current` va `pageSize` sang kieu so, co `class-transformer` de ep kieu.
+- `pageSize` bi gioi han boi `GLOBAL_CONSTANTS.LIMIT_REPORTS_MAX`.
+- `GetAuditLogsDto` them gioi han do dai cho `ip`.
 
-- **Bằng chứng có thể bị gắn sai owner hoặc bị dọn nhầm**
-    - Chỉ cho phép `evidenceMediaIds` đến từ các record `Media` đã được tạo hợp lệ.
-    - Kiểm tra từng `mediaId` phải tồn tại, chưa bị xoá, và thuộc đúng user / đúng luồng report trước khi gắn vào report.
-    - Vì hiện tại chưa có API Cloudinary upload multi-file, cần bổ sung luôn luồng tạo nhiều file bằng chứng ở backend/front:
-        - nhận tối đa 5 file trong một lần upload,
-        - upload từng file thành `Media` record riêng,
-        - lấy danh sách `mediaId` trả về để gắn vào report.
-    - Khi cleanup, chỉ xoá những media đã xác nhận thuộc report đó, không xoá media chỉ vì nó xuất hiện trong payload.
+### 3. Report resolve flow
+- Them trang thai `RESOLVING` cho report de chong 2 admin xu ly cung luc.
+- Khi resolve:
+  - report duoc claim truoc bang `findOneAndUpdate`
+  - xu ly trong transaction
+  - rollback trang thai neu co loi
+- `calculateAndApplyPenalty` nhan `session` va tra ve ca chuoi penalty lan `banUntil`.
+- Sau khi commit, neu user bi ban thi revoke session va phat event `user.banned`.
+- Report lien quan cung user/reason se duoc auto resolve/dismiss gop chung nhu truoc, nhung kem logic an toan hon.
 
-- **Resolve có thể bị đua request và áp phạt 2 lần**
-    - Làm `resolve` theo hướng atomic hoặc idempotent để chỉ có 1 request thắng được trạng thái hợp lệ.
-    - Nếu trạng thái report đã đổi trong lúc xử lý, request đến sau phải fail rõ ràng, không được áp phạt lại hoặc tạo audit log trùng.
+### 4. Quick penalty / manual ban
+- `quickPenalty` va `manualBan` tao report tam roi goi chung luong resolve.
+- Neu resolve loi va report van con o trang thai `PENDING` hoac `RESOLVING`, report tam se bi xoa.
 
-- **`quickPenalty` và `manualBan` có thể để lại report rác**
-    - Gom luồng tạo report tạm và resolve thành một flow an toàn hơn.
-    - Nếu resolve fail giữa chừng thì không được để lại report `pending` rác trong DB.
+### 5. Audit log improvements
+- `AuditLogService` them `sanitizeMetadata()` de chi giu du lieu an toan khi ghi audit log.
+- IP filter duoc escape regex truoc khi search de tranh match sai.
+- Lay IP tu `x-forwarded-for` co `trim()` de sach hon.
 
-- **Input pagination và filter quá lỏng**
-    - Giới hạn `current` và `pageSize` bằng validation trong DTO.
-    - Chặn `NaN`, số âm, và giá trị quá lớn trước khi đưa vào `skip` / `limit`.
+### 6. Constants va message moi
+- `GLOBAL_CONSTANTS`
+  - them `LIMIT_AUDIT_LOGS_MAX`
+  - them `LIMIT_REPORTS_MAX`
+- `MEDIA_CONSTANTS`
+  - them `REPORT_EVIDENCE_FOLDER`
+  - them message upload file: `FILE_UPLOAD_OVER_LIMIT`, `FILE_UPLOAD_EMPTY`
+- `REPORT_MESSAGES`
+  - them `MEDIA_INVALID_FOR_REPORT`
+  - them `REPORT_IS_BEING_PROCESSED`
+- `ReportStatusEnum`
+  - them `RESOLVING`
 
-- **Filter IP và metadata audit log cần harden hơn**
-    - Không build regex trực tiếp từ input thô nếu chưa được sanitize rõ ràng.
-    - Chỉ giữ metadata cần cho trace, tránh lưu thêm các field không cần thiết.
-
-## Các Thay Đổi Chính
-
-- **Luồng upload bằng chứng**
-    - Chuẩn hoá flow: upload media trước, rồi `create report` nhận các `evidenceMediaIds` hợp lệ.
-    - Giới hạn mỗi report tối đa 5 ảnh.
-    - Bổ sung luồng upload nhiều file bằng chứng từ đầu đến cuối, vì hiện tại Cloudinary chưa có API multi-file riêng.
-    - Kiểm tra ownership và sự tồn tại của `mediaId` trước khi link vào report.
-    - Cleanup chỉ xoá media thuộc report đó, không đụng media bên ngoài.
-
-- **Tính toàn vẹn của report**
-    - Làm `resolve report` an toàn trước race condition.
-    - Tránh để lại report tạm trong `quickPenalty` và `manualBan` nếu có lỗi ở giữa luồng.
-    - Siết validation cho pagination và filter để tránh query quá lớn hoặc không hợp lệ.
-
-- **Harden audit log**
-    - Giữ quyền truy cập chỉ cho `SUPER_ADMIN`.
-    - Làm an toàn hơn phần filter IP, giảm nguy cơ query regex quá rộng.
-    - Giữ metadata đủ phục vụ audit nhưng không lưu dư dữ liệu.
-
-## Giả Định
-
-- Luồng bằng chứng sẽ đi theo kiểu "upload media trước, report chỉ nhận `mediaId` hợp lệ".
-- Luồng upload bằng chứng sẽ hỗ trợ nhiều file trong một lần, nhưng backend sẽ xử lý từng file thành `Media` riêng.
-- Mỗi media bằng chứng chỉ được gắn với đúng một report trong flow này, nhưng một report vẫn có thể chứa tối đa 5 media bằng chứng.
-- Không mở rộng thêm feature mới ngoài việc harden và tối ưu hai module hiện có.
+## File da bi tac dong
+- `src/modules/reports/reports.controller.ts`
+- `src/modules/reports/reports.service.ts`
+- `src/modules/reports/dto/create-report.dto.ts`
+- `src/modules/reports/dto/get-reports.dto.ts`
+- `src/modules/reports/dto/resolve-report.dto.ts`
+- `src/modules/reports/types/report.type.ts`
+- `src/modules/audit-log/audit-log.service.ts`
+- `src/modules/audit-log/dto/get-audit-logs.dto.ts`
+- `src/modules/media/constants/media.constant.ts`
+- `src/common/constants/global.constant.ts`

@@ -7,6 +7,7 @@ export enum ReportReasonEnum {
 
 export enum ReportStatusEnum {
     PENDING = 'pending',
+    RESOLVING = 'resolving',
     RESOLVED = 'resolved',
     DISMISSED = 'dismissed',
     APPEAL_PENDING = 'appeal_pending',

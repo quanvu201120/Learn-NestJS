@@ -334,7 +334,7 @@ export class UsersService {
     async findByEmailOrPhoneForLogin(identifier: string) {
         const isEmail = identifier.includes('@');
         const filter = isEmail ? { email: identifier } : { phone: identifier };
-        return await this.userModel.findOne(filter);
+        return await this.userModel.findOne(filter).populate('avatar', '-__v');
     }
 
     /**
@@ -1066,8 +1066,6 @@ export class UsersService {
             await session.endSession();
         }
     }
-
-
 
     /**
      * SUPER_ADMIN thay đổi Role của người dùng

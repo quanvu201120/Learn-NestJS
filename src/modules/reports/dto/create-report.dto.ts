@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
-    IsArray,
     IsEnum,
     IsMongoId,
     IsNotEmpty,
@@ -30,9 +29,4 @@ export class CreateReportDto {
     @IsString()
     @MaxLength(500)
     optionalDescription?: string; // Tùy chọn nếu reason không phải OTHER
-
-    @IsOptional()
-    @IsArray()
-    @IsMongoId({ each: true })
-    evidenceMediaIds?: string[];
 }

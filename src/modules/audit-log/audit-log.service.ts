@@ -16,6 +16,11 @@ import type {
 import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
 import { serializeUser } from '@/modules/users/utils/user.serializer';
 import { AuditLogResponse } from './types/audit-log.type';
+import { serializeMedia } from '@/modules/media/utils/media.serializer';
+
+const escapeRegExp = (value: string) =>
+    value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 @Injectable()
 export class AuditLogService {
     private readonly logger = new Logger(AuditLogService.name);
@@ -28,25 +33,138 @@ export class AuditLogService {
     /**
      * Helper nội bộ: Format dữ liệu audit log trước khi trả về client.
      */
+    private serializeReport(report: any) {
+        if (
+            !report ||
+            typeof report !== 'object' ||
+            report instanceof Types.ObjectId ||
+            !Object.keys(report).includes('_id')
+        ) {
+            return report ? report.toString() : report;
+        }
+
+        return {
+            ...report,
+            _id: report._id ? report._id.toString() : undefined,
+            snapshot: report.snapshot
+                ? {
+                      ...report.snapshot,
+                      avatarMediaId: report.snapshot.avatarMediaId
+                          ? serializeMedia(report.snapshot.avatarMediaId)
+                          : report.snapshot.avatarMediaId,
+                  }
+                : report.snapshot,
+        };
+    }
+
+    private serializeAuditLogMetadata(metadata: any) {
+        if (
+            !metadata ||
+            typeof metadata !== 'object' ||
+            Array.isArray(metadata)
+        ) {
+            return metadata;
+        }
+
+        return {
+            ...metadata,
+            oldAvatar: metadata.oldAvatar
+                ? serializeMedia(metadata.oldAvatar)
+                : metadata.oldAvatar,
+            rp_reporterId: metadata.rp_reporterId
+                ? typeof metadata.rp_reporterId === 'object' &&
+                  '_id' in metadata.rp_reporterId
+                    ? serializeUser(metadata.rp_reporterId, false)
+                    : metadata.rp_reporterId
+                : metadata.rp_reporterId,
+            rp_targetUserId: metadata.rp_targetUserId
+                ? typeof metadata.rp_targetUserId === 'object' &&
+                  '_id' in metadata.rp_targetUserId
+                    ? serializeUser(metadata.rp_targetUserId, false)
+                    : metadata.rp_targetUserId
+                : metadata.rp_targetUserId,
+        };
+    }
+
+    private serializeTarget(targetType: string, targetId: any) {
+        if (!targetId) {
+            return targetId;
+        }
+
+        if (targetType === 'User') {
+            return typeof targetId === 'object' && '_id' in targetId
+                ? serializeUser(targetId, false)
+                : targetId;
+        }
+
+        if (targetType === 'Report') {
+            return typeof targetId === 'object' && '_id' in targetId
+                ? this.serializeReport(targetId)
+                : targetId;
+        }
+
+        return targetId;
+    }
+
     private serializeAuditLog(log: any): AuditLogResponse {
-        const { actorId, targetId, targetType, ...rest } = log;
+        const { actorId, targetId, targetType, metadata, ...rest } = log;
 
         return {
             ...rest,
             _id: rest._id ? rest._id.toString() : undefined,
+            metadata: this.serializeAuditLogMetadata(metadata),
             actor: actorId
                 ? typeof actorId === 'object' && '_id' in actorId
                     ? serializeUser(actorId, false)
                     : actorId
                 : undefined,
-            target:
-                targetType === 'User' && targetId
-                    ? typeof targetId === 'object' && '_id' in targetId
-                        ? serializeUser(targetId, false)
-                        : targetId
-                    : targetId,
+            target: this.serializeTarget(targetType, targetId),
             targetType,
         };
+    }
+
+    private sanitizeMetadata(metadata: any) {
+        if (
+            !metadata ||
+            typeof metadata !== 'object' ||
+            Array.isArray(metadata)
+        ) {
+            return {};
+        }
+
+        return Object.entries(metadata).reduce<Record<string, any>>(
+            (acc, [key, value]) => {
+                if (value === undefined || value === null) {
+                    return acc;
+                }
+
+                if (
+                    typeof value === 'string' ||
+                    typeof value === 'number' ||
+                    typeof value === 'boolean'
+                ) {
+                    acc[key] = value;
+                    return acc;
+                }
+
+                if (value instanceof Date) {
+                    acc[key] = value.toISOString();
+                    return acc;
+                }
+
+                if (value instanceof Types.ObjectId) {
+                    acc[key] = value.toString();
+                    return acc;
+                }
+
+                if (typeof value === 'object' && '_id' in value && value._id) {
+                    acc[key] = (value._id as Types.ObjectId).toString();
+                }
+
+                return acc;
+            },
+            {},
+        );
     }
 
     async create(auditLog: any) {
@@ -56,10 +174,12 @@ export class AuditLogService {
     @OnEvent('audit.log.create', { async: true })
     async handleAuditLogEvent(payload: AuditLogEvent) {
         try {
-            const { req, ...logData } = payload;
+            const { req, metadata, ...logData } = payload;
 
             const ip =
-                (req?.headers?.['x-forwarded-for'] as string)?.split(',')[0] ||
+                (req?.headers?.['x-forwarded-for'] as string)
+                    ?.split(',')[0]
+                    ?.trim() ||
                 req?.ip ||
                 req?.socket?.remoteAddress ||
                 'Unknown';
@@ -72,7 +192,7 @@ export class AuditLogService {
                 action: logData.action,
                 targetId: new Types.ObjectId(logData.targetId),
                 targetType: logData.targetType,
-                metadata: logData.metadata,
+                metadata: this.sanitizeMetadata(metadata),
                 ip,
                 userAgent,
             };
@@ -88,7 +208,6 @@ export class AuditLogService {
         const {
             cursor,
             actorId,
-            targetId,
             action,
             targetType,
             actorRole,
@@ -105,10 +224,6 @@ export class AuditLogService {
             filter.actorId = new Types.ObjectId(actorId);
         }
 
-        if (targetId) {
-            filter.targetId = new Types.ObjectId(targetId);
-        }
-
         if (action) {
             filter.action = action;
         }
@@ -122,7 +237,7 @@ export class AuditLogService {
         }
 
         if (ip) {
-            filter.ip = { $regex: new RegExp(ip, 'i') };
+            filter.ip = { $regex: new RegExp(escapeRegExp(ip.trim()), 'i') };
         }
 
         // 2. Date range filter
@@ -165,6 +280,16 @@ export class AuditLogService {
                         strictPopulate: false,
                     },
                 ],
+            })
+            .populate({
+                path: 'metadata.rp_reporterId',
+                select: '_id name email',
+                strictPopulate: false,
+            })
+            .populate({
+                path: 'metadata.rp_targetUserId',
+                select: '_id name email',
+                strictPopulate: false,
             })
             .lean();
 

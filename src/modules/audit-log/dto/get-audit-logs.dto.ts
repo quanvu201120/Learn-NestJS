@@ -5,6 +5,7 @@ import {
     IsMongoId,
     IsOptional,
     IsString,
+    MaxLength,
 } from 'class-validator';
 import { UserRole } from '@/modules/users/types/user';
 import {
@@ -22,10 +23,6 @@ export class GetAuditLogsDto {
     actorId?: string;
 
     @IsOptional()
-    @IsMongoId()
-    targetId?: string;
-
-    @IsOptional()
     @IsEnum(AuditLogActionEnum)
     action?: AuditLogActionEnum;
 
@@ -39,6 +36,7 @@ export class GetAuditLogsDto {
 
     @IsOptional()
     @IsString()
+    @MaxLength(45)
     ip?: string;
 
     @IsOptional()

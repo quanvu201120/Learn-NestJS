@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 import {
+    BadRequestException,
     Controller,
     Get,
     Post,
@@ -13,8 +14,10 @@ import {
     Request,
     Query,
     NotFoundException,
-    BadRequestException,
+    UploadedFiles,
+    UseInterceptors,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { CreateReportDto } from './dto/create-report.dto';
 import { ResolveReportDto } from './dto/resolve-report.dto';
 import { RolesGuard } from '@/auth/passport/roles.guard';
@@ -27,14 +30,41 @@ import { QuickPenaltyDto } from './dto/quick-penalty.dto';
 import { ReportsService } from './reports.service';
 import { REPORT_MESSAGES } from './constants/report.constant';
 import { ReportStatusEnum } from './types/report.type';
+import { MEDIA_MESSAGES } from '../media/constants/media.constant';
 
 @Controller('reports')
 export class ReportsController {
     constructor(private readonly reportsService: ReportsService) {}
 
     @Post()
-    async create(@Body() createReportDto: CreateReportDto, @Request() req) {
-        return await this.reportsService.create(createReportDto, req.user._id);
+    @UseInterceptors(
+        FilesInterceptor('files', 5, {
+            limits: {
+                fileSize: 5 * 1024 * 1024,
+            },
+            fileFilter: (_req, file, callback) => {
+                if (!file.mimetype.startsWith('image/')) {
+                    callback(
+                        new BadRequestException(MEDIA_MESSAGES.WRONG_FILE_TYPE),
+                        false,
+                    );
+                    return;
+                }
+
+                callback(null, true);
+            },
+        }),
+    )
+    async create(
+        @Body() createReportDto: CreateReportDto,
+        @UploadedFiles() files: Express.Multer.File[],
+        @Request() req,
+    ) {
+        return await this.reportsService.create(
+            createReportDto,
+            req.user._id,
+            files || [],
+        );
     }
 
     @Get()

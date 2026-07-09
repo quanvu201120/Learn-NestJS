@@ -5,9 +5,12 @@ export const MEDIA_CONSTANTS = {
     CONVERSATION_VIDEO_FOLDER: 'conversations/videos',
     CONVERSATION_AUDIO_FOLDER: 'conversations/audio',
     CONVERSATION_FILE_FOLDER: 'conversations/files',
+    REPORT_EVIDENCE_FOLDER: 'reports/evidence',
 } as const;
 
 export const MEDIA_MESSAGES = {
+    FILE_UPLOAD_OVER_LIMIT: 'File upload limit exceeded.',
+    FILE_UPLOAD_EMPTY: 'Please upload at least one file',
     FILE_UPLOAD_FAILED: 'File upload failed',
     FILE_IS_TOO_LARGE: 'File is too large',
     WRONG_FILE_TYPE: 'Wrong file type',

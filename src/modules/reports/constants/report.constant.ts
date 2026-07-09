@@ -5,6 +5,7 @@ export const REPORT_MESSAGES = {
     REPORT_SUBMITTED_SUCCESS: 'Report submitted successfully',
     REPORT_NOT_FOUND: 'Report not found',
     ADMIN_NOT_FOUND: 'Admin not found',
+    MEDIA_INVALID_FOR_REPORT: 'Media invalid for report',
     MISSING_PERMISSION: 'Missing permission',
     CANNOT_PENALIZE_SELF: 'Can not penalize self',
     INVALID_PASSWORD: 'Invalid password',
@@ -22,6 +23,7 @@ export const REPORT_MESSAGES = {
     BAN_APPLIED: (duration: number, until: string) =>
         `Account banned for ${duration} days (Until ${until}).`,
     REPORT_ALREADY_RESOLVED: 'This report has already been processed',
+    REPORT_IS_BEING_PROCESSED: 'Report is currently being processed',
     REPORT_RESOLVED_SUCCESS: 'Report processed successfully',
     QUICK_PENALTY_DESC: 'Quick penalty from Admin',
     QUICK_PENALTY_NOTE: 'Quick penalty',
@@ -32,3 +34,7 @@ export const REPORT_MESSAGES = {
     UNMUTE_SUCCESS: 'Account successfully unmuted',
     STRIKE_CLEARED_SUCCESS: 'Strike successfully cleared',
 } as const;
+
+export const REPORT_CONSTANTS = {
+    REPORT_LIMIT_PER_DAY_DEFAULT: 3,
+};
