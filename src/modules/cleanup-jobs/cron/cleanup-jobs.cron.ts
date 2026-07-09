@@ -12,7 +12,7 @@ export class CleanupJobsCron {
      * Chạy mỗi 15 phút để tìm các job đang bị kẹt ở trạng thái locked
      * (tức là lockedUntil < Date.now()) và gỡ lock cho chúng.
      */
-    @Cron('0 */15 * * * *')
+    @Cron('0 */3 * * * *')
     async unlockStuckJobs() {
         try {
             await this.cleanupJobsService.unlockStuckJobs();
