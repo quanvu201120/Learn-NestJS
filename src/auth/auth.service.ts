@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
@@ -77,7 +78,7 @@ export class AuthService {
                 timeZone: 'Asia/Ho_Chi_Minh',
             });
             throw new UnauthorizedException(
-                `Your account has been banned until ${time}`,
+                AUTH_MESSAGES.ACCOUNT_BANNED_UNTIL(time),
             );
         }
 
@@ -178,7 +179,7 @@ export class AuthService {
                     timeZone: 'Asia/Ho_Chi_Minh',
                 });
                 throw new UnauthorizedException(
-                    `Your account has been banned until ${time}`,
+                    AUTH_MESSAGES.ACCOUNT_BANNED_UNTIL(time),
                 );
             }
 

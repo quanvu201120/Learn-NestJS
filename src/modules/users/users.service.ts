@@ -351,7 +351,7 @@ export class UsersService {
         }
 
         if (isDisabled && user.isDisabled) {
-            throw new BadRequestException(USER_MESSAGES.USER_ALREADY_DISABLED);
+            throw new BadRequestException(USER_MESSAGES.USER_DISABLED);
         }
 
         if (!isDisabled && !user.isDisabled) {

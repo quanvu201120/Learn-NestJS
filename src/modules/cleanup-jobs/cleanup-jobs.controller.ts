@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 import {
@@ -25,6 +26,8 @@ import {
 import { RolesGuard } from '@/auth/passport/roles.guard';
 import { Roles } from '@/utils/decorator-customize';
 import { UserRole } from '@/modules/users/types/user';
+import { CLEANUP_JOB_MESSAGES } from './constants/cleanup-job.constant';
+import { VALIDATION_MESSAGES } from '@/common/constants/validation.constant';
 
 @Controller('cleanup-jobs')
 @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
@@ -38,7 +41,7 @@ export class CleanupJobsController {
         @UploadedFile() file: Express.Multer.File,
     ) {
         if (!file) {
-            throw new BadRequestException('File is required');
+            throw new BadRequestException(VALIDATION_MESSAGES.FILE_REQUIRED);
         }
 
         return await this.cleanupJobsService.createCleanupJob({
@@ -48,7 +51,7 @@ export class CleanupJobsController {
             payload: {
                 publicId: `test/cloudinary-missing-${Date.now()}`,
             },
-            error: 'Manual test cleanup job for Cloudinary',
+            error: CLEANUP_JOB_MESSAGES.MANUAL_TEST_CLEANUP_JOB_CLOUDINARY,
         });
     }
 
@@ -56,7 +59,7 @@ export class CleanupJobsController {
     @UseInterceptors(FileInterceptor('file'))
     async createR2CleanupJobTest(@UploadedFile() file: Express.Multer.File) {
         if (!file) {
-            throw new BadRequestException('File is required');
+            throw new BadRequestException(VALIDATION_MESSAGES.FILE_REQUIRED);
         }
 
         return await this.cleanupJobsService.createCleanupJob({
@@ -66,7 +69,7 @@ export class CleanupJobsController {
             payload: {
                 objectKey: `test/r2-missing-${Date.now()}`,
             },
-            error: 'Manual test cleanup job for R2',
+            error: CLEANUP_JOB_MESSAGES.MANUAL_TEST_CLEANUP_JOB_R2,
         });
     }
 
@@ -109,6 +112,8 @@ export class CleanupJobsController {
             return await this.cleanupJobsService.setIgnoreJob(jobId);
         }
         // Có thể mở rộng cho các status khác nếu service hỗ trợ
-        throw new BadRequestException('Status not supported via this endpoint');
+        throw new BadRequestException(
+            CLEANUP_JOB_MESSAGES.STATUS_NOT_SUPPORTED,
+        );
     }
 }

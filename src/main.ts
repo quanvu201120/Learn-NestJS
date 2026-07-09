@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { TransformInterceptor } from './common/transform.interceptor';
 import cookieParser from 'cookie-parser';
+import { VALIDATION_MESSAGES } from './common/constants/validation.constant';
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
@@ -49,7 +50,7 @@ async function bootstrap() {
                 return new UnprocessableEntityException({
                     statusCode: 422,
                     error: 'Unprocessable Entity',
-                    message: 'Validation failed',
+                    message: VALIDATION_MESSAGES.VALIDATION_FAILED,
                     errors: formatErrors(validationErrors),
                 });
             },

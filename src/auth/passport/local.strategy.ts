@@ -6,6 +6,7 @@ import {
     UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService } from '../auth.service';
+import { AUTH_MESSAGES } from '../constants/auth.constant';
 
 @Injectable()
 export class LocalStrategy extends PassportStrategy(Strategy) {
@@ -18,15 +19,13 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
     async validate(identifier: string, password: string) {
         const user = await this.authService.validateUser(identifier, password);
         if (!user) {
-            throw new UnauthorizedException(
-                'Tài khoản hoặc mật khẩu không hợp lệ',
-            );
+            throw new UnauthorizedException(AUTH_MESSAGES.INVALID_CREDENTIALS);
         }
         if (user.isActive === false) {
-            throw new BadRequestException('User is not active');
+            throw new BadRequestException(AUTH_MESSAGES.USER_NOT_FOUND);
         }
         if (user.isDisabled === true) {
-            throw new BadRequestException('User has been disabled');
+            throw new BadRequestException(AUTH_MESSAGES.USER_DISABLED);
         }
         return user;
     }

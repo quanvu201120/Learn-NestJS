@@ -9,6 +9,7 @@ import {
     ValidateIf,
 } from 'class-validator';
 import { ReportReasonEnum } from '../types/report.type';
+import { VALIDATION_MESSAGES } from '@/common/constants/validation.constant';
 
 export class CreateReportDto {
     @IsNotEmpty()
@@ -20,7 +21,9 @@ export class CreateReportDto {
     reason: ReportReasonEnum;
 
     @ValidateIf((o) => o.reason === ReportReasonEnum.OTHER)
-    @IsNotEmpty({ message: 'Mô tả là bắt buộc khi chọn lý do Khác' })
+    @IsNotEmpty({
+        message: VALIDATION_MESSAGES.DESCRIPTION_REQUIRED_FOR_OTHER_REASON,
+    })
     @IsString()
     @MaxLength(500)
     description?: string;

@@ -10,34 +10,37 @@ import {
     Matches,
     MaxLength,
 } from 'class-validator';
+import { VALIDATION_MESSAGES } from '@/common/constants/validation.constant';
 
 export class CreateUserDto {
     @IsOptional()
     @MaxLength(50)
-    @IsNotEmpty({ message: 'Tên không được để trống' })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.NAME_REQUIRED })
     @Transform(({ value }) =>
         typeof value === 'string' ? value.trim() : value,
     )
     name?: string;
 
-    @IsNotEmpty({ message: 'Email không được để trống' })
-    @IsEmail({}, { message: 'Email không đúng định dạng' })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.EMAIL_REQUIRED })
+    @IsEmail({}, { message: VALIDATION_MESSAGES.EMAIL_INVALID })
     @Transform(({ value }) =>
         typeof value === 'string' ? value.toLowerCase().trim() : value,
     )
     email: string;
 
-    @IsNotEmpty({ message: 'Mật khẩu không được để trống' })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.PASSWORD_REQUIRED })
     password: string;
 
-    @IsNotEmpty({ message: 'Xác nhận mật khẩu không được để trống' })
-    @Match('password', { message: 'Xác nhận mật khẩu không trùng khớp' })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.CONFIRM_PASSWORD_REQUIRED })
+    @Match('password', {
+        message: VALIDATION_MESSAGES.CONFIRM_PASSWORD_NOT_MATCH,
+    })
     confirmPassword: string;
 
     @IsOptional()
     @Transform(({ value }) => (value === '' ? null : value))
     @Matches(/^(0|\+84)(3|5|7|8|9)[0-9]{8}$/, {
-        message: 'Số điện thoại không hợp lệ',
+        message: VALIDATION_MESSAGES.PHONE_INVALID,
     })
     phone?: string;
 
@@ -46,7 +49,7 @@ export class CreateUserDto {
 
     @IsOptional()
     @IsIn([UserRole.USER, UserRole.ADMIN], {
-        message: 'Role phải là USER hoặc ADMIN',
+        message: VALIDATION_MESSAGES.ROLE_INVALID,
     })
     role?: UserRole = UserRole.USER;
 }

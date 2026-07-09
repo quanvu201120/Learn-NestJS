@@ -6,9 +6,10 @@ import {
     IsString,
 } from 'class-validator';
 import { PenaltyActionEnum, ReportStatusEnum } from '../types/report.type';
+import { VALIDATION_MESSAGES } from '@/common/constants/validation.constant';
 
 export class ResolveReportDto {
-    @IsNotEmpty()
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.STATUS_REQUIRED })
     @IsIn([
         ReportStatusEnum.RESOLVED,
         ReportStatusEnum.DISMISSED,

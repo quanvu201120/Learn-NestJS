@@ -6,6 +6,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '@/modules/users/users.service';
 import { SessionService } from '@/modules/session/session.service';
+import { AUTH_MESSAGES } from '../constants/auth.constant';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -23,37 +24,43 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     async validate(payload: any) {
         const user = await this.usersService.findOne(payload._id);
-        if (!user) throw new UnauthorizedException('User not found');
+        if (!user)
+            throw new UnauthorizedException(AUTH_MESSAGES.USER_NOT_FOUND);
         if (user.isDisabled) {
-            throw new UnauthorizedException('User has been disabled');
+            throw new UnauthorizedException(AUTH_MESSAGES.USER_DISABLED);
         }
         if (user.banUntil && user.banUntil > new Date()) {
             const time = user.banUntil.toLocaleString('vi-VN', {
                 timeZone: 'Asia/Ho_Chi_Minh',
             });
             throw new UnauthorizedException(
-                `Your account has been banned until ${time}`,
+                AUTH_MESSAGES.ACCOUNT_BANNED_UNTIL(time),
             );
         }
         if (!user.isActive) {
-            throw new UnauthorizedException('User is not active');
+            throw new UnauthorizedException(AUTH_MESSAGES.USER_NOT_FOUND);
         }
 
         if (payload.tokenVersion !== user.tokenVersion) {
-            throw new UnauthorizedException('Token version invalid');
+            throw new UnauthorizedException(
+                AUTH_MESSAGES.TOKEN_VERSION_MISMATCH,
+            );
         }
 
         const session = await this.sessionService.findSessionById(
             payload.sessionId,
         );
-        if (!session) throw new UnauthorizedException('Session not found');
+        if (!session)
+            throw new UnauthorizedException(AUTH_MESSAGES.SESSION_NOT_FOUND);
 
         if (session.userId.toString() !== user._id.toString()) {
-            throw new UnauthorizedException('Session ownership invalid');
+            throw new UnauthorizedException(
+                AUTH_MESSAGES.SESSION_USER_NOT_MATCH,
+            );
         }
 
         if (session.isRevoked) {
-            throw new UnauthorizedException('Session revoked');
+            throw new UnauthorizedException(AUTH_MESSAGES.SESSION_REVOKED);
         }
 
         return {

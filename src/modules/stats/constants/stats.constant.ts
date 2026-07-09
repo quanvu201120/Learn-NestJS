@@ -22,11 +22,11 @@ export const SYSTEM_DAILY_STAT_SUM_FIELDS = [
     'r2BandwidthBytes',
 ] as const;
 export const STATS_MESSAGES = {
-    CLOUD_USAGE_SYNC_START: 'Starting daily cloud usage sync...',
-    CLOUD_USAGE_SYNC_SUCCESS: 'Cloud usage sync completed successfully.',
-    CLOUD_USAGE_SYNC_FAILED: 'Failed to upsert monthly cloud usage',
-    CLOUDINARY_FETCH_FAILED: 'Failed to fetch Cloudinary usage',
-    R2_FETCH_FAILED: 'Failed to fetch R2 usage',
+    CLOUD_USAGE_SYNC_START: 'Bắt đầu đồng bộ dữ liệu...',
+    CLOUD_USAGE_SYNC_SUCCESS: 'Đồng bộ dữ liệu hoàn tất.',
+    CLOUD_USAGE_SYNC_FAILED: 'Đồng bộ dữ liệu thất bại',
+    CLOUDINARY_FETCH_FAILED: 'Lấy dữ liệu từ Cloudinary thất bại',
+    R2_FETCH_FAILED: 'Lấy dữ liệu từ R2 thất bại',
     R2_CONFIG_MISSING:
-        'CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID not configured, skipping R2 usage fetch.',
+        'Chưa cấu hình CLOUDFLARE_API_TOKEN hoặc CLOUDFLARE_ACCOUNT_ID',
 } as const;

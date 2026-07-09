@@ -96,7 +96,7 @@ export class CleanupJobsService {
     ) {
         if (page <= 0 || limit <= 0) {
             throw new BadRequestException(
-                CLEANUP_JOB_MESSAGES.GET_JOB_PAGINATION_INVALID,
+                CLEANUP_JOB_MESSAGES.GET_CLEANUP_JOBS_PAGINATION_INVALID,
             );
         }
 

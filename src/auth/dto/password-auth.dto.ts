@@ -2,25 +2,28 @@
 import { Match } from '@/utils/decorator-customize';
 import { IsEmail, IsNotEmpty, MinLength } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { VALIDATION_MESSAGES } from '@/common/constants/validation.constant';
 
 export class ChangePasswordAuthDto {
-    @MinLength(6, { message: 'Old password must be at least 6 characters' })
-    @IsNotEmpty({ message: 'Old password is required' })
+    @MinLength(6, { message: VALIDATION_MESSAGES.OLD_PASSWORD_MIN_LENGTH })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.OLD_PASSWORD_REQUIRED })
     passwordOld: string;
 
-    @MinLength(6, { message: 'New password must be at least 6 characters' })
-    @IsNotEmpty({ message: 'New password is required' })
+    @MinLength(6, { message: VALIDATION_MESSAGES.NEW_PASSWORD_MIN_LENGTH })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.NEW_PASSWORD_REQUIRED })
     passwordNew: string;
 
-    @MinLength(6, { message: 'Confirm password must be at least 6 characters' })
-    @IsNotEmpty({ message: 'Confirm password is required' })
-    @Match('passwordNew', { message: 'Confirm password does not match' })
+    @MinLength(6, { message: VALIDATION_MESSAGES.CONFIRM_PASSWORD_MIN_LENGTH })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.CONFIRM_PASSWORD_REQUIRED })
+    @Match('passwordNew', {
+        message: VALIDATION_MESSAGES.CONFIRM_PASSWORD_NOT_MATCH,
+    })
     confirmPassword: string;
 }
 
 export class ForgotPasswordAuthDto {
-    @IsEmail({}, { message: 'Email không đúng định dạng' })
-    @IsNotEmpty({ message: 'Email không được để trống' })
+    @IsEmail({}, { message: VALIDATION_MESSAGES.EMAIL_INVALID })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.EMAIL_REQUIRED })
     @Transform(({ value }) =>
         typeof value === 'string' ? value.toLowerCase().trim() : value,
     )
@@ -28,28 +31,30 @@ export class ForgotPasswordAuthDto {
 }
 
 export class ResetPasswordAuthDto {
-    @IsNotEmpty({ message: 'Email không được để trống' })
-    @IsEmail({}, { message: 'Email không đúng định dạng' })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.EMAIL_REQUIRED })
+    @IsEmail({}, { message: VALIDATION_MESSAGES.EMAIL_INVALID })
     @Transform(({ value }) =>
         typeof value === 'string' ? value.toLowerCase().trim() : value,
     )
     email: string;
 
-    @IsNotEmpty({ message: 'Code không được để trống' })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.CODE_REQUIRED })
     code: string;
 
-    @MinLength(6, { message: 'Mật khẩu phải có ít nhất 6 ký tự' })
-    @IsNotEmpty({ message: 'Mật khẩu không được để trống' })
+    @MinLength(6, { message: VALIDATION_MESSAGES.PASSWORD_MIN_LENGTH })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.PASSWORD_REQUIRED })
     password: string;
 
-    @MinLength(6, { message: 'Xác nhận mật khẩu phải có ít nhất 6 ký tự' })
-    @IsNotEmpty({ message: 'Xác nhận mật khẩu không được để trống' })
-    @Match('password', { message: 'Xác nhận mật khẩu không khớp' })
+    @MinLength(6, { message: VALIDATION_MESSAGES.CONFIRM_PASSWORD_MIN_LENGTH })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.CONFIRM_PASSWORD_REQUIRED })
+    @Match('password', {
+        message: VALIDATION_MESSAGES.CONFIRM_PASSWORD_NOT_MATCH,
+    })
     confirmPassword: string;
 }
 
 export class ConfirmPasswordAuthDto {
-    @MinLength(6, { message: 'Mật khẩu phải có ít nhất 6 ký tự' })
-    @IsNotEmpty({ message: 'Mật khẩu không được để trống' })
+    @MinLength(6, { message: VALIDATION_MESSAGES.PASSWORD_MIN_LENGTH })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.PASSWORD_REQUIRED })
     password: string;
 }

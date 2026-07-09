@@ -6,6 +6,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { IS_PUBLIC_KEY } from '@/utils/decorator-customize';
 import { Reflector } from '@nestjs/core';
+import { AUTH_MESSAGES } from '../constants/auth.constant';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
@@ -26,7 +27,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     handleRequest(err, user, info) {
         if (err || !user) {
-            throw err || new UnauthorizedException('AccessToken không hợp lệ');
+            throw (
+                err ||
+                new UnauthorizedException(AUTH_MESSAGES.ACCESS_TOKEN_INVALID)
+            );
         }
         // eslint-disable-next-line @typescript-eslint/no-unsafe-return
         return user;

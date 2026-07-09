@@ -131,7 +131,7 @@ export class ConversationsService {
                 if (!conversation.isGroup && user && user.isDisabled) {
                     mappedUser = {
                         ...(user.toJSON ? user.toJSON() : user),
-                        name: 'Tài khoản vô hiệu hóa',
+                        name: CONVERSATION_MESSAGES.DISABLED_ACCOUNT_NAME,
                         avatar: undefined,
                         isDisabled: true, // <-- IMPORTANT FOR FRONTEND
                     };
@@ -564,14 +564,14 @@ export class ConversationsService {
             const addedUsers = result.users as any[];
             const addedNames = addedUsers
                 .filter((u) => memberIds.includes(u._id.toString()))
-                .map((u) => u.name || u.email || 'Một thành viên')
+                .map((u) => u.name || u.email)
                 .join(', ');
 
             await this.messageService.createMessage(
                 currentUserId,
                 id,
                 MessageEnumType.SYSTEM,
-                `Quản trị viên đã thêm ${addedNames} vào nhóm`,
+                CONVERSATION_MESSAGES.SYSTEM_ADDED_MEMBERS(addedNames),
             );
 
             this.memberAdded$.next({
@@ -643,14 +643,12 @@ export class ConversationsService {
             );
         }
         const removedUser = await this.userService.findOneForApi(memberId);
-        const removedName = removedUser
-            ? removedUser.name || removedUser.email || 'Một thành viên'
-            : 'Một thành viên';
+        const removedName = removedUser?.name || removedUser?.email || memberId;
 
         const messageContent =
             currentUserId === memberId
-                ? `${removedName} đã rời khỏi nhóm`
-                : `Quản trị viên đã xóa ${removedName} khỏi nhóm`;
+                ? CONVERSATION_MESSAGES.SYSTEM_LEFT_GROUP(removedName)
+                : CONVERSATION_MESSAGES.SYSTEM_REMOVED_FROM_GROUP(removedName);
 
         await this.messageService.createMessage(
             currentUserId,
@@ -817,14 +815,20 @@ export class ConversationsService {
                     (u: any) => u._id.toString() === newAdminId,
                 );
                 const currentName =
-                    (currentUserObj as any)?.name || 'Quản trị viên';
-                const newName = (newAdminObj as any)?.name || 'một thành viên';
+                    (currentUserObj as any)?.name ||
+                    CONVERSATION_MESSAGES.ADMIN_LABEL;
+                const newName =
+                    (newAdminObj as any)?.name ||
+                    CONVERSATION_MESSAGES.MEMBER_LABEL;
 
                 await this.messageService.createMessage(
                     currentUserId,
                     conversationId,
                     MessageEnumType.SYSTEM,
-                    `${currentName} đã chuyển quyền quản trị viên cho ${newName}`,
+                    CONVERSATION_MESSAGES.SYSTEM_TRANSFER_ADMIN(
+                        currentName,
+                        newName,
+                    ),
                     undefined,
                     undefined,
                     session,
@@ -1373,22 +1377,24 @@ export class ConversationsService {
         const conversation =
             await this.conversationModel.findById(conversationId);
         if (!conversation) {
-            throw new NotFoundException('Không tìm thấy cuộc trò chuyện');
+            throw new NotFoundException(
+                CONVERSATION_MESSAGES.CONVERSATION_NOT_FOUND,
+            );
         }
 
         const objectUserId = toObjectId(currentUserId, 'currentUserId');
 
         if (!conversation.users.some((id) => id.equals(objectUserId))) {
-            throw new ForbiddenException('Bạn không thuộc cuộc trò chuyện này');
+            throw new ForbiddenException(CONVERSATION_MESSAGES.NOT_A_MEMBER);
         }
 
         if (conversation.acceptedBy.some((id) => id.equals(objectUserId))) {
-            return { message: 'Đã chấp nhận cuộc trò chuyện này rồi' };
+            return { message: CONVERSATION_MESSAGES.ALREADY_ACCEPTED };
         }
 
         conversation.acceptedBy.push(objectUserId);
         await conversation.save();
 
-        return { message: 'Chấp nhận cuộc trò chuyện thành công' };
+        return { message: CONVERSATION_MESSAGES.ACCEPT_SUCCESS };
     }
 }

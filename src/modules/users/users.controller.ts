@@ -25,7 +25,6 @@ import {
     UpdateRoleBySuperAdminDto,
     UpdateUserDto,
     AdminActionWithPasswordDto,
-    AdminActionReasonDto,
 } from './dto/update-user.dto';
 import { Roles } from '@/utils/decorator-customize';
 import { UserRole } from './types/user';
@@ -35,6 +34,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import * as express from 'express';
 import { ConfigService } from '@nestjs/config';
 import { UserDisableStateResponse } from './types/user';
+import { VALIDATION_MESSAGES } from '@/common/constants/validation.constant';
 
 @ApiTags('Users - Quản lý người dùng')
 @ApiBearerAuth('JWT-auth')
@@ -83,7 +83,7 @@ export class UsersController {
     async searchUser(@Query('query') query: string, @Request() req) {
         if (!query) {
             throw new BadRequestException(
-                'Vui lòng nhập email hoặc số điện thoại',
+                VALIDATION_MESSAGES.EMAIL_OR_PHONE_REQUIRED,
             );
         }
         return await this.usersService.findOneByEmailOrPhone(

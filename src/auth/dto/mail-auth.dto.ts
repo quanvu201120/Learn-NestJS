@@ -1,22 +1,23 @@
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import { IsEmail, IsNotEmpty } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { VALIDATION_MESSAGES } from '@/common/constants/validation.constant';
 
 export class ActiveAuthDto {
-    @IsEmail({}, { message: 'Email is invalid' })
-    @IsNotEmpty({ message: 'Email is required' })
+    @IsEmail({}, { message: VALIDATION_MESSAGES.EMAIL_INVALID })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.EMAIL_REQUIRED })
     @Transform(({ value }) =>
         typeof value === 'string' ? value.toLowerCase().trim() : value,
     )
     email: string;
 
-    @IsNotEmpty({ message: 'Code is invalid' })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.CODE_INVALID })
     code: string;
 }
 
 export class ResendCodeAuthDto {
-    @IsEmail({}, { message: 'Email không đúng định dạng' })
-    @IsNotEmpty({ message: 'Email không được để trống' })
+    @IsEmail({}, { message: VALIDATION_MESSAGES.EMAIL_INVALID })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.EMAIL_REQUIRED })
     @Transform(({ value }) =>
         typeof value === 'string' ? value.toLowerCase().trim() : value,
     )
@@ -24,8 +25,8 @@ export class ResendCodeAuthDto {
 }
 
 export class SendCodeUpdateEmailAuthDto {
-    @IsEmail({}, { message: 'Email không đúng định dạng' })
-    @IsNotEmpty({ message: 'Email không được để trống' })
+    @IsEmail({}, { message: VALIDATION_MESSAGES.EMAIL_INVALID })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.EMAIL_REQUIRED })
     @Transform(({ value }) =>
         typeof value === 'string' ? value.toLowerCase().trim() : value,
     )
@@ -33,13 +34,13 @@ export class SendCodeUpdateEmailAuthDto {
 }
 
 export class UpdateEmailAuthDto {
-    @IsEmail({}, { message: 'Email không đúng định dạng' })
-    @IsNotEmpty({ message: 'Email không được để trống' })
+    @IsEmail({}, { message: VALIDATION_MESSAGES.EMAIL_INVALID })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.EMAIL_REQUIRED })
     @Transform(({ value }) =>
         typeof value === 'string' ? value.toLowerCase().trim() : value,
     )
     email: string;
 
-    @IsNotEmpty({ message: 'Code is invalid' })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.CODE_INVALID })
     code: string;
 }

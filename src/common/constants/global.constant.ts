@@ -15,6 +15,7 @@ export const GLOBAL_CONSTANTS = {
 } as const;
 
 export const GLOBAL_MESSAGES = {
-    INVALID_FIELD: (fieldName: string) => `Invalid ${fieldName}`,
-    UNKNOWN_DEVICE: 'Unknown device',
+    INVALID_FIELD: (fieldName: string) => `${fieldName} không hợp lệ`,
+    UNKNOWN_DEVICE: 'Thiết bị không xác định',
+    UNKNOWN_ERROR: 'Lỗi không xác định',
 } as const;

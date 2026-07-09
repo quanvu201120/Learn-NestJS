@@ -13,6 +13,7 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { UserGenderEnum, UserRole } from '../types/user';
+import { VALIDATION_MESSAGES } from '@/common/constants/validation.constant';
 
 @ValidatorConstraint({ name: 'isBeforeNow', async: false })
 export class IsBeforeNowConstraint implements ValidatorConstraintInterface {
@@ -22,14 +23,14 @@ export class IsBeforeNowConstraint implements ValidatorConstraintInterface {
     }
 
     defaultMessage() {
-        return 'Date of birth cannot be in the future';
+        return VALIDATION_MESSAGES.DATE_OF_BIRTH_FUTURE;
     }
 }
 
 export class UpdateUserDto {
     @IsOptional()
-    @IsNotEmpty({ message: 'Name must not be empty' })
-    @IsString({ message: 'Name must be a string' })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.NAME_REQUIRED })
+    @IsString({ message: VALIDATION_MESSAGES.NAME_STRING })
     @Transform(({ value }) =>
         typeof value === 'string' ? value.trim() : value,
     )
@@ -39,34 +40,36 @@ export class UpdateUserDto {
     @IsOptional()
     @Transform(({ value }) => (value === '' ? null : value))
     @Matches(/^(0|\+84)(3|5|7|8|9)[0-9]{8}$/, {
-        message: 'Invalid phone number',
+        message: VALIDATION_MESSAGES.PHONE_INVALID,
     })
     phone?: string | null;
 
     @IsOptional()
-    @IsString({ message: 'Address must be a string' })
+    @IsString({ message: VALIDATION_MESSAGES.ADDRESS_STRING })
     @MaxLength(150)
     address?: string | null;
 
     @IsOptional()
     @Transform(({ value }) => (value ? new Date(value) : value))
-    @IsDate({ message: 'Invalid date of birth' })
+    @IsDate({ message: VALIDATION_MESSAGES.DATE_OF_BIRTH_INVALID })
     @Validate(IsBeforeNowConstraint)
     dateOfBirth?: Date | null;
 
     @IsOptional()
-    @IsIn(Object.values(UserGenderEnum), { message: 'Invalid gender' })
+    @IsIn(Object.values(UserGenderEnum), {
+        message: VALIDATION_MESSAGES.GENDER_INVALID,
+    })
     gender?: UserGenderEnum | null;
 
     @IsOptional()
-    @IsString({ message: 'Bio must be a string' })
+    @IsString({ message: VALIDATION_MESSAGES.BIO_STRING })
     @MaxLength(250)
     bio?: string | null;
 }
 
 export class AdminActionReasonDto {
-    @IsNotEmpty({ message: 'Lý do không được để trống' })
-    @IsString({ message: 'Lý do phải là chuỗi' })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.REASON_REQUIRED })
+    @IsString({ message: VALIDATION_MESSAGES.REASON_STRING })
     @Transform(({ value }) =>
         typeof value === 'number' ? String(value) : value,
     )
@@ -74,18 +77,18 @@ export class AdminActionReasonDto {
 }
 
 export class UpdateRoleBySuperAdminDto {
-    @IsNotEmpty({ message: 'Role must not be empty' })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.ROLE_REQUIRED })
     @IsIn([UserRole.USER, UserRole.ADMIN], {
-        message: 'Role must be USER or ADMIN',
+        message: VALIDATION_MESSAGES.ROLE_INVALID,
     })
     role: UserRole;
 
-    @IsNotEmpty({ message: 'Password must not be empty' })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.PASSWORD_REQUIRED })
     @IsString()
     password: string;
 
     @IsOptional()
-    @IsString({ message: 'Lý do phải là chuỗi' })
+    @IsString({ message: VALIDATION_MESSAGES.REASON_STRING })
     @Transform(({ value }) =>
         typeof value === 'number' ? String(value) : value,
     )
@@ -93,7 +96,7 @@ export class UpdateRoleBySuperAdminDto {
 }
 
 export class AdminActionWithPasswordDto extends AdminActionReasonDto {
-    @IsNotEmpty({ message: 'Password must not be empty' })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.PASSWORD_REQUIRED })
     @IsString()
     password: string;
 }
