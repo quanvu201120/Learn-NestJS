@@ -28,8 +28,6 @@ export class StatsCron {
      */
     @Cron('*/15 * * * *')
     async handleCloudUsageTracking() {
-        this.logger.log(STATS_MESSAGES.CLOUD_USAGE_SYNC_START);
-
         let cloudinaryBandwidthBytes = 0;
         let cloudinaryStorageBytes = 0;
         let cloudinaryCreditsUsage = 0;
@@ -68,7 +66,6 @@ export class StatsCron {
                 r2BandwidthBytes,
                 r2StorageBytes,
             });
-            this.logger.log(STATS_MESSAGES.CLOUD_USAGE_SYNC_SUCCESS);
         } catch (error) {
             this.logger.error(STATS_MESSAGES.CLOUD_USAGE_SYNC_FAILED, error);
         }

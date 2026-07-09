@@ -1,12 +1,13 @@
 import { Strategy } from 'passport-local';
 import { PassportStrategy } from '@nestjs/passport';
 import {
-    BadRequestException,
+    ForbiddenException,
     Injectable,
     UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService } from '../auth.service';
 import { AUTH_MESSAGES } from '../constants/auth.constant';
+import { USER_MESSAGES } from '@/modules/users/constants/user.constant';
 
 @Injectable()
 export class LocalStrategy extends PassportStrategy(Strategy) {
@@ -22,10 +23,10 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
             throw new UnauthorizedException(AUTH_MESSAGES.INVALID_CREDENTIALS);
         }
         if (user.isActive === false) {
-            throw new BadRequestException(AUTH_MESSAGES.USER_NOT_FOUND);
+            throw new ForbiddenException(USER_MESSAGES.USER_NOT_ACTIVE);
         }
         if (user.isDisabled === true) {
-            throw new BadRequestException(AUTH_MESSAGES.USER_DISABLED);
+            throw new UnauthorizedException(AUTH_MESSAGES.USER_DISABLED);
         }
         return user;
     }
