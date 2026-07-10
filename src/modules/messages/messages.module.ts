@@ -7,6 +7,7 @@ import { ConversationsModule } from '../conversations/conversations.module';
 import { MediaModule } from '../media/media.module';
 import { RelationshipsModule } from '../relationships/relationships.module';
 import { StatsModule } from '../stats/stats.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
     imports: [
@@ -16,6 +17,7 @@ import { StatsModule } from '../stats/stats.module';
         forwardRef(() => ConversationsModule),
         forwardRef(() => MediaModule),
         forwardRef(() => RelationshipsModule),
+        forwardRef(() => UsersModule),
         StatsModule,
     ],
     controllers: [MessagesController],

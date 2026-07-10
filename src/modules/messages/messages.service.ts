@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 /* eslint-disable @typescript-eslint/no-floating-promises */
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 
@@ -37,6 +38,7 @@ import {
     MEDIA_CONSTANTS,
     MEDIA_MESSAGES,
 } from '../media/constants/media.constant';
+import { UsersService } from '../users/users.service';
 import { RedisService } from '@/redis/redis.service';
 import {
     CleanupJobEntityEnum,
@@ -67,6 +69,8 @@ export class MessagesService {
         @InjectConnection()
         private readonly connection: Connection,
         private readonly mediaService: MediaService,
+        @Inject(forwardRef(() => UsersService))
+        private readonly usersService: UsersService,
         private readonly redisService: RedisService,
         @Inject(forwardRef(() => RelationshipsService))
         private readonly relationshipsService: RelationshipsService,
@@ -146,6 +150,19 @@ export class MessagesService {
                 MESSAGE_MESSAGES.MESSAGE_CONTENT_REQUIRED,
             );
         }
+
+        if (type === MessageEnumType.TEXT) {
+            const sender = await this.usersService.findOne(senderId);
+            if (sender?.muteUntil && sender.muteUntil > new Date()) {
+                const time = sender.muteUntil.toLocaleString('vi-VN', {
+                    timeZone: 'Asia/Ho_Chi_Minh',
+                });
+                throw new BadRequestException(
+                    MESSAGE_MESSAGES.USER_MUTED(time),
+                );
+            }
+        }
+
         const { conversation, objectConversationId } =
             await this.conversationService.getConversationOrThrow(
                 conversationId,

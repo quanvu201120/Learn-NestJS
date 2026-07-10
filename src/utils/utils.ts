@@ -68,6 +68,32 @@ export const parseDateOrThrow = (value: string, fieldName: string): Date => {
 };
 
 /**
+ * Format ngày giờ theo dạng "HH:mm dd/MM/yyyy" trong múi giờ Việt Nam.
+ */
+export const formatDateTime = (value: Date | string): string => {
+    const date = value instanceof Date ? value : new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return '';
+    }
+
+    const parts = new Intl.DateTimeFormat('vi-VN', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        hour: '2-digit',
+        minute: '2-digit',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour12: false,
+    }).formatToParts(date);
+
+    const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+        parts.find((part) => part.type === type)?.value ?? '';
+
+    return `${getPart('hour')}:${getPart('minute')} ${getPart('day')}/${getPart('month')}/${getPart('year')}`;
+};
+
+/**
  * Ký và tạo cặp Access Token (AT) và Refresh Token (RT) cho User khi đăng nhập.
  */
 export const generateJWT = async (

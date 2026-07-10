@@ -14,4 +14,5 @@ export const MESSAGE_MESSAGES = {
     FILE_REQUIRED: 'Vui lòng tải lên tệp',
     CANNOT_SEND_MESSAGE_TO_BLOCKED_USER:
         'Không thể gửi tin nhắn cho người đã chặn bạn',
+    USER_MUTED: (time: string) => `Bạn đã bị cấm chat đến ${time}`,
 } as const;

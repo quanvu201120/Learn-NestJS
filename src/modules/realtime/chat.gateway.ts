@@ -426,6 +426,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.server.in(roomName).disconnectSockets(true);
     }
 
+    @OnEvent('user.muted')
+    handleUserMuted(payload: { userId: string; muteUntil: Date }) {
+        const roomName = getRoomNameUser(payload.userId);
+        this.server
+            .to(roomName)
+            .emit('user:muted', { muteUntil: payload.muteUntil });
+    }
+
+    @OnEvent('user.unmuted')
+    handleUserUnmuted(payload: { userId: string }) {
+        const roomName = getRoomNameUser(payload.userId);
+        this.server.to(roomName).emit('user:unmuted', {
+            userId: payload.userId,
+        });
+    }
+
     /**
      * Lắng nghe sự kiện `chat:join-conversation`.
      * Khi user click mở một khung chat, hệ thống cho user join vào room Socket.IO của phòng đó.
@@ -493,23 +509,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         try {
             const payload = await this.validateActiveSession(client);
 
-            const user = await this.usersService.findOne(payload._id);
-            if (user && user.muteUntil && user.muteUntil > new Date()) {
-                const time = user.muteUntil.toLocaleString('vi-VN', {
-                    timeZone: 'Asia/Ho_Chi_Minh',
-                });
-                throw new Error(REALTIME_MESSAGES.USER_MUTED(time));
-            }
-
             const { conversationId, content, replyTo } = body;
-            const { message, conversation } =
-                await this.messageService.createMessage(
-                    payload._id,
-                    conversationId,
-                    MessageEnumType.TEXT,
-                    content,
-                    replyTo,
-                );
+            const { message } = await this.messageService.createMessage(
+                payload._id,
+                conversationId,
+                MessageEnumType.TEXT,
+                content,
+                replyTo,
+            );
 
             const res: SocketResponse<CreateMessageResult> = {
                 ok: true,

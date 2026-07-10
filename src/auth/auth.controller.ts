@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
@@ -15,6 +17,8 @@ import {
     InternalServerErrorException,
     Patch,
     Param,
+    Get,
+    Delete,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './passport/local-auth-guard';
@@ -99,6 +103,39 @@ export class AuthController {
             accessToken: data.accessToken,
             user: data.user,
         } as LoginResponse;
+    }
+
+    @Get('sessions')
+    @ApiOperation({ summary: 'Danh sách thiết bị đăng nhập' })
+    @ApiBearerAuth('JWT-auth')
+    async getSessions(@Request() req) {
+        return await this.authService.getSessions(req.user._id);
+    }
+
+    @Delete('sessions/:sessionId')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Đăng xuất thiết bị được chọn' })
+    @ApiBearerAuth('JWT-auth')
+    async logoutDevice(
+        @Param('sessionId') sessionId: string,
+        @Cookies('refreshToken') refreshToken: string,
+        @Res({ passthrough: true }) response: express.Response,
+        @Request() req,
+    ) {
+        const result = await this.authService.logoutDevice(
+            req.user._id,
+            sessionId,
+            refreshToken,
+        );
+
+        if (result.isCurrentSession) {
+            response.clearCookie(
+                'refreshToken',
+                this.getRefreshCookieOptions(0),
+            );
+        }
+
+        return AUTH_MESSAGES.LOGOUT_SUCCESS;
     }
 
     @Post('refreshToken')

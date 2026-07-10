@@ -34,7 +34,7 @@ import {
     ReportStatusEnum,
 } from './types/report.type';
 import { PENALTY_RULES } from './constants/penalty.constant';
-import { validateObjectId } from '@/utils/utils';
+import { formatDateTime, validateObjectId } from '@/utils/utils';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
     AuditLogActionEnum,
@@ -340,7 +340,7 @@ export class ReportsService {
         resetBio?: boolean,
         resetName?: boolean,
         session?: ClientSession,
-    ): Promise<{ penaltyAppliedStr: string; banUntil?: Date }> {
+    ): Promise<{ penaltyAppliedStr: string; banUntil?: Date; muteUntil?: Date }> {
         const targetUser = await this.usersService.findOne(targetUserId);
         if (!targetUser) {
             throw new BadRequestException(
@@ -401,17 +401,18 @@ export class ReportsService {
 
         const now = new Date();
         let penaltyAppliedStr = '';
+        let muteUntil: Date | undefined;
 
         if (actionToApply === PenaltyActionEnum.WARNING) {
             penaltyAppliedStr = REPORT_MESSAGES.WARNING_SENT;
         } else if (actionToApply === PenaltyActionEnum.MUTE) {
-            const until = new Date(
+            muteUntil = new Date(
                 now.getTime() + duration * 24 * 60 * 60 * 1000,
             );
-            targetUser.muteUntil = until;
+            targetUser.muteUntil = muteUntil;
             penaltyAppliedStr = REPORT_MESSAGES.MUTE_APPLIED(
                 duration,
-                until.toISOString(),
+                formatDateTime(muteUntil),
             );
         } else if (actionToApply === PenaltyActionEnum.RESET_AND_WARNING) {
             let hasSpecificReset = false;
@@ -457,7 +458,7 @@ export class ReportsService {
             targetUser.tokenVersion += 1;
             penaltyAppliedStr = REPORT_MESSAGES.RESET_AND_BAN(
                 duration,
-                until.toISOString(),
+                formatDateTime(until),
             );
         } else if (actionToApply === PenaltyActionEnum.BAN) {
             let hasSpecificReset = false;
@@ -480,8 +481,8 @@ export class ReportsService {
             targetUser.banUntil = until;
             targetUser.tokenVersion += 1;
             penaltyAppliedStr = hasSpecificReset
-                ? REPORT_MESSAGES.RESET_AND_BAN(duration, until.toISOString())
-                : REPORT_MESSAGES.BAN_APPLIED(duration, until.toISOString());
+                ? REPORT_MESSAGES.RESET_AND_BAN(duration, formatDateTime(until))
+                : REPORT_MESSAGES.BAN_APPLIED(duration, formatDateTime(until));
         }
 
         await targetUser.save({ session });
@@ -489,6 +490,7 @@ export class ReportsService {
         return {
             penaltyAppliedStr,
             banUntil: targetUser.banUntil,
+            muteUntil,
         };
     }
 
@@ -605,6 +607,7 @@ export class ReportsService {
         const session = await this.reportModel.db.startSession();
         let finalReport = claimedReport;
         let banUntil: Date | undefined;
+        let muteUntil: Date | undefined;
 
         try {
             await session.withTransaction(async () => {
@@ -649,6 +652,7 @@ export class ReportsService {
                         Date.now() + 30 * 24 * 60 * 60 * 1000,
                     );
                     banUntil = penaltyResult.banUntil;
+                    muteUntil = penaltyResult.muteUntil;
 
                     await this.reportModel.updateOne(
                         { _id: finalReport._id },
@@ -712,6 +716,17 @@ export class ReportsService {
             this.eventEmitter.emit('user.banned', {
                 userId: report.targetUserId.toString(),
                 banUntil,
+            });
+        }
+
+        if (
+            resolveDto.status === ReportStatusEnum.RESOLVED &&
+            muteUntil &&
+            muteUntil > new Date()
+        ) {
+            this.eventEmitter.emit('user.muted', {
+                userId: report.targetUserId.toString(),
+                muteUntil,
             });
         }
 
@@ -804,6 +819,7 @@ export class ReportsService {
             throw error;
         }
     }
+
     async manualBan(
         targetUserId: string,
         adminId: string,
@@ -867,6 +883,7 @@ export class ReportsService {
             throw error;
         }
     }
+
     async unban(
         targetUserId: string,
         adminId: string,
@@ -941,6 +958,10 @@ export class ReportsService {
             lastReport.appealDeadline = undefined;
             await lastReport.save();
         }
+
+        this.eventEmitter.emit('user.unmuted', {
+            userId: targetUserId,
+        });
 
         this.eventEmitter.emit('audit.log.create', {
             req,

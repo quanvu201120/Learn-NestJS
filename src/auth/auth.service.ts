@@ -24,6 +24,7 @@ import {
 } from './dto/password-auth.dto';
 import { SessionService } from '@/modules/session/session.service';
 import { CreateSessionDto } from '@/modules/session/dto/create-session.dto';
+import { SessionDeviceResponse } from '@/modules/session/types/session';
 import { StatsService } from '@/modules/stats/stats.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -139,6 +140,40 @@ export class AuthService {
     async register(registerAuthDto: RegisterAuthDto) {
         const { email, password } = registerAuthDto;
         return await this.usersService.register(email, password);
+    }
+
+    async getSessions(userId: string): Promise<SessionDeviceResponse[]> {
+        return await this.sessionService.findSessionsByUserId(userId);
+    }
+
+    async logoutDevice(
+        userId: string,
+        sessionId: string,
+        refreshToken?: string,
+    ) {
+        let isCurrentSession = false;
+
+        if (refreshToken) {
+            try {
+                const payload: PayloadJWT = await this.jwtService.verifyAsync(
+                    refreshToken,
+                    {
+                        secret: this.configService.get<string>(
+                            'JWT_REFRESH_SECRET',
+                        ),
+                    },
+                );
+
+                isCurrentSession =
+                    payload._id === userId && payload.sessionId === sessionId;
+            } catch {
+                isCurrentSession = false;
+            }
+        }
+
+        await this.sessionService.revokeWithCleanup(sessionId, userId);
+
+        return { isCurrentSession };
     }
 
     /**

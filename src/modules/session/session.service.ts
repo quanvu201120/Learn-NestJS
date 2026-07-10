@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Session } from './schemas/session.schema';
@@ -38,6 +41,31 @@ export class SessionService {
     /**
      * Cập nhật refresh token hash và thời gian hết hạn mới cho session đang hoạt động.
      */
+    async findSessionsByUserId(userId: string) {
+        validateObjectId(userId, 'user id');
+
+        const sessions = await this.sessionModel
+            .find({ userId: new Types.ObjectId(userId), isRevoked: false })
+            .sort({ lastUsedAt: -1, createdAt: -1 })
+            .select(
+                '_id deviceName userAgent expiresAt lastUsedAt createdAt updatedAt',
+            );
+
+        return sessions.map((session) => {
+            const currentSession = session as any;
+
+            return {
+                _id: currentSession._id.toString(),
+                deviceName: currentSession.deviceName,
+                userAgent: currentSession.userAgent,
+                expiresAt: currentSession.expiresAt,
+                lastUsedAt: currentSession.lastUsedAt,
+                createdAt: currentSession.createdAt,
+                updatedAt: currentSession.updatedAt,
+            };
+        });
+    }
+
     async rotateSession(
         _id: string,
         refreshTokenHash: string,
