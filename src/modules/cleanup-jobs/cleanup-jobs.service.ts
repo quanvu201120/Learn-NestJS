@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
@@ -8,6 +9,7 @@ import {
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
 import { InjectModel } from '@nestjs/mongoose';
 import { CleanupJob, CleanupJobDocument } from './schemas/cleanup-job.schema';
 import { Model } from 'mongoose';
@@ -28,6 +30,7 @@ import {
     CleanupJobRespone,
     CleanupJobStatusEnum,
 } from './types/cleanup-job';
+import { Queue } from 'bullmq';
 
 @Injectable()
 export class CleanupJobsService {
@@ -43,6 +46,9 @@ export class CleanupJobsService {
 
         @Inject(forwardRef(() => RedisService))
         private readonly redisService: RedisService,
+
+        @InjectQueue(CLEANUP_JOB_CONSTANTS.QUEUE_NAME)
+        private readonly cleanupJobsQueue: Queue,
     ) {}
 
     /** Tạo job dọn rác (media claudinaty - R2, session, redis) */
@@ -60,6 +66,17 @@ export class CleanupJobsService {
                 CLEANUP_JOB_MESSAGES.FAILED_TO_CREATE_CLEANUP_JOB,
             );
         }
+
+        await this.cleanupJobsQueue.add(
+            CLEANUP_JOB_CONSTANTS.JOB_NAME,
+            { cleanupJobId: cleanupJob._id.toString() }, // CleanupJobPayload
+            {
+                jobId: cleanupJob._id.toString(),
+                removeOnComplete: true,
+                removeOnFail: true,
+            },
+        );
+
         return cleanupJob;
     }
 
@@ -453,6 +470,17 @@ export class CleanupJobsService {
                 CLEANUP_JOB_MESSAGES.JOB_INVALID_PAYLOAD_SESSION_ID,
             );
         }
+
+        const session = await this.sessionService.findSessionById(sessionId);
+        if (
+            !session ||
+            session.userId?.toString() !== userId ||
+            session.isRevoked ||
+            (session.expiresAt && session.expiresAt.getTime() <= Date.now())
+        ) {
+            return session;
+        }
+
         return await this.sessionService.revoke(sessionId, userId);
     }
 
@@ -464,6 +492,16 @@ export class CleanupJobsService {
                 CLEANUP_JOB_MESSAGES.JOB_INVALID_PAYLOAD_USER_ID,
             );
         }
+
+        const sessions = await this.sessionService.findSessionsByUserId(userId);
+        const hasActiveSession = sessions.some(
+            (session) =>
+                session.expiresAt && session.expiresAt.getTime() > Date.now(),
+        );
+        if (!hasActiveSession) {
+            return sessions;
+        }
+
         return await this.sessionService.revokeAllByUserId(userId);
     }
 

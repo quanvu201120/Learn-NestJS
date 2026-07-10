@@ -21,6 +21,7 @@ import { StatsModule } from './modules/stats/stats.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { BullModule } from '@nestjs/bullmq';
 
 @Module({
     imports: [
@@ -51,6 +52,17 @@ import { ReportsModule } from './modules/reports/reports.module';
             exclude: ['/api/(.*)'],
         }),
         ScheduleModule.forRoot(),
+        BullModule.forRootAsync({
+            imports: [ConfigModule],
+            inject: [ConfigService],
+            useFactory: (configService: ConfigService) => ({
+                connection: {
+                    host: configService.get<string>('REDIS_HOST'),
+                    port: Number(configService.get<string>('REDIS_PORT')),
+                    password: configService.get<string>('REDIS_PASSWORD'),
+                },
+            }),
+        }),
     ],
     controllers: [AppController],
     providers: [

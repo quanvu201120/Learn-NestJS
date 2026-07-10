@@ -19,7 +19,6 @@ import { CleanupJobsService } from './cleanup-jobs.service';
 import {
     CleanupJobActionEnum,
     CleanupJobEntityEnum,
-    CleanupJobLockedBy,
     CleanupJobResourceEnum,
     CleanupJobStatusEnum,
 } from './types/cleanup-job';
@@ -28,50 +27,18 @@ import { Roles } from '@/utils/decorator-customize';
 import { UserRole } from '@/modules/users/types/user';
 import { CLEANUP_JOB_MESSAGES } from './constants/cleanup-job.constant';
 import { VALIDATION_MESSAGES } from '@/common/constants/validation.constant';
+import { MediaService } from '../media/media.service';
+import { MediaResourceTypeEnum, OwnerTypeEnum } from '../media/types/media';
+import { Types } from 'mongoose';
 
 @Controller('cleanup-jobs')
 @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
 @UseGuards(RolesGuard)
 export class CleanupJobsController {
-    constructor(private readonly cleanupJobsService: CleanupJobsService) {}
-
-    @Post('test/cloudinary')
-    @UseInterceptors(FileInterceptor('file'))
-    async createCloudinaryCleanupJobTest(
-        @UploadedFile() file: Express.Multer.File,
-    ) {
-        if (!file) {
-            throw new BadRequestException(VALIDATION_MESSAGES.FILE_REQUIRED);
-        }
-
-        return await this.cleanupJobsService.createCleanupJob({
-            resourceType: CleanupJobResourceEnum.USER_AVATAR,
-            action: CleanupJobActionEnum.CLOUDINARY_DELETE_ONE,
-            entityType: CleanupJobEntityEnum.USER,
-            payload: {
-                publicId: `test/cloudinary-missing-${Date.now()}`,
-            },
-            error: CLEANUP_JOB_MESSAGES.MANUAL_TEST_CLEANUP_JOB_CLOUDINARY,
-        });
-    }
-
-    @Post('test/r2')
-    @UseInterceptors(FileInterceptor('file'))
-    async createR2CleanupJobTest(@UploadedFile() file: Express.Multer.File) {
-        if (!file) {
-            throw new BadRequestException(VALIDATION_MESSAGES.FILE_REQUIRED);
-        }
-
-        return await this.cleanupJobsService.createCleanupJob({
-            resourceType: CleanupJobResourceEnum.MESSAGE_MEDIA,
-            action: CleanupJobActionEnum.R2_DELETE_ONE,
-            entityType: CleanupJobEntityEnum.MESSAGE,
-            payload: {
-                objectKey: `test/r2-missing-${Date.now()}`,
-            },
-            error: CLEANUP_JOB_MESSAGES.MANUAL_TEST_CLEANUP_JOB_R2,
-        });
-    }
+    constructor(
+        private readonly cleanupJobsService: CleanupJobsService,
+        private readonly mediaService: MediaService,
+    ) {}
 
     @Get()
     async getCleanUpJobs(

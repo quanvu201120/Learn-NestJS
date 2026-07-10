@@ -50,3 +50,7 @@ export type CleanupJobRespone = {
         limit: number;
     };
 };
+
+export type CleanupJobPayload = {
+    cleanupJobId: string;
+};

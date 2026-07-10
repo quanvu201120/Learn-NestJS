@@ -6,6 +6,8 @@ export const CLEANUP_JOB_CONSTANTS = {
     DEFAULT_PAGE: 1,
     DEFAULT_LIMIT: 20,
     LOCK_DURATION_MS: 10 * 60 * 1000,
+    QUEUE_NAME: 'cleanup-queue-name',
+    JOB_NAME: 'cleanup-job-name',
 } as const;
 
 export const CLEANUP_JOB_MESSAGES = {
@@ -16,7 +18,6 @@ export const CLEANUP_JOB_MESSAGES = {
     JOB_INVALID_PAYLOAD: 'Payload của cleanup-job không hợp lệ',
     JOB_ALREADY_RESOLVED: 'Cleanup-job đã được xử lý',
     FAILED_TO_UPDATE_JOB: 'Cập nhật cleanup-job thất bại',
-
     JOB_INVALID_PAYLOAD_PUBLIC_ID: 'Public ID là bắt buộc',
     JOB_INVALID_PAYLOAD_PUBLIC_IDS: 'Danh sách Public ID là bắt buộc',
     JOB_INVALID_PAYLOAD_OBJECT_KEY: 'Object key là bắt buộc',

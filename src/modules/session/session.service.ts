@@ -39,7 +39,7 @@ export class SessionService {
     }
 
     /**
-     * Cập nhật refresh token hash và thời gian hết hạn mới cho session đang hoạt động.
+     * Lấy các session chưa bị revoke của user.
      */
     async findSessionsByUserId(userId: string) {
         validateObjectId(userId, 'user id');
@@ -66,6 +66,9 @@ export class SessionService {
         });
     }
 
+    /**
+     * Cập nhật refresh token hash và thời gian hết hạn mới cho session đang hoạt động.
+     */
     async rotateSession(
         _id: string,
         refreshTokenHash: string,
