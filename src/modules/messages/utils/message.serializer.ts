@@ -6,7 +6,10 @@
 import { Types } from 'mongoose';
 import { MessageResponse } from '../types/message';
 import { serializeMedia } from '@/modules/media/utils/media.serializer';
-import { serializeUser } from '@/modules/users/utils/user.serializer';
+import {
+    getUserStatusLabel,
+    serializeUser,
+} from '@/modules/users/utils/user.serializer';
 
 /**
  * Chuẩn hóa message được reply tới.
@@ -30,10 +33,17 @@ export const serializeReplyMessage = (replyTo: any) => {
 export const serializeMessage = (message: any): MessageResponse => {
     const { senderId, replyTo, mediaId, ...rest } = message;
     const isSenderDisabled = senderId && typeof senderId === 'object' && senderId.isDisabled;
+    const senderStatusLabel = isSenderDisabled
+        ? getUserStatusLabel(senderId)
+        : null;
 
     return {
         ...rest,
-        content: isSenderDisabled ? 'Người dùng bị vô hiệu hoá' : (message.isDeleted ? '' : rest.content),
+        content: senderStatusLabel
+            ? `Người dùng ${senderStatusLabel}`
+            : message.isDeleted
+              ? ''
+              : rest.content,
         _id: rest._id ? rest._id.toString() : undefined,
         conversationId: rest.conversationId
             ? rest.conversationId.toString()

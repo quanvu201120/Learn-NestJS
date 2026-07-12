@@ -58,3 +58,16 @@ export class ConfirmPasswordAuthDto {
     @IsNotEmpty({ message: VALIDATION_MESSAGES.PASSWORD_REQUIRED })
     password: string;
 }
+
+export class CreatePasswordAuthDto {
+    @MinLength(6, { message: VALIDATION_MESSAGES.PASSWORD_MIN_LENGTH })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.PASSWORD_REQUIRED })
+    password: string;
+
+    @MinLength(6, { message: VALIDATION_MESSAGES.CONFIRM_PASSWORD_MIN_LENGTH })
+    @IsNotEmpty({ message: VALIDATION_MESSAGES.CONFIRM_PASSWORD_REQUIRED })
+    @Match('password', {
+        message: VALIDATION_MESSAGES.CONFIRM_PASSWORD_NOT_MATCH,
+    })
+    confirmPassword: string;
+}

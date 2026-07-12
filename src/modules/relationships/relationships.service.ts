@@ -14,12 +14,13 @@ import {
 import { UsersService } from '../users/users.service';
 import { Subject } from 'rxjs';
 import { RelationshipStatusEnum } from './types/relationship';
-import { toObjectId } from '@/utils/utils';
+import { formatDateTime, toObjectId } from '@/utils/utils';
 import { serializeRelationship } from './utils/relationship.serializer';
 import { RELATIONSHIP_MESSAGES } from './constants/relationship.constant';
 import { ConversationsService } from '../conversations/conversations.service';
 import { MessagesService } from '../messages/messages.service';
 import { MessageEnumType } from '../messages/types/message';
+import { AUTH_MESSAGES } from '@/auth/constants/auth.constant';
 
 @Injectable()
 export class RelationshipsService {
@@ -55,10 +56,10 @@ export class RelationshipsService {
     ) {}
 
     /**
-     * Lấy danh sách relationship của user (Bao gồm tất cả các trạng thái và user bị vô hiệu hóa, để FE tự filter)
+     * Lấy danh sách relationship của user (Bao gồm tất cả các trạng thái của user, để FE tự filter)
      */
     async getRelationshipByUser(userId: string) {
-        await this.usersService.checkUser(userId);
+        await this.usersService.checkUser(userId, false, false, false);
         const result = await this.relationshipModel
             .find({
                 $or: [
@@ -75,14 +76,14 @@ export class RelationshipsService {
                     path: 'requester',
                     populate: {
                         path: 'avatar',
-                        select: '-__v',
+                        select: '-__v -password -phone -email',
                     },
                 },
                 {
                     path: 'recipient',
                     populate: {
                         path: 'avatar',
-                        select: '-__v',
+                        select: '-__v -password -phone -email',
                     },
                 },
             ])
@@ -577,6 +578,12 @@ export class RelationshipsService {
             if (recipient.isDisabled) {
                 throw new BadRequestException(
                     RELATIONSHIP_MESSAGES.RECIPIENT_DISABLED,
+                );
+            }
+            if (recipient.banUntil && recipient.banUntil > new Date()) {
+                const time = formatDateTime(recipient.banUntil);
+                throw new BadRequestException(
+                    AUTH_MESSAGES.ACCOUNT_BANNED_UNTIL(time),
                 );
             }
         }

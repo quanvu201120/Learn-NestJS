@@ -14,6 +14,11 @@ export enum UserGenderEnum {
     OTHER = 'OTHER',
 }
 
+export enum UserAccountType {
+    LOCAL = 'LOCAL',
+    GOOGLE = 'GOOGLE',
+}
+
 export type UserResponse = Omit<User, 'password' | 'avatar'> & {
     _id: Types.ObjectId | string;
     createdAt?: Date;

@@ -5,7 +5,12 @@
 import { AUTH_MESSAGES } from './constants/auth.constant';
 import { PayloadJWT, User } from '@/modules/users/schemas/user.schema';
 import { UsersService } from '@/modules/users/users.service';
-import { generateJWT, hashRefreshToken, validateObjectId } from '@/utils/utils';
+import {
+    formatDateTime,
+    generateJWT,
+    hashRefreshToken,
+    validateObjectId,
+} from '@/utils/utils';
 import {
     BadRequestException,
     ForbiddenException,
@@ -20,6 +25,7 @@ import bcrypt from 'bcrypt';
 import { RegisterAuthDto } from './dto/register-auth.dto';
 import {
     ChangePasswordAuthDto,
+    CreatePasswordAuthDto,
     ResetPasswordAuthDto,
 } from './dto/password-auth.dto';
 import { SessionService } from '@/modules/session/session.service';
@@ -55,6 +61,9 @@ export class AuthService {
         if (!user) {
             return null;
         }
+        if (user.hasPassword === false) {
+            return null;
+        }
         const isPasswordMatched = await bcrypt.compare(pass, user.password);
         if (!isPasswordMatched) {
             return null;
@@ -75,9 +84,7 @@ export class AuthService {
         deviceName?: string,
     ) {
         if (user.banUntil && user.banUntil > new Date()) {
-            const time = user.banUntil.toLocaleString('vi-VN', {
-                timeZone: 'Asia/Ho_Chi_Minh',
-            });
+            const time = formatDateTime(user.banUntil);
             throw new UnauthorizedException(
                 AUTH_MESSAGES.ACCOUNT_BANNED_UNTIL(time),
             );
@@ -210,9 +217,7 @@ export class AuthService {
                 await this.sessionService.revokeAllByUserIdWithCleanup(
                     payload._id,
                 );
-                const time = user.banUntil.toLocaleString('vi-VN', {
-                    timeZone: 'Asia/Ho_Chi_Minh',
-                });
+                const time = formatDateTime(user.banUntil);
                 throw new UnauthorizedException(
                     AUTH_MESSAGES.ACCOUNT_BANNED_UNTIL(time),
                 );
@@ -381,8 +386,12 @@ export class AuthService {
                 throw new BadRequestException(USER_MESSAGES.CAN_NOT_CHANGE_ME);
             }
 
-            const { existingUser: user } =
-                await this.usersService.checkUser(userId);
+            const { existingUser: user } = await this.usersService.checkUser(
+                userId,
+                false,
+                false,
+                false,
+            );
 
             // Allow SUPER_ADMIN to logout anyone, ADMIN can logout USER, but not ADMIN/SUPER_ADMIN
             if (
@@ -452,6 +461,19 @@ export class AuthService {
         return await this.usersService.updatePassword(
             id,
             changePasswordAuthDto,
+        );
+    }
+
+    /**
+     * Tao mat khau lan dau cho tai khoan chua co local password.
+     */
+    async createPassword(
+        id: string,
+        createPasswordAuthDto: CreatePasswordAuthDto,
+    ) {
+        return await this.usersService.createPassword(
+            id,
+            createPasswordAuthDto,
         );
     }
 

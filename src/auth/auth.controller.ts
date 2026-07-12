@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
@@ -31,6 +32,7 @@ import { RegisterAuthDto, LoginDto } from './dto/register-auth.dto';
 import {
     ChangePasswordAuthDto,
     ConfirmPasswordAuthDto,
+    CreatePasswordAuthDto,
     ForgotPasswordAuthDto,
     ResetPasswordAuthDto,
 } from './dto/password-auth.dto';
@@ -244,6 +246,21 @@ export class AuthController {
         return await this.authService.changePassword(
             req.user._id,
             changePasswordAuthDto,
+        );
+    }
+
+    @Post('create-password')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Tạo mật khẩu với tài khoản google' })
+    @ApiBody({ type: CreatePasswordAuthDto })
+    @ApiBearerAuth('JWT-auth')
+    async handleCreatePassword(
+        @Body() createPasswordAuthDto: CreatePasswordAuthDto,
+        @Request() req,
+    ) {
+        return await this.authService.createPassword(
+            req.user._id,
+            createPasswordAuthDto,
         );
     }
 

@@ -329,6 +329,88 @@ export class ReportsService {
         return adminUser;
     }
 
+    private getPenaltyFamily(action: PenaltyActionEnum) {
+        if (
+            action === PenaltyActionEnum.WARNING ||
+            action === PenaltyActionEnum.RESET_AND_WARNING
+        ) {
+            return 'warning';
+        }
+
+        if (action === PenaltyActionEnum.MUTE) {
+            return 'mute';
+        }
+
+        if (
+            action === PenaltyActionEnum.BAN ||
+            action === PenaltyActionEnum.RESET_AND_BAN
+        ) {
+            return 'ban';
+        }
+
+        return 'other';
+    }
+
+    private getCurrentActivePenalties(targetUser: any) {
+        const now = new Date();
+        const penalties: Partial<Record<'ban' | 'mute', Date>> = {};
+
+        const banUntil = targetUser?.banUntil ? new Date(targetUser.banUntil) : null;
+        if (banUntil && banUntil > now) {
+            penalties.ban = banUntil;
+        }
+
+        const muteUntil = targetUser?.muteUntil ? new Date(targetUser.muteUntil) : null;
+        if (muteUntil && muteUntil > now) {
+            penalties.mute = muteUntil;
+        }
+
+        return penalties;
+    }
+
+    private ensurePenaltyIsNotReduced(
+        targetUser: any,
+        actionToApply: PenaltyActionEnum,
+        durationDays: number,
+    ) {
+        const currentPenalties = this.getCurrentActivePenalties(targetUser);
+        const proposedFamily = this.getPenaltyFamily(actionToApply);
+
+        if (proposedFamily === 'mute') {
+            const currentMuteUntil = currentPenalties.mute;
+            if (!currentMuteUntil) {
+                return;
+            }
+
+            const proposedUntil = new Date(
+                Date.now() + durationDays * 24 * 60 * 60 * 1000,
+            );
+            if (proposedUntil < currentMuteUntil) {
+                throw new BadRequestException(
+                    REPORT_MESSAGES.CANNOT_REDUCE_PENALTY,
+                );
+            }
+            return;
+        }
+
+        if (proposedFamily === 'ban') {
+            const currentBanUntil = currentPenalties.ban;
+            if (!currentBanUntil) {
+                return;
+            }
+
+            const proposedUntil = new Date(
+                Date.now() + durationDays * 24 * 60 * 60 * 1000,
+            );
+            if (proposedUntil < currentBanUntil) {
+                throw new BadRequestException(
+                    REPORT_MESSAGES.CANNOT_REDUCE_PENALTY,
+                );
+            }
+            return;
+        }
+    }
+
     private async calculateAndApplyPenalty(
         targetUserId: string,
         reason: ReportReasonEnum,
@@ -398,6 +480,8 @@ export class ReportsService {
         if (!actionToApply) {
             return { penaltyAppliedStr: REPORT_MESSAGES.NO_AUTO_PENALTY };
         }
+
+        this.ensurePenaltyIsNotReduced(targetUser, actionToApply, duration);
 
         const now = new Date();
         let penaltyAppliedStr = '';

@@ -11,6 +11,7 @@ export const REPORT_MESSAGES = {
     INVALID_PASSWORD: 'Mật khẩu không hợp lệ',
     CANNOT_PENALIZE_USER: 'Bạn không có quyền xử lý người dùng này',
     CANNOT_PENALIZE_SUPER_ADMIN: 'Bạn không có quyền xử lý Super Admin',
+    CANNOT_REDUCE_PENALTY: 'Không thể áp dụng mức phạt thấp hơn mức đang có',
     NO_AUTO_PENALTY: 'Không có hình phạt cụ thể',
     WARNING_SENT: 'Cảnh cáo',
     REPORT_INVALID_STATUS: 'Trạng thái báo cáo không hợp lệ',

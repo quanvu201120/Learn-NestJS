@@ -14,7 +14,7 @@ import type {
     AuditLogResponseWithPagination,
 } from './types/audit-log.type';
 import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
-import { serializeUser } from '@/modules/users/utils/user.serializer';
+import { serializeAdminUser } from '@/modules/users/utils/user.serializer';
 import { AuditLogResponse } from './types/audit-log.type';
 import { serializeMedia } from '@/modules/media/utils/media.serializer';
 
@@ -74,13 +74,13 @@ export class AuditLogService {
             rp_reporterId: metadata.rp_reporterId
                 ? typeof metadata.rp_reporterId === 'object' &&
                   '_id' in metadata.rp_reporterId
-                    ? serializeUser(metadata.rp_reporterId, false)
+                    ? serializeAdminUser(metadata.rp_reporterId)
                     : metadata.rp_reporterId
                 : metadata.rp_reporterId,
             rp_targetUserId: metadata.rp_targetUserId
                 ? typeof metadata.rp_targetUserId === 'object' &&
                   '_id' in metadata.rp_targetUserId
-                    ? serializeUser(metadata.rp_targetUserId, false)
+                    ? serializeAdminUser(metadata.rp_targetUserId)
                     : metadata.rp_targetUserId
                 : metadata.rp_targetUserId,
         };
@@ -93,7 +93,7 @@ export class AuditLogService {
 
         if (targetType === 'User') {
             return typeof targetId === 'object' && '_id' in targetId
-                ? serializeUser(targetId, false)
+                ? serializeAdminUser(targetId)
                 : targetId;
         }
 
@@ -115,7 +115,7 @@ export class AuditLogService {
             metadata: this.serializeAuditLogMetadata(metadata),
             actor: actorId
                 ? typeof actorId === 'object' && '_id' in actorId
-                    ? serializeUser(actorId, false)
+                    ? serializeAdminUser(actorId)
                     : actorId
                 : undefined,
             target: this.serializeTarget(targetType, targetId),
@@ -284,6 +284,11 @@ export class AuditLogService {
             .populate({
                 path: 'metadata.rp_reporterId',
                 select: '_id name email',
+                strictPopulate: false,
+            })
+            .populate({
+                path: 'metadata.oldAvatar',
+                select: '-__v',
                 strictPopulate: false,
             })
             .populate({

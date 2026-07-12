@@ -21,7 +21,11 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { MessagesService } from '../messages/messages.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { PayloadJWT } from '../users/schemas/user.schema';
-import { getRoomNameConversation, getRoomNameUser } from '@/utils/utils';
+import {
+    formatDateTime,
+    getRoomNameConversation,
+    getRoomNameUser,
+} from '@/utils/utils';
 import { CreateMessageSocketDto } from '../messages/dto/create-message.dto';
 import {
     MarkReadSocketDto,
@@ -103,6 +107,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             }
             if (user.isDisabled) {
                 throw new UnauthorizedException(AUTH_MESSAGES.USER_DISABLED);
+            }
+            if (user.banUntil && user.banUntil > new Date()) {
+                const time = formatDateTime(user.banUntil);
+                throw new UnauthorizedException(
+                    AUTH_MESSAGES.ACCOUNT_BANNED_UNTIL(time),
+                );
             }
             if (payload.tokenVersion !== user.tokenVersion) {
                 throw new UnauthorizedException(
@@ -861,6 +871,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         if (user.isDisabled) {
             client.disconnect();
             throw new UnauthorizedException(AUTH_MESSAGES.USER_DISABLED);
+        }
+
+        if (user.banUntil && user.banUntil > new Date()) {
+            client.disconnect();
+            const time = formatDateTime(user.banUntil);
+            throw new UnauthorizedException(
+                AUTH_MESSAGES.ACCOUNT_BANNED_UNTIL(time),
+            );
         }
 
         if (payload.tokenVersion !== user.tokenVersion) {

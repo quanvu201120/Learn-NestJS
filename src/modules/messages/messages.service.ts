@@ -15,7 +15,7 @@ import { UpdateMessageDto } from './dto/update-message.dto';
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
 import { Message, MessageDocument } from './schemas/message.schema';
 import { Connection, Model, Types, ClientSession } from 'mongoose';
-import { parseDateOrThrow, toObjectId } from '@/utils/utils';
+import { formatDateTime, parseDateOrThrow, toObjectId } from '@/utils/utils';
 import { ConversationsService } from '../conversations/conversations.service';
 import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
 import { serializeMessage } from './utils/message.serializer';
@@ -46,6 +46,7 @@ import {
 } from '../cleanup-jobs/types/cleanup-job';
 import { RelationshipsService } from '../relationships/relationships.service';
 import { StatsService } from '../stats/stats.service';
+import { AUTH_MESSAGES } from '@/auth/constants/auth.constant';
 
 @Injectable()
 export class MessagesService {
@@ -86,7 +87,7 @@ export class MessagesService {
             .findById(objectMessageId)
             .populate({
                 path: 'senderId',
-                select: '-password -__v',
+                select: '-password -email -phone -__v',
                 populate: { path: 'avatar', select: '-__v' },
             })
             .populate('replyTo', '-__v')
@@ -151,14 +152,19 @@ export class MessagesService {
             );
         }
 
-        if (type === MessageEnumType.TEXT) {
+        if (type !== MessageEnumType.SYSTEM) {
             const sender = await this.usersService.findOne(senderId);
             if (sender?.muteUntil && sender.muteUntil > new Date()) {
-                const time = sender.muteUntil.toLocaleString('vi-VN', {
-                    timeZone: 'Asia/Ho_Chi_Minh',
-                });
+                const time = formatDateTime(sender.muteUntil);
                 throw new BadRequestException(
                     MESSAGE_MESSAGES.USER_MUTED(time),
+                );
+            }
+
+            if (sender?.banUntil && sender?.banUntil > new Date()) {
+                const time = formatDateTime(sender.banUntil);
+                throw new BadRequestException(
+                    AUTH_MESSAGES.ACCOUNT_BANNED_UNTIL(time),
                 );
             }
         }
@@ -409,7 +415,7 @@ export class MessagesService {
             .findById(conversation.lastMessageId)
             .populate({
                 path: 'senderId',
-                select: '-password -__v',
+                select: '-password -email -phone -__v',
                 populate: { path: 'avatar', select: '-__v' },
             })
             .populate('replyTo', '-__v')
@@ -460,7 +466,7 @@ export class MessagesService {
             .select('-__v')
             .populate({
                 path: 'senderId',
-                select: '-password -__v',
+                select: '-password -email -phone -__v',
                 populate: { path: 'avatar', select: '-__v' },
             })
             .populate('replyTo', '-__v')
@@ -604,7 +610,7 @@ export class MessagesService {
             })
             .populate({
                 path: 'senderId',
-                select: '-password -__v',
+                select: '-password -email -phone -__v',
                 populate: { path: 'avatar', select: '-__v' },
             })
             .populate('replyTo', '-__v')
@@ -635,7 +641,7 @@ export class MessagesService {
             )
             .populate({
                 path: 'senderId',
-                select: '-password -__v',
+                select: '-password -email -phone -__v',
                 populate: { path: 'avatar', select: '-__v' },
             })
             .populate('replyTo', '-__v')
@@ -728,7 +734,7 @@ export class MessagesService {
                   )
                   .populate({
                       path: 'senderId',
-                      select: '-password -__v',
+                      select: '-password -email -phone -__v',
                       populate: { path: 'avatar', select: '-__v' },
                   })
                   .populate('replyTo', '-__v')
@@ -748,7 +754,7 @@ export class MessagesService {
                   )
                   .populate({
                       path: 'senderId',
-                      select: '-password -__v',
+                      select: '-password -email -phone -__v',
                       populate: { path: 'avatar', select: '-__v' },
                   })
                   .populate('replyTo', '-__v')
@@ -797,7 +803,7 @@ export class MessagesService {
             )
             .populate({
                 path: 'senderId',
-                select: '-password -__v',
+                select: '-password -email -phone -__v',
                 populate: { path: 'avatar', select: '-__v' },
             })
             .populate('replyTo', '-__v')

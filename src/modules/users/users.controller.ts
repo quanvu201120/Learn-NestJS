@@ -92,6 +92,48 @@ export class UsersController {
         );
     }
 
+    @Get('admin')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @UseGuards(RolesGuard)
+    @ApiOperation({ summary: 'ADMIN lấy danh sách người dùng' })
+    async findAllForAdmin(
+        @Query() query: string,
+        @Query('current') current: string,
+        @Query('pageSize') pageSize: string,
+    ) {
+        const { totalPages, totalItems, users } =
+            await this.usersService.findAll(query, +current, +pageSize, true);
+
+        return { totalPages, totalItems, users };
+    }
+
+    @Get('admin/search')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @UseGuards(RolesGuard)
+    @ApiOperation({
+        summary: 'ADMIN tìm kiếm người dùng email hoặc số điện thoại',
+    })
+    async searchUserForAdmin(@Query('query') query: string, @Request() req) {
+        if (!query) {
+            throw new BadRequestException(
+                VALIDATION_MESSAGES.EMAIL_OR_PHONE_REQUIRED,
+            );
+        }
+        return await this.usersService.findOneByEmailOrPhone(
+            req.user._id,
+            query,
+            true,
+        );
+    }
+
+    @Get('admin/:id')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @UseGuards(RolesGuard)
+    @ApiOperation({ summary: 'ADMIN lấy thông tin chi tiết người dùng' })
+    async findOneForAdmin(@Param('id') id: string) {
+        return await this.usersService.findOneForApi(id, true);
+    }
+
     @Get(':id')
     @ApiOperation({ summary: 'Lấy thông tin chi tiết một người dùng' })
     async findOne(@Param('id') id: string) {

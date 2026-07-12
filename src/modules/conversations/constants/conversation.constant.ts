@@ -7,6 +7,8 @@ export const CONVERSATION_MESSAGES = {
     NAME_REQUIRED: 'Vui lòng nhập tên',
     CANNOT_REMOVE_ADMIN: 'Không thể xóa quản trị viên của nhóm này',
     NOT_A_MEMBER: 'Người dùng không thuộc cuộc trò chuyện',
+    USER_DISABLED:
+        'Người dùng này vô hiệu hóa tài khoản, không thể tiếp tục trò chuyện',
     ALREADY_HIDDEN: 'Cuộc trò chuyện đã bị ẩn',
     DELETE_SUCCESS: 'Xóa cuộc trò chuyện thành công',
     DELETE_FAILED: 'Không thể xóa cuộc trò chuyện',

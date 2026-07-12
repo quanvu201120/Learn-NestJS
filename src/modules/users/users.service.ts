@@ -13,7 +13,7 @@ import {
     Injectable,
 } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
-import { UserRole } from './types/user';
+import { UserAccountType, UserRole } from './types/user';
 import { User } from './schemas/user.schema';
 import { Connection, Model, Types } from 'mongoose';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
@@ -30,7 +30,10 @@ import ms, { StringValue } from 'ms';
 import { v4 as uuidv4 } from 'uuid';
 import { Subject } from 'rxjs';
 import bcrypt from 'bcrypt';
-import { ChangePasswordAuthDto } from '@/auth/dto/password-auth.dto';
+import {
+    ChangePasswordAuthDto,
+    CreatePasswordAuthDto,
+} from '@/auth/dto/password-auth.dto';
 import { RedisService } from '@/redis/redis.service';
 import {
     ActionRedis,
@@ -51,7 +54,7 @@ import {
 } from '../media/constants/media.constant';
 import { Media } from '../media/schemas/media.schema';
 import { OwnerTypeEnum } from '../media/types/media';
-import { serializeUser } from './utils/user.serializer';
+import { serializeAdminUser, serializeUser } from './utils/user.serializer';
 import { SessionService } from '../session/session.service';
 import {
     CleanupJobEntityEnum,
@@ -88,12 +91,14 @@ export class UsersService {
     /**
      * Chuẩn hóa dữ liệu avatar lồng bên trong trước khi trả object user về cho client.
      */
-    private serializeUserResponse(user: UserResponse | null) {
+    private serializeUserResponse(user: UserResponse | null, forAdmin = false) {
         if (!user) {
             return user;
         }
 
-        return serializeUser(user, false) as UserResponse;
+        return forAdmin
+            ? (serializeAdminUser(user) as UserResponse)
+            : (serializeUser(user, false) as UserResponse);
     }
 
     /**
@@ -159,6 +164,8 @@ export class UsersService {
             ...createUserDto,
             name: createUserDto.name || createUserDto.email.split('@')[0],
             password: passwordHash,
+            accountType: UserAccountType.LOCAL,
+            hasPassword: true,
             isActive: false,
         });
 
@@ -171,7 +178,7 @@ export class UsersService {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password, __v, ...user } = newUser.toObject();
 
-        this.statsService.incrementNewUser();
+        void this.statsService.incrementNewUser();
 
         return user as UserResponse;
     }
@@ -192,7 +199,12 @@ export class UsersService {
     /**
      * Lấy danh sách user có hỗ trợ phân trang và filter.
      */
-    async findAll(query: any, current: number, pageSize: number) {
+    async findAll(
+        query: any,
+        current: number,
+        pageSize: number,
+        forAdmin = false,
+    ) {
         if (!current) current = 1;
         if (!pageSize) pageSize = GLOBAL_CONSTANTS.LIMIT_USERS_DEFAULT;
         const filter: any = {};
@@ -256,14 +268,16 @@ export class UsersService {
         return {
             totalPages,
             totalItems,
-            users: users.map((user) => this.serializeUserResponse(user)),
+            users: users.map((user) =>
+                this.serializeUserResponse(user, forAdmin),
+            ),
         } as UserResponseWithPagination;
     }
 
     /**
      * Lấy thông tin user an toàn (không chứa password), trả về plain object (lean) để API response.
      */
-    async findOneForApi(id: string) {
+    async findOneForApi(id: string, forAdmin = false) {
         validateObjectId(id, 'user id');
         const user = (await this.userModel
             .findById(id)
@@ -271,7 +285,7 @@ export class UsersService {
             .populate('avatar', '-__v')
             .lean()) as UserResponse;
 
-        return this.serializeUserResponse(user);
+        return this.serializeUserResponse(user, forAdmin);
     }
 
     /**
@@ -285,7 +299,11 @@ export class UsersService {
     /**
      * Tìm kiếm user bằng email hoặc số điện thoại
      */
-    async findOneByEmailOrPhone(userId: string, search: string) {
+    async findOneByEmailOrPhone(
+        userId: string,
+        search: string,
+        forAdmin = false,
+    ) {
         const { existingUser: currentUser } = await this.checkUser(userId);
 
         const query = search.trim();
@@ -299,8 +317,17 @@ export class UsersService {
             .findOne({
                 ...filter,
                 _id: { $ne: userId },
-                isDisabled: false,
-                isActive: true,
+                ...(forAdmin
+                    ? {}
+                    : {
+                          isDisabled: false,
+                          isActive: true,
+                          $or: [
+                              { banUntil: { $exists: false } },
+                              { banUntil: null },
+                              { banUntil: { $lt: new Date() } },
+                          ],
+                      }),
             })
             .select('-password -__v')
             .populate('avatar', '-__v')
@@ -310,22 +337,24 @@ export class UsersService {
             throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
         }
 
-        const relationshipBlock =
-            await this.relationshipsService.checkIsBlocked(
-                currentUser._id.toString(),
-                searchUser._id.toString(),
-            );
+        if (!forAdmin) {
+            const relationshipBlock =
+                await this.relationshipsService.checkIsBlocked(
+                    currentUser._id.toString(),
+                    searchUser._id.toString(),
+                );
 
-        if (
-            relationshipBlock &&
-            relationshipBlock.blockedBy &&
-            relationshipBlock.blockedBy.toString() !==
-                currentUser._id.toString()
-        ) {
-            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
+            if (
+                relationshipBlock &&
+                relationshipBlock.blockedBy &&
+                relationshipBlock.blockedBy.toString() !==
+                    currentUser._id.toString()
+            ) {
+                throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
+            }
         }
 
-        return this.serializeUserResponse(searchUser);
+        return this.serializeUserResponse(searchUser, forAdmin);
     }
 
     /**
@@ -501,7 +530,12 @@ export class UsersService {
         if (userId === currentUserId) {
             throw new ForbiddenException(USER_MESSAGES.CAN_NOT_CHANGE_ME);
         }
-        const { existingUser } = await this.checkUser(userId, false, false);
+        const { existingUser } = await this.checkUser(
+            userId,
+            false,
+            false,
+            false,
+        );
         if (existingUser.isDisabled === false) {
             throw new BadRequestException(USER_MESSAGES.USER_NOT_DISABLED);
         }
@@ -630,13 +664,16 @@ export class UsersService {
     }
 
     /**
-     * Đổi mật khẩu dựa vào mật khẩu cũ (khi user đã login).
+     * Đổi mật khẩu (có kiểm tra mật khẩu cũ).
      */
     async updatePassword(
         id: string,
         changePasswordAuthDto: ChangePasswordAuthDto,
     ) {
         const { existingUser } = await this.checkUser(id);
+        if (existingUser.hasPassword === false) {
+            throw new BadRequestException(USER_MESSAGES.PASSWORD_NOT_SET);
+        }
         const { passwordOld, passwordNew } = changePasswordAuthDto;
         const isPasswordMatched = await bcrypt.compare(
             passwordOld,
@@ -654,18 +691,45 @@ export class UsersService {
     }
 
     /**
+     * Tạo mật khẩu lần đầu (cho tài khoản google).
+     */
+    async createPassword(
+        id: string,
+        createPasswordAuthDto: CreatePasswordAuthDto,
+    ) {
+        const { existingUser } = await this.checkUser(id);
+        if (
+            existingUser.hasPassword !== false &&
+            existingUser.accountType === UserAccountType.GOOGLE
+        ) {
+            throw new BadRequestException(USER_MESSAGES.PASSWORD_ALREADY_SET);
+        }
+
+        const passwordHash = await hashPassword(createPasswordAuthDto.password);
+
+        existingUser.password = passwordHash;
+        existingUser.hasPassword = true;
+        await existingUser.save();
+        return USER_MESSAGES.CREATE_PASSWORD_SUCCESS;
+    }
+
+    /**
      * Gửi mail cấp mã OTP khôi phục mật khẩu.
      */
     async sendMailForgotPassword(email: string) {
         const user = await this.userModel
             .findOne({ email })
-            .select('_id isDisabled')
+            .select('_id isDisabled hasPassword')
             .lean();
         if (!user) {
             throw new BadRequestException(USER_MESSAGES.EMAIL_NOT_FOUND);
         }
         if (user.isDisabled) {
             throw new BadRequestException(USER_MESSAGES.USER_DISABLED);
+        }
+
+        if (user.hasPassword === false) {
+            throw new BadRequestException(USER_MESSAGES.PASSWORD_NOT_SET);
         }
 
         await this.checkMailCooldownRedis(
@@ -702,12 +766,15 @@ export class UsersService {
     async resetPassword(email: string, code: string, password: string) {
         const user = await this.userModel
             .findOne({ email })
-            .select('_id password isDisabled');
+            .select('_id password isDisabled hasPassword');
         if (!user) {
             throw new BadRequestException(USER_MESSAGES.EMAIL_NOT_FOUND);
         }
         if (user.isDisabled) {
             throw new BadRequestException(USER_MESSAGES.USER_DISABLED);
+        }
+        if (user.hasPassword === false) {
+            throw new BadRequestException(USER_MESSAGES.PASSWORD_NOT_SET);
         }
 
         await this.verifyCodeWithRedis(
@@ -919,7 +986,7 @@ export class UsersService {
                         },
                         { new: true, session },
                     )
-                    .select('-password -__v')
+                    .select('-password -email -phone -__v')
                     .populate('avatar', '-__v')
                     .lean();
                 if (!updatedUser) {
@@ -1016,7 +1083,7 @@ export class UsersService {
                         },
                         { new: true, session },
                     )
-                    .select('-password -__v')
+                    .select('-password -email -phone -__v')
                     .populate('avatar', '-__v')
                     .lean();
                 if (!updatedUser) {
@@ -1127,6 +1194,7 @@ export class UsersService {
 
         return this.serializeUserResponse(
             targetUser.toObject() as UserResponse,
+            true,
         );
     }
 
@@ -1135,6 +1203,9 @@ export class UsersService {
      */
     async confirmPassword(userId: string, password: string) {
         const { existingUser } = await this.checkUser(userId);
+        if (existingUser.hasPassword === false) {
+            throw new BadRequestException(USER_MESSAGES.PASSWORD_NOT_SET);
+        }
 
         const isPasswordValid = await bcrypt.compare(
             password,
@@ -1286,7 +1357,12 @@ export class UsersService {
     /**
      * Kiểm tra user
      */
-    async checkUser(userId: string, checkDisable = true, checkActive = true) {
+    async checkUser(
+        userId: string,
+        checkDisable = true,
+        checkActive = true,
+        checkBan = true,
+    ) {
         const objectUserId = toObjectId(userId, 'user id');
         const existingUser = await this.userModel.findById(objectUserId);
         if (!existingUser) {
@@ -1297,6 +1373,13 @@ export class UsersService {
         }
         if (checkDisable === true && existingUser.isDisabled) {
             throw new BadRequestException(USER_MESSAGES.USER_DISABLED);
+        }
+        if (
+            checkBan === true &&
+            existingUser.banUntil &&
+            existingUser.banUntil > new Date()
+        ) {
+            throw new BadRequestException(USER_MESSAGES.USER_BANNED);
         }
         return { existingUser, objectUserId };
     }

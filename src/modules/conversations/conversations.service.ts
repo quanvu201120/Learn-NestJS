@@ -17,7 +17,7 @@ import {
     NotFoundException,
     ForbiddenException,
 } from '@nestjs/common';
-import { toObjectId } from '@/utils/utils';
+import { formatDateTime, toObjectId } from '@/utils/utils';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
 import { ClientSession, Model, Types, Connection } from 'mongoose';
@@ -45,6 +45,7 @@ import {
 import { MediaProviderEnum, OwnerTypeEnum } from '../media/types/media';
 import { MessageEnumType } from '../messages/types/message';
 import { serializeMedia } from '../media/utils/media.serializer';
+import { serializeUser } from '../users/utils/user.serializer';
 import {
     CleanupJobEntityEnum,
     CleanupJobResourceEnum,
@@ -52,6 +53,7 @@ import {
 import { RelationshipsService } from '../relationships/relationships.service';
 import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
 import { StatsService } from '../stats/stats.service';
+import { AUTH_MESSAGES } from '@/auth/constants/auth.constant';
 
 @Injectable()
 export class ConversationsService {
@@ -126,32 +128,7 @@ export class ConversationsService {
 
         return {
             ...rest,
-            users: processedUsers?.map((user: any) => {
-                let mappedUser = user;
-                if (!conversation.isGroup && user && user.isDisabled) {
-                    mappedUser = {
-                        ...(user.toJSON ? user.toJSON() : user),
-                        name: CONVERSATION_MESSAGES.DISABLED_ACCOUNT_NAME,
-                        avatar: undefined,
-                        isDisabled: true, // <-- IMPORTANT FOR FRONTEND
-                    };
-                }
-
-                if (
-                    mappedUser &&
-                    typeof mappedUser === 'object' &&
-                    '_id' in mappedUser &&
-                    mappedUser.avatar &&
-                    typeof mappedUser.avatar === 'object' &&
-                    '_id' in mappedUser.avatar
-                ) {
-                    return {
-                        ...mappedUser,
-                        avatar: serializeMedia(mappedUser.avatar),
-                    };
-                }
-                return mappedUser;
-            }),
+            users: processedUsers?.map((user: any) => serializeUser(user)),
             avatar: avatar ? serializeMedia(avatar) : avatar,
             lastMessage: lastMessageId
                 ? typeof lastMessageId === 'object' && '_id' in lastMessageId
@@ -221,7 +198,7 @@ export class ConversationsService {
                 .select('-__v')
                 .populate({
                     path: 'users',
-                    select: '-password -__v',
+                    select: '-password -email -phone -__v',
                     populate: { path: 'avatar', select: '-__v' },
                 })
                 .populate('lastMessageId', '-__v')
@@ -259,7 +236,7 @@ export class ConversationsService {
                         .select('-__v')
                         .populate({
                             path: 'users',
-                            select: '-password -__v',
+                            select: '-password -email -phone -__v',
                             populate: { path: 'avatar', select: '-__v' },
                         })
                         .populate('lastMessageId', '-__v')
@@ -369,7 +346,7 @@ export class ConversationsService {
             .select('-__v')
             .populate({
                 path: 'users',
-                select: '-password -__v',
+                select: '-password -email -phone -__v',
                 populate: { path: 'avatar', select: '-__v' },
             })
             .populate('lastMessageId', '-__v')
@@ -424,7 +401,7 @@ export class ConversationsService {
             .select('-__v')
             .populate({
                 path: 'users',
-                select: '-password -__v',
+                select: '-password -email -phone -__v',
                 populate: { path: 'avatar', select: '-__v' },
             })
             .populate('lastMessageId', '-__v')
@@ -553,7 +530,7 @@ export class ConversationsService {
             .select('-__v')
             .populate({
                 path: 'users',
-                select: '-password -__v',
+                select: '-password -email -phone -__v',
                 populate: { path: 'avatar', select: '-__v' },
             })
             .populate('lastMessageId', '-__v')
@@ -564,7 +541,7 @@ export class ConversationsService {
             const addedUsers = result.users as any[];
             const addedNames = addedUsers
                 .filter((u) => memberIds.includes(u._id.toString()))
-                .map((u) => u.name || u.email)
+                .map((u) => u.name)
                 .join(', ');
 
             await this.messageService.createMessage(
@@ -630,7 +607,7 @@ export class ConversationsService {
             .select('-__v')
             .populate({
                 path: 'users',
-                select: '-password -__v',
+                select: '-password -email -phone -__v',
                 populate: { path: 'avatar', select: '-__v' },
             })
             .populate('lastMessageId', '-__v')
@@ -643,7 +620,7 @@ export class ConversationsService {
             );
         }
         const removedUser = await this.userService.findOneForApi(memberId);
-        const removedName = removedUser?.name || removedUser?.email || memberId;
+        const removedName = removedUser?.name || memberId;
 
         const messageContent =
             currentUserId === memberId
@@ -799,7 +776,7 @@ export class ConversationsService {
                         { $set: { adminGroupId: objectNewAdminId } },
                         { new: true, session },
                     )
-                    .populate('users', 'name email')
+                    .populate('users', 'name _id')
                     .lean();
 
                 if (!result) {
@@ -1088,7 +1065,7 @@ export class ConversationsService {
                         .select('-__v')
                         .populate({
                             path: 'users',
-                            select: '-password -__v',
+                            select: '-password -email -phone -__v',
                             populate: { path: 'avatar', select: '-__v' },
                         })
                         .populate('lastMessageId', '-__v')
@@ -1177,7 +1154,7 @@ export class ConversationsService {
                         .select('-__v')
                         .populate({
                             path: 'users',
-                            select: '-password -__v',
+                            select: '-password -email -phone -__v',
                             populate: { path: 'avatar', select: '-__v' },
                         })
                         .populate('lastMessageId', '-__v')
@@ -1294,7 +1271,17 @@ export class ConversationsService {
                 );
                 if (otherUser && otherUser.isDisabled) {
                     throw new BadRequestException(
-                        'Người dùng này đã bị vô hiệu hóa, không thể tiếp tục trò chuyện',
+                        CONVERSATION_MESSAGES.USER_DISABLED,
+                    );
+                }
+                if (
+                    otherUser &&
+                    otherUser.banUntil &&
+                    otherUser.banUntil > new Date()
+                ) {
+                    const time = formatDateTime(otherUser.banUntil);
+                    throw new BadRequestException(
+                        AUTH_MESSAGES.ACCOUNT_BANNED_UNTIL(time),
                     );
                 }
             }

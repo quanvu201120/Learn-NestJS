@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
-import { UserGenderEnum, UserRole } from '../types/user';
+import { UserAccountType, UserGenderEnum, UserRole } from '../types/user';
 
 export type UserDocument = HydratedDocument<User>;
 
@@ -40,8 +40,15 @@ export class User {
     })
     role: UserRole;
 
-    @Prop({ default: 'LOCAL' })
-    accountType: string;
+    @Prop({
+        type: String,
+        enum: UserAccountType,
+        default: UserAccountType.LOCAL,
+    })
+    accountType: UserAccountType;
+
+    @Prop({ default: true })
+    hasPassword: boolean;
 
     @Prop({ default: false })
     isActive: boolean;

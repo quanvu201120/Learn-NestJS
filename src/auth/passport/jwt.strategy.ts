@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { UsersService } from '@/modules/users/users.service';
 import { SessionService } from '@/modules/session/session.service';
 import { AUTH_MESSAGES } from '../constants/auth.constant';
+import { formatDateTime } from '@/utils/utils';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -30,9 +31,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
             throw new UnauthorizedException(AUTH_MESSAGES.USER_DISABLED);
         }
         if (user.banUntil && user.banUntil > new Date()) {
-            const time = user.banUntil.toLocaleString('vi-VN', {
-                timeZone: 'Asia/Ho_Chi_Minh',
-            });
+            const time = formatDateTime(user.banUntil);
             throw new UnauthorizedException(
                 AUTH_MESSAGES.ACCOUNT_BANNED_UNTIL(time),
             );
