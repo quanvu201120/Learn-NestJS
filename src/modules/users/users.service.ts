@@ -124,6 +124,41 @@ export class UsersService {
         }
     }
 
+    private async createBaseUser(params: {
+        email: string;
+        password: string;
+        name?: string;
+        role?: UserRole;
+        accountType?: UserAccountType;
+        hasPassword?: boolean;
+        isActive?: boolean;
+        phone?: string;
+    }) {
+        const {
+            email,
+            password,
+            name,
+            role = UserRole.USER,
+            accountType = UserAccountType.LOCAL,
+            hasPassword = true,
+            isActive = false,
+            phone,
+        } = params;
+
+        const newUser = await this.userModel.create({
+            email: email.toLowerCase(),
+            name: name || email.split('@')[0],
+            password,
+            phone,
+            role,
+            accountType,
+            hasPassword,
+            isActive,
+        });
+
+        return newUser;
+    }
+
     /**
      * Tạo tài khoản mới, sinh mã OTP lưu vào Redis và gửi email kích hoạt.
      * Mặc định tài khoản tạo ra sẽ ở trạng thái isActive = false.
@@ -164,10 +199,12 @@ export class UsersService {
         const passwordHash = await hashPassword(createUserDto.password);
         const codeActiveId = uuidv4();
 
-        const newUser = await this.userModel.create({
-            ...createUserDto,
-            name: createUserDto.name || createUserDto.email.split('@')[0],
+        const newUser = await this.createBaseUser({
+            email: createUserDto.email,
             password: passwordHash,
+            name: createUserDto.name,
+            phone: createUserDto.phone,
+            role: createUserDto.role,
             accountType: UserAccountType.LOCAL,
             hasPassword: true,
             isActive: false,
@@ -368,6 +405,37 @@ export class UsersService {
         const isEmail = identifier.includes('@');
         const filter = isEmail ? { email: identifier } : { phone: identifier };
         return await this.userModel.findOne(filter).populate('avatar', '-__v');
+    }
+
+    /**
+     * Tìm user theo email để dùng trong luồng Google login.
+     */
+    async findByEmailForLogin(email: string) {
+        return await this.userModel.findOne({
+            email: email.toLowerCase(),
+        });
+    }
+
+    /**
+     * Tạo account local từ Google login khi email chưa tồn tại.
+     */
+    async createGoogleAccount(email: string, name?: string) {
+        const passwordHash = await hashPassword(
+            `${email}:${Date.now()}:${uuidv4()}`,
+        );
+
+        const newUser = await this.createBaseUser({
+            email,
+            password: passwordHash,
+            name,
+            accountType: UserAccountType.GOOGLE,
+            hasPassword: false,
+            isActive: true,
+        });
+
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { password, __v, ...user } = newUser.toObject();
+        return user as UserResponse;
     }
 
     /**
