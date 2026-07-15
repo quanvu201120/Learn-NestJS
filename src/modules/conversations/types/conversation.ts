@@ -5,13 +5,15 @@ import { UserResponse } from '@/modules/users/types/user';
 
 export type ConversationResponse = Omit<
     Conversation,
-    'users' | 'lastMessageId'
+    'users' | 'lastMessageId' | 'pinMessageId'
 > & {
     _id: Types.ObjectId | string;
     createdAt?: Date;
     updatedAt?: Date;
     users: UserResponse[] | Types.ObjectId[] | string[];
     lastMessage?: MessageResponse | Types.ObjectId | string;
+    pinMessageId?: Types.ObjectId | string;
+    pinMessage?: MessageResponse | Types.ObjectId | string;
 };
 
 export type ListConversationResponse = {

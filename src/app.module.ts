@@ -22,6 +22,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { BullModule } from '@nestjs/bullmq';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
     imports: [
@@ -35,6 +36,7 @@ import { BullModule } from '@nestjs/bullmq';
         MediaModule,
         AuditLogModule,
         ReportsModule,
+        NotificationsModule,
         ConfigModule.forRoot({ isGlobal: true }),
         EventEmitterModule.forRoot(),
         RelationshipsModule,

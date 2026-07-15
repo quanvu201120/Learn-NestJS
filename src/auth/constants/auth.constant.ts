@@ -19,4 +19,5 @@ export const AUTH_MESSAGES = {
         `Tài khoản của bạn đã bị cấm đến ${time}`,
     INVALID_CREDENTIALS: 'Tài khoản hoặc mật khẩu không hợp lệ',
     ACCESS_TOKEN_INVALID: 'Access Token không hợp lệ',
+    APPEAL_TOKEN_INVALID: 'Appeal Token không hợp lệ',
 } as const;

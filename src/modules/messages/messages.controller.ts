@@ -213,4 +213,30 @@ export class MessagesController {
             removeReactionDto.conversationId,
         );
     }
+
+    @Post('conversations/:conversationId/messages/:messageId/pin')
+    pinMessage(
+        @Param('conversationId') conversationId: string,
+        @Param('messageId') messageId: string,
+        @Request() req,
+    ) {
+        return this.messagesService.pinMessage(
+            conversationId,
+            messageId,
+            req.user._id.toString(),
+        );
+    }
+
+    @Delete('conversations/:conversationId/messages/:messageId/pin')
+    unpinMessage(
+        @Param('conversationId') conversationId: string,
+        @Param('messageId') messageId: string,
+        @Request() req,
+    ) {
+        return this.messagesService.unpinMessage(
+            conversationId,
+            messageId,
+            req.user._id.toString(),
+        );
+    }
 }

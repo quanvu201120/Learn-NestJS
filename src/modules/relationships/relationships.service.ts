@@ -126,7 +126,7 @@ export class RelationshipsService {
                     status: RelationshipStatusEnum.ACCEPTED,
                 },
                 {
-                    new: true,
+                    returnDocument: 'after',
                 },
             )
             .select('-__v')
@@ -334,7 +334,7 @@ export class RelationshipsService {
                     status: RelationshipStatusEnum.BLOCKED,
                     blockedBy: toObjectId(userId, 'userId'),
                 },
-                { new: true },
+                { returnDocument: 'after' },
             )
             .select('-__v')
             .session(session || null)
@@ -399,6 +399,50 @@ export class RelationshipsService {
             .lean();
 
         return relationship;
+    }
+
+    /**
+     * Lấy những user trong danh sách có relationship status BLOCK với user hiện tại.
+     */
+    async getBlockedUserIdsAmongUsers(
+        userId: string,
+        targetUserIds: string[],
+    ): Promise<string[]> {
+        if (!targetUserIds || targetUserIds.length === 0) {
+            return [];
+        }
+
+        const objectUserId = toObjectId(userId, 'userId');
+        const objectTargetUserIds = targetUserIds
+            .filter((targetUserId) => targetUserId !== userId)
+            .map((targetUserId) => toObjectId(targetUserId, 'targetUserId'));
+
+        if (objectTargetUserIds.length === 0) {
+            return [];
+        }
+
+        const relationships = await this.relationshipModel
+            .find({
+                status: RelationshipStatusEnum.BLOCKED,
+                $or: [
+                    {
+                        requester: objectUserId,
+                        recipient: { $in: objectTargetUserIds },
+                    },
+                    {
+                        recipient: objectUserId,
+                        requester: { $in: objectTargetUserIds },
+                    },
+                ],
+            })
+            .lean();
+
+        return relationships.map((relationship) => {
+            if (relationship.requester.equals(objectUserId)) {
+                return relationship.recipient.toString();
+            }
+            return relationship.requester.toString();
+        });
     }
 
     /**

@@ -15,6 +15,7 @@ export const REPORT_MESSAGES = {
     NO_AUTO_PENALTY: 'Không có hình phạt cụ thể',
     WARNING_SENT: 'Cảnh cáo',
     REPORT_INVALID_STATUS: 'Trạng thái báo cáo không hợp lệ',
+    APPEAL_DEADLINE_EXPIRED: 'Đã hết hạn kháng cáo',
     MUTE_APPLIED: (duration: number, until: string) =>
         `Cấm chat ${duration} ngày (đến ${until})`,
     RESET_AND_WARNING: 'Xóa dữ liệu và Cảnh cáo',
@@ -31,6 +32,12 @@ export const REPORT_MESSAGES = {
     USER_NOT_FOUND: 'Không tìm thấy người dùng',
     UNBAN_SUCCESS: 'Mở khóa tài khoản thành công',
     APPEAL_SUCCESS: (reason: string) => `Kháng cáo thành công: ${reason}`,
+    ADMIN_UNBAN_NOTE: (reason: string) =>
+        `Admin mở khóa tài khoản, lí do: ${reason}`,
+    ADMIN_UNMUTE_NOTE: (reason: string) =>
+        `Admin gỡ cấm chat, lí do: ${reason}`,
+    ADMIN_CLEAR_STRIKE_NOTE: (reason: string) =>
+        `Admin xóa án tích, lí do: ${reason}`,
     UNMUTE_SUCCESS: 'Dỡ bỏ lệnh cấm chat',
     STRIKE_CLEARED_SUCCESS: 'Xóa án tích thành công',
     SUPER_ADMIN_DISMISS_NOTE: 'Bỏ qua báo cáo SUPER_ADMIN',

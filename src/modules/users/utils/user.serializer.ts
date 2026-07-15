@@ -5,6 +5,7 @@
 import { Types } from 'mongoose';
 import { serializeMedia } from '@/modules/media/utils/media.serializer';
 import { BAN_PERMANENT_DAYS } from '@/modules/reports/constants/penalty.constant';
+
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 export const getUserStatusLabel = (user: any): string | null => {
@@ -40,8 +41,12 @@ export const getUserStatusLabel = (user: any): string | null => {
 /**
  * Chuẩn hóa thông tin User cho response public.
  */
-export const serializeUser = (user: any, maskDisabled = true) => {
-    return serializeUserInternal(user, maskDisabled, true);
+export const serializeUser = (
+    user: any,
+    maskDisabled = true,
+    hidden = false,
+) => {
+    return serializeUserInternal(user, maskDisabled, true, hidden);
 };
 
 /**
@@ -56,6 +61,7 @@ const serializeUserInternal = (
     user: any,
     maskDisabled = true,
     omitContact = true,
+    hidden = false,
 ) => {
     if (
         !user ||
@@ -71,22 +77,30 @@ const serializeUserInternal = (
     const serialized = {
         ...(user.toJSON ? user.toJSON() : user),
         _id: user._id.toString(),
-        name: shouldMask ? 'Tài khoản vô hiệu hóa' : user.name,
-        avatar: shouldMask
-            ? undefined
-            : user.avatar
-              ? serializeMedia(user.avatar)
-              : user.avatar,
+        name: shouldMask
+            ? 'Tài khoản vô hiệu hóa'
+            : hidden
+              ? 'Người dùng bị ẩn'
+              : user.name,
+        avatar:
+            shouldMask || hidden
+                ? undefined
+                : user.avatar
+                  ? serializeMedia(user.avatar)
+                  : user.avatar,
         isDisabled: user.isDisabled,
-        banUntil: user.banUntil
-            ? new Date(user.banUntil).toISOString()
-            : undefined,
+        banUntil: hidden
+            ? undefined
+            : user.banUntil
+              ? new Date(user.banUntil).toISOString()
+              : undefined,
         disabledAt: user.disabledAt
             ? new Date(user.disabledAt).toISOString()
             : undefined,
-        dateOfBirth: shouldMask ? undefined : user.dateOfBirth,
-        gender: shouldMask ? undefined : user.gender,
-        bio: shouldMask ? undefined : user.bio,
+        dateOfBirth: shouldMask || hidden ? undefined : user.dateOfBirth,
+        gender: shouldMask || hidden ? undefined : user.gender,
+        bio: shouldMask || hidden ? undefined : user.bio,
+        address: shouldMask || hidden ? undefined : user.address,
     };
 
     if (omitContact) {

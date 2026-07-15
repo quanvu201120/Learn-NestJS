@@ -8,7 +8,6 @@ import {
 import { AuthService } from '../auth.service';
 import { AUTH_MESSAGES } from '../constants/auth.constant';
 import { USER_MESSAGES } from '@/modules/users/constants/user.constant';
-import { formatDateTime } from '@/utils/utils';
 
 @Injectable()
 export class LocalStrategy extends PassportStrategy(Strategy) {
@@ -28,13 +27,6 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
         }
         if (user.isDisabled === true) {
             throw new UnauthorizedException(AUTH_MESSAGES.USER_DISABLED);
-        }
-
-        if (user.banUntil && user.banUntil > new Date()) {
-            const time = formatDateTime(user.banUntil);
-            throw new UnauthorizedException(
-                AUTH_MESSAGES.ACCOUNT_BANNED_UNTIL(time),
-            );
         }
         return user;
     }

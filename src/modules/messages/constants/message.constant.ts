@@ -12,6 +12,7 @@ export const MESSAGE_MESSAGES = {
     DELETE_SUCCESS: 'Xóa tin nhắn thành công',
     MESSAGE_NOT_UPDATED: 'Cập nhật tin nhắn thất bại',
     FILE_REQUIRED: 'Vui lòng tải lên tệp',
+    PIN_MESSAGE_NOT_PINNED: 'Tin nhắn này chưa được ghim',
     CANNOT_SEND_MESSAGE_TO_BLOCKED_USER:
         'Không thể gửi tin nhắn cho người đã chặn bạn',
     USER_MUTED: (time: string) => `Bạn đã bị cấm chat đến ${time}`,

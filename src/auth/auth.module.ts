@@ -10,12 +10,14 @@ import { LocalStrategy } from './passport/local.strategy';
 import { JwtStrategy } from './passport/jwt.strategy';
 import { SessionModule } from '@/modules/session/session.module';
 import { StatsModule } from '@/modules/stats/stats.module';
+import { ReportsModule } from '@/modules/reports/reports.module';
 
 @Module({
     imports: [
         UsersModule,
         SessionModule,
         StatsModule,
+        ReportsModule,
         PassportModule,
         JwtModule.registerAsync({
             global: true,

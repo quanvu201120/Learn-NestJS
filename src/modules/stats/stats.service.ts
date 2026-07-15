@@ -4,7 +4,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
-import { Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, PipelineStage } from 'mongoose';
@@ -31,6 +31,7 @@ export class StatsService {
     constructor(
         @InjectModel(SystemDailyStat.name)
         private readonly dailyStatModel: Model<SystemDailyStatDocument>,
+        @Inject(forwardRef(() => RedisService))
         private readonly redisService: RedisService,
         private readonly cloudinaryService: CloudinaryService,
         private readonly r2Service: R2Service,

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-enum-comparison */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 
@@ -5,6 +6,7 @@
 import { AUTH_MESSAGES } from './constants/auth.constant';
 import { PayloadJWT, User } from '@/modules/users/schemas/user.schema';
 import { UsersService } from '@/modules/users/users.service';
+import { ReportsService } from '@/modules/reports/reports.service';
 import {
     formatDateTime,
     generateJWT,
@@ -49,6 +51,7 @@ export class AuthService {
         private readonly sessionService: SessionService,
         private readonly statsService: StatsService,
         private readonly eventEmitter: EventEmitter2,
+        private readonly reportsService: ReportsService,
     ) {}
 
     /**
@@ -78,16 +81,48 @@ export class AuthService {
      * Xử lý đăng nhập: Tạo phiên (Session), sinh JWT (Access Token & Refresh Token),
      * băm (hash) Refresh Token để lưu vào DB và trả về kết quả cho client.
      */
+    /**
+     * Xử lý đăng nhập.
+     *
+     * Nếu user đang bị ban, method không cấp access token mà trả về context
+     * kháng cáo cho án ban hiện tại để FE điều hướng sang màn hình appeal.
+     */
     async login(
         user: User & { _id: string },
         userAgent?: string,
         deviceName?: string,
     ) {
         if (user.banUntil && user.banUntil > new Date()) {
-            const time = formatDateTime(user.banUntil);
-            throw new UnauthorizedException(
-                AUTH_MESSAGES.ACCOUNT_BANNED_UNTIL(time),
-            );
+            const appealContext =
+                await this.reportsService.findCurrentAppealContextByUserId(
+                    user._id.toString(),
+                );
+
+            return {
+                isBanned: true,
+                banUntil: user.banUntil,
+                appeal: appealContext
+                    ? {
+                          reportId: appealContext.reportId,
+                          status: appealContext.status,
+                          appealDeadline: appealContext.appealDeadline,
+                          appealReviewDeadline:
+                              appealContext.appealReviewDeadline,
+                          penaltyApplied: appealContext.penaltyApplied,
+                          penaltyType: appealContext.penaltyType,
+                          appealToken:
+                              appealContext.status === 'resolved' &&
+                              appealContext.appealDeadline &&
+                              new Date(appealContext.appealDeadline) >
+                                  new Date()
+                                  ? await this.reportsService.generateAppealToken(
+                                        user._id.toString(),
+                                        appealContext.reportId,
+                                    )
+                                  : undefined,
+                      }
+                    : undefined,
+            };
         }
 
         let sessionId = '';

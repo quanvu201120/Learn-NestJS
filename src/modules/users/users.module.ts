@@ -13,7 +13,7 @@ import { ReportsModule } from '../reports/reports.module';
 @Module({
     imports: [
         MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
-        MediaModule,
+        forwardRef(() => MediaModule),
         SessionModule,
         forwardRef(() => RelationshipsModule),
         forwardRef(() => ReportsModule),

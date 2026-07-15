@@ -11,6 +11,7 @@ import {
     Inject,
     Injectable,
     Logger,
+    UnauthorizedException,
     forwardRef,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -21,6 +22,7 @@ import { ResolveReportDto } from './dto/resolve-report.dto';
 import { GetReportsDto } from './dto/get-reports.dto';
 import { ManualBanDto } from './dto/manual-ban.dto';
 import { QuickPenaltyDto } from './dto/quick-penalty.dto';
+import { AppealReportDto } from './dto/appeal-report.dto';
 import {
     CleanupJobEntityEnum,
     CleanupJobResourceEnum,
@@ -30,12 +32,16 @@ import { UsersService } from '../users/users.service';
 import { SessionService } from '../session/session.service';
 import {
     PenaltyActionEnum,
+    PenaltyTypeEnum,
     ReportReasonEnum,
     ReportStatusEnum,
 } from './types/report.type';
 import { PENALTY_RULES } from './constants/penalty.constant';
 import { formatDateTime, validateObjectId } from '@/utils/utils';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import { StringValue } from 'ms';
 import {
     AuditLogActionEnum,
     AuditLogTargetEnum,
@@ -49,6 +55,9 @@ import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
 import { MEDIA_CONSTANTS } from '../media/constants/media.constant';
 import { OwnerTypeEnum } from '../media/types/media';
 import { Media, MediaDocument } from '../media/schemas/media.schema';
+import { NotificationTypeEnum } from '../notifications/types/notification.type';
+import { NOTIFICATION_TITLES } from '../notifications/constants/notification.constant';
+import { AUTH_MESSAGES } from '@/auth/constants/auth.constant';
 
 @Injectable()
 export class ReportsService {
@@ -62,7 +71,105 @@ export class ReportsService {
         private readonly cleanupJobsService: CleanupJobsService,
         private readonly mediaService: MediaService,
         private readonly eventEmitter: EventEmitter2,
+        private readonly jwtService: JwtService,
+        private readonly configService: ConfigService,
     ) {}
+
+    /**
+     * Tìm report đại diện cho án ban đang chặn đăng nhập của user.
+     *
+     * Method này chỉ phục vụ flow login bị ban, nên chỉ xét các report có dấu
+     * hiệu đang áp dụng hình phạt khóa tài khoản.
+     */
+    async findCurrentAppealContextByUserId(userId: string) {
+        const report = await this.reportModel
+            .findOne({
+                targetUserId: userId,
+                penaltyType: PenaltyTypeEnum.BAN,
+                status: {
+                    $in: [
+                        ReportStatusEnum.APPEAL_PENDING,
+                        ReportStatusEnum.APPEAL_REJECTED,
+                        ReportStatusEnum.RESOLVED,
+                    ],
+                },
+            })
+            .sort({ updatedAt: -1, resolvedAt: -1, createdAt: -1 })
+            .select(
+                '_id status appealDeadline appealReviewDeadline penaltyApplied penaltyType',
+            )
+            .lean();
+
+        if (!report) {
+            return null;
+        }
+
+        return {
+            reportId: report._id.toString(),
+            status: report.status,
+            appealDeadline: report.appealDeadline,
+            appealReviewDeadline: report.appealReviewDeadline,
+            penaltyApplied: report.penaltyApplied,
+            penaltyType: report.penaltyType,
+        };
+    }
+
+    /**
+     * Sinh JWT ngắn hạn chỉ dùng cho flow kháng cáo một report cụ thể.
+     *
+     * Token này không thay thế access token của app và chỉ hợp lệ với scope
+     * `report_appeal`.
+     */
+    async generateAppealToken(userId: string, reportId: string) {
+        return await this.jwtService.signAsync(
+            {
+                sub: userId,
+                reportId,
+                scope: 'report_appeal',
+            },
+            {
+                secret: this.configService.get<string>('APPEAL_TOKEN_SECRET'),
+                expiresIn: this.configService.get<string>(
+                    'APPEAL_TOKEN_EXPIRES_IN',
+                ) as StringValue,
+            },
+        );
+    }
+
+    /**
+     * Xác thực appeal token lấy từ header Authorization.
+     *
+     * Token phải đúng định dạng bearer token, đúng scope và gắn với report
+     * đang được kháng cáo.
+     */
+    private async verifyAppealToken(
+        authorization: string | undefined,
+        reportId: string,
+    ) {
+        if (!authorization?.startsWith('Bearer ')) {
+            throw new UnauthorizedException(AUTH_MESSAGES.APPEAL_TOKEN_INVALID);
+        }
+
+        const token = authorization.slice(7).trim();
+        const payload = await this.jwtService.verifyAsync(token, {
+            secret:
+                this.configService.get<string>('APPEAL_TOKEN_SECRET') ||
+                this.configService.get<string>('JWT_SECRET'),
+        });
+
+        if (
+            !payload ||
+            payload.scope !== 'report_appeal' ||
+            payload.reportId !== reportId
+        ) {
+            throw new UnauthorizedException(AUTH_MESSAGES.APPEAL_TOKEN_INVALID);
+        }
+
+        return {
+            userId: payload.sub as string,
+            reportId: payload.reportId as string,
+        };
+    }
 
     async create(
         createReportDto: CreateReportDto,
@@ -307,6 +414,156 @@ export class ReportsService {
         return report;
     }
 
+    /**
+     * Nhận đơn kháng cáo bằng appeal token thay vì access token đăng nhập.
+     *
+     * Flow này cho phép user bị ban vẫn có thể gửi kháng cáo khi FE đã nhận
+     * được appeal token từ login response hoặc từ endpoint cấp quyền kháng cáo.
+     */
+    async appeal(
+        id: string,
+        authorization: string | undefined,
+        appealDto: AppealReportDto,
+        files: Express.Multer.File[] = [],
+    ) {
+        validateObjectId(id, 'reportId');
+        const appealIdentity = await this.verifyAppealToken(authorization, id);
+        const report = await this.reportModel.findById(id);
+
+        if (!report) {
+            throw new BadRequestException(REPORT_MESSAGES.REPORT_NOT_FOUND);
+        }
+
+        if (report.targetUserId.toString() !== appealIdentity.userId) {
+            throw new ForbiddenException(REPORT_MESSAGES.MISSING_PERMISSION);
+        }
+
+        if (report.status !== ReportStatusEnum.RESOLVED) {
+            throw new BadRequestException(
+                REPORT_MESSAGES.REPORT_INVALID_STATUS,
+            );
+        }
+
+        if (!report.appealDeadline || report.appealDeadline < new Date()) {
+            throw new BadRequestException(
+                REPORT_MESSAGES.APPEAL_DEADLINE_EXPIRED,
+            );
+        }
+
+        const uploadedMediaDocs = await this.uploadEvidenceImages(
+            appealIdentity.userId,
+            files,
+        );
+
+        try {
+            report.status = ReportStatusEnum.APPEAL_PENDING;
+            report.appealReviewDeadline = new Date(
+                Date.now() + 30 * 24 * 60 * 60 * 1000,
+            );
+            report.appealText = appealDto.appealText.trim();
+            report.appealEvidenceMediaIds = uploadedMediaDocs.map(
+                (media) => media._id,
+            );
+            await report.save();
+        } catch (error) {
+            await Promise.allSettled(
+                uploadedMediaDocs.map((media) =>
+                    this.mediaService.deleteMedia(media._id.toString()),
+                ),
+            );
+            if (uploadedMediaDocs.length > 0) {
+                const publicIds = uploadedMediaDocs
+                    .filter((media) => !!media.publicId)
+                    .map((media) => media.publicId as string);
+
+                if (publicIds.length > 0) {
+                    await this.mediaService
+                        .deleteImagesFromCloudinaryWithCleanup(publicIds, {
+                            entityType: CleanupJobEntityEnum.REPORT,
+                            resourceType: CleanupJobResourceEnum.REPORT_MEDIA,
+                        })
+                        .catch(() => false);
+                }
+            }
+            throw error;
+        }
+
+        this.eventEmitter.emit('notification.create', {
+            userId: report.targetUserId.toString(),
+            type: NotificationTypeEnum.REPORT_APPEAL_PENDING,
+            title: NOTIFICATION_TITLES[
+                NotificationTypeEnum.REPORT_APPEAL_PENDING
+            ],
+            refId: report._id.toString(),
+            snapshot: {
+                avatarMediaId: report.snapshot?.avatarMediaId,
+                displayName: report.snapshot?.displayName,
+                bio: report.snapshot?.bio,
+                role: report.snapshot?.role,
+            },
+            reportStatus: report.status,
+            reason: report.reason,
+            penaltyApplied: report.penaltyApplied,
+            penaltyType: report.penaltyType,
+            appealDeadline: report.appealDeadline,
+            appealReviewDeadline: report.appealReviewDeadline,
+        });
+
+        return {
+            message:
+                NOTIFICATION_TITLES[NotificationTypeEnum.REPORT_APPEAL_PENDING],
+            report,
+        };
+    }
+
+    /**
+     * Cấp appeal token cho user đang ở trong app và đã chọn đúng report muốn
+     * kháng cáo từ notification hoặc màn hình chi tiết.
+     */
+    async getAppealAccess(id: string, userId: string) {
+        validateObjectId(id, 'reportId');
+        const report = await this.reportModel
+            .findById(id)
+            .select(
+                '_id targetUserId status appealDeadline appealReviewDeadline penaltyApplied penaltyType',
+            );
+
+        if (!report) {
+            throw new BadRequestException(REPORT_MESSAGES.REPORT_NOT_FOUND);
+        }
+
+        if (report.targetUserId.toString() !== userId) {
+            throw new ForbiddenException(REPORT_MESSAGES.MISSING_PERMISSION);
+        }
+
+        if (
+            report.status !== ReportStatusEnum.RESOLVED &&
+            report.status !== ReportStatusEnum.APPEAL_PENDING &&
+            report.status !== ReportStatusEnum.APPEAL_REJECTED
+        ) {
+            throw new BadRequestException(
+                REPORT_MESSAGES.REPORT_INVALID_STATUS,
+            );
+        }
+
+        const canAppeal =
+            report.status === ReportStatusEnum.RESOLVED &&
+            !!report.appealDeadline &&
+            report.appealDeadline > new Date();
+
+        return {
+            reportId: report._id.toString(),
+            status: report.status,
+            appealDeadline: report.appealDeadline,
+            appealReviewDeadline: report.appealReviewDeadline,
+            penaltyApplied: report.penaltyApplied,
+            penaltyType: report.penaltyType,
+            appealToken: canAppeal
+                ? await this.generateAppealToken(userId, report._id.toString())
+                : undefined,
+        };
+    }
+
     private async verifyAdminPassword(
         adminId: string,
         adminRole: UserRole,
@@ -355,12 +612,16 @@ export class ReportsService {
         const now = new Date();
         const penalties: Partial<Record<'ban' | 'mute', Date>> = {};
 
-        const banUntil = targetUser?.banUntil ? new Date(targetUser.banUntil) : null;
+        const banUntil = targetUser?.banUntil
+            ? new Date(targetUser.banUntil)
+            : null;
         if (banUntil && banUntil > now) {
             penalties.ban = banUntil;
         }
 
-        const muteUntil = targetUser?.muteUntil ? new Date(targetUser.muteUntil) : null;
+        const muteUntil = targetUser?.muteUntil
+            ? new Date(targetUser.muteUntil)
+            : null;
         if (muteUntil && muteUntil > now) {
             penalties.mute = muteUntil;
         }
@@ -422,7 +683,12 @@ export class ReportsService {
         resetBio?: boolean,
         resetName?: boolean,
         session?: ClientSession,
-    ): Promise<{ penaltyAppliedStr: string; banUntil?: Date; muteUntil?: Date }> {
+    ): Promise<{
+        penaltyAppliedStr: string;
+        penaltyType?: PenaltyTypeEnum;
+        banUntil?: Date;
+        muteUntil?: Date;
+    }> {
         const targetUser = await this.usersService.findOne(targetUserId);
         if (!targetUser) {
             throw new BadRequestException(
@@ -485,10 +751,12 @@ export class ReportsService {
 
         const now = new Date();
         let penaltyAppliedStr = '';
+        let penaltyType: PenaltyTypeEnum | undefined;
         let muteUntil: Date | undefined;
 
         if (actionToApply === PenaltyActionEnum.WARNING) {
             penaltyAppliedStr = REPORT_MESSAGES.WARNING_SENT;
+            penaltyType = PenaltyTypeEnum.WARNING;
         } else if (actionToApply === PenaltyActionEnum.MUTE) {
             muteUntil = new Date(
                 now.getTime() + duration * 24 * 60 * 60 * 1000,
@@ -498,6 +766,7 @@ export class ReportsService {
                 duration,
                 formatDateTime(muteUntil),
             );
+            penaltyType = PenaltyTypeEnum.MUTE;
         } else if (actionToApply === PenaltyActionEnum.RESET_AND_WARNING) {
             let hasSpecificReset = false;
             if (resetAvatar) {
@@ -517,6 +786,7 @@ export class ReportsService {
                 targetUser.bio = undefined;
             }
             penaltyAppliedStr = REPORT_MESSAGES.RESET_AND_WARNING;
+            penaltyType = PenaltyTypeEnum.WARNING;
         } else if (actionToApply === PenaltyActionEnum.RESET_AND_BAN) {
             let hasSpecificReset = false;
             if (resetAvatar) {
@@ -544,6 +814,7 @@ export class ReportsService {
                 duration,
                 formatDateTime(until),
             );
+            penaltyType = PenaltyTypeEnum.BAN;
         } else if (actionToApply === PenaltyActionEnum.BAN) {
             let hasSpecificReset = false;
             if (resetAvatar) {
@@ -567,12 +838,14 @@ export class ReportsService {
             penaltyAppliedStr = hasSpecificReset
                 ? REPORT_MESSAGES.RESET_AND_BAN(duration, formatDateTime(until))
                 : REPORT_MESSAGES.BAN_APPLIED(duration, formatDateTime(until));
+            penaltyType = PenaltyTypeEnum.BAN;
         }
 
         await targetUser.save({ session });
 
         return {
             penaltyAppliedStr,
+            penaltyType,
             banUntil: targetUser.banUntil,
             muteUntil,
         };
@@ -668,7 +941,7 @@ export class ReportsService {
             resolveDto.status === ReportStatusEnum.DISMISSED &&
             isSuperAdminReport &&
             !adminNote
-                ? 'Bỏ qua báo cáo SUPER_ADMIN'
+                ? REPORT_MESSAGES.SUPER_ADMIN_DISMISS_NOTE
                 : adminNote;
 
         const originalStatus = report.status;
@@ -679,7 +952,7 @@ export class ReportsService {
                     status: ReportStatusEnum.RESOLVING,
                 },
             },
-            { new: true },
+            { returnDocument: 'after' },
         );
 
         if (!claimedReport) {
@@ -705,7 +978,7 @@ export class ReportsService {
                             resolvedAt: new Date(),
                         },
                     },
-                    { new: true, session },
+                    { returnDocument: 'after', session },
                 );
 
                 if (!claimedInTx) {
@@ -732,6 +1005,7 @@ export class ReportsService {
 
                     finalReport.penaltyApplied =
                         penaltyResult.penaltyAppliedStr;
+                    finalReport.penaltyType = penaltyResult.penaltyType;
                     finalReport.appealDeadline = new Date(
                         Date.now() + 30 * 24 * 60 * 60 * 1000,
                     );
@@ -743,6 +1017,7 @@ export class ReportsService {
                         {
                             $set: {
                                 penaltyApplied: finalReport.penaltyApplied,
+                                penaltyType: finalReport.penaltyType,
                                 appealDeadline: finalReport.appealDeadline,
                             },
                         },
@@ -768,6 +1043,34 @@ export class ReportsService {
                         },
                         { session },
                     );
+                } else if (
+                    resolveDto.status === ReportStatusEnum.APPEAL_SUCCESS
+                ) {
+                    const targetUser = await this.usersService.findOne(
+                        report.targetUserId.toString(),
+                    );
+                    const penaltyType = finalReport.penaltyType;
+
+                    if (targetUser && penaltyType === PenaltyTypeEnum.BAN) {
+                        targetUser.banUntil = undefined;
+                        await targetUser.save({ session });
+                    } else if (
+                        targetUser &&
+                        penaltyType === PenaltyTypeEnum.MUTE
+                    ) {
+                        targetUser.muteUntil = undefined;
+                        await targetUser.save({ session });
+                    }
+
+                    await this.reportModel.updateOne(
+                        { _id: finalReport._id },
+                        {
+                            $set: {
+                                status: ReportStatusEnum.APPEAL_SUCCESS,
+                            },
+                        },
+                        { session },
+                    );
                 }
             });
         } catch (error) {
@@ -779,6 +1082,7 @@ export class ReportsService {
                         resolvedBy: '',
                         resolvedAt: '',
                         penaltyApplied: '',
+                        penaltyType: '',
                         appealDeadline: '',
                     },
                 },
@@ -813,6 +1117,41 @@ export class ReportsService {
                 muteUntil,
             });
         }
+
+        if (
+            resolveDto.status === ReportStatusEnum.APPEAL_SUCCESS &&
+            finalReport.penaltyType === PenaltyTypeEnum.MUTE
+        ) {
+            this.eventEmitter.emit('user.unmuted', {
+                userId: report.targetUserId.toString(),
+            });
+        }
+
+        const notificationType =
+            resolveDto.status === ReportStatusEnum.APPEAL_REJECTED
+                ? NotificationTypeEnum.REPORT_APPEAL_REJECTED
+                : resolveDto.status === ReportStatusEnum.APPEAL_SUCCESS
+                  ? NotificationTypeEnum.REPORT_APPEAL_SUCCESS
+                  : NotificationTypeEnum.REPORT_RESOLVED;
+
+        this.eventEmitter.emit('notification.create', {
+            userId: report.targetUserId.toString(),
+            type: notificationType,
+            title: NOTIFICATION_TITLES[notificationType],
+            refId: finalReport._id.toString(),
+            snapshot: {
+                avatarMediaId: report.snapshot?.avatarMediaId,
+                displayName: report.snapshot?.displayName,
+                bio: report.snapshot?.bio,
+                role: report.snapshot?.role,
+            },
+            reportStatus: finalReport.status,
+            reason: report.reason,
+            penaltyApplied: finalReport.penaltyApplied,
+            penaltyType: finalReport.penaltyType,
+            appealDeadline: finalReport.appealDeadline,
+            appealReviewDeadline: finalReport.appealReviewDeadline,
+        });
 
         this.eventEmitter.emit('audit.log.create', {
             req,
@@ -993,7 +1332,7 @@ export class ReportsService {
             lastReport.status = ReportStatusEnum.DISMISSED;
             lastReport.adminNote =
                 (lastReport.adminNote ? lastReport.adminNote + ' | ' : '') +
-                REPORT_MESSAGES.APPEAL_SUCCESS(dto.reason);
+                REPORT_MESSAGES.ADMIN_UNBAN_NOTE(dto.reason);
             lastReport.appealDeadline = undefined;
             await lastReport.save();
         }
@@ -1038,7 +1377,7 @@ export class ReportsService {
             lastReport.status = ReportStatusEnum.DISMISSED;
             lastReport.adminNote =
                 (lastReport.adminNote ? lastReport.adminNote + ' | ' : '') +
-                REPORT_MESSAGES.APPEAL_SUCCESS(dto.reason);
+                REPORT_MESSAGES.ADMIN_UNMUTE_NOTE(dto.reason);
             lastReport.appealDeadline = undefined;
             await lastReport.save();
         }
@@ -1082,7 +1421,7 @@ export class ReportsService {
             lastReport.status = ReportStatusEnum.DISMISSED;
             lastReport.adminNote =
                 (lastReport.adminNote ? lastReport.adminNote + ' | ' : '') +
-                REPORT_MESSAGES.APPEAL_SUCCESS(dto.reason);
+                REPORT_MESSAGES.ADMIN_CLEAR_STRIKE_NOTE(dto.reason);
             lastReport.appealDeadline = undefined;
             await lastReport.save();
         }

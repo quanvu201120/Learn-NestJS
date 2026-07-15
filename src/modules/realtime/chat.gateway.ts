@@ -51,6 +51,8 @@ import {
     RelationshipAcceptedPayload,
     RelationshipDeletedPayload,
     RelationshipBlockedPayload,
+    PinMessageEventPayload,
+    UnpinMessageEventPayload,
 } from './types/responseSocket';
 import { UsersService } from '../users/users.service';
 import { USER_MESSAGES } from '../users/constants/user.constant';
@@ -58,6 +60,7 @@ import { AUTH_MESSAGES } from '@/auth/constants/auth.constant';
 import { SessionService } from '../session/session.service';
 import { MessageEnumType } from '../messages/types/message';
 import { RelationshipsService } from '../relationships/relationships.service';
+import { Notification } from '../notifications/schemas/notification.schema';
 @WebSocketGateway({
     cors: { origin: '*' },
     transports: ['websocket'],
@@ -336,6 +339,30 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             },
         });
 
+        this.messageService.pinnedMessage$.subscribe({
+            next: ({ conversationId, messageId }) => {
+                const payload: PinMessageEventPayload = {
+                    conversationId,
+                    messageId,
+                };
+                this.server
+                    .to(getRoomNameConversation(conversationId))
+                    .emit('message:pinned', payload);
+            },
+        });
+
+        this.messageService.unpinnedMessage$.subscribe({
+            next: ({ conversationId, messageId }) => {
+                const payload: UnpinMessageEventPayload = {
+                    conversationId,
+                    messageId,
+                };
+                this.server
+                    .to(getRoomNameConversation(conversationId))
+                    .emit('message:unpinned', payload);
+            },
+        });
+
         this.messageService.unseenMessage$.subscribe({
             next: ({ conversationId, userIds }) => {
                 userIds.forEach((userId) => {
@@ -425,6 +452,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                     .emit('relationship:unblocked', payload);
             },
         );
+    }
+
+    @OnEvent('notification.created')
+    handleNotificationCreated({
+        notificationId,
+        userId,
+    }: {
+        notificationId: string;
+        userId: string;
+    }) {
+        this.server
+            .to(getRoomNameUser(userId))
+            .emit('notification:created', notificationId);
     }
 
     @OnEvent('user.banned')

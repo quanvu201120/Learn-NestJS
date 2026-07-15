@@ -22,3 +22,9 @@ export enum PenaltyActionEnum {
     RESET_AND_BAN = 'RESET_AND_BAN',
     BAN = 'BAN',
 }
+
+export enum PenaltyTypeEnum {
+    WARNING = 'warning',
+    MUTE = 'mute',
+    BAN = 'ban',
+}

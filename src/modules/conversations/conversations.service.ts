@@ -1,3 +1,4 @@
+/* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-floating-promises */
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
@@ -7,7 +8,10 @@
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import { CONVERSATION_MESSAGES } from './constants/conversation.constant';
+import {
+    CONVERSATION_CONSTANTS,
+    CONVERSATION_MESSAGES,
+} from './constants/conversation.constant';
 import {
     BadRequestException,
     Inject,
@@ -26,6 +30,7 @@ import {
     ConversationDocument,
 } from './schemas/conversation.schema';
 import { serializeMessage } from '../messages/utils/message.serializer';
+import { MESSAGE_MESSAGES } from '../messages/constants/message.constant';
 import { MessagesService } from '../messages/messages.service';
 import { UsersService } from '../users/users.service';
 import {
@@ -118,22 +123,48 @@ export class ConversationsService {
      * Helper nội bộ: Format dữ liệu conversation trước khi trả về client.
      * Chuyển đổi ID của lastMessage thành object nếu đã được populate.
      */
-    private serializeConversation(conversation: any): ConversationResponse {
-        const { lastMessageId, avatar, users, ...rest } = conversation;
+    private async serializeConversation(
+        conversation: any,
+        currentUserId?: string,
+        preloadedHiddenUserIds?: string[],
+        checkHiddenUserBlock = false,
+    ): Promise<ConversationResponse> {
+        const { lastMessageId, pinMessageId, avatar, users, ...rest } =
+            conversation;
 
         let processedUsers = users;
-        if (conversation.isGroup) {
-            processedUsers = users?.filter((user: any) => !user.isDisabled);
-        }
+
+        const hiddenUserIds = checkHiddenUserBlock
+            ? preloadedHiddenUserIds && preloadedHiddenUserIds.length > 0
+                ? preloadedHiddenUserIds
+                : currentUserId && Array.isArray(processedUsers)
+                  ? await this.relationshipsService.getBlockedUserIdsAmongUsers(
+                        currentUserId,
+                        processedUsers.map((user: any) => user._id.toString()),
+                    )
+                  : []
+            : [];
+        const hiddenUserIdSet = new Set(hiddenUserIds);
 
         return {
             ...rest,
-            users: processedUsers?.map((user: any) => serializeUser(user)),
+            users: processedUsers?.map((user: any) =>
+                serializeUser(
+                    user,
+                    true,
+                    hiddenUserIdSet.has(user._id.toString()),
+                ),
+            ),
             avatar: avatar ? serializeMedia(avatar) : avatar,
             lastMessage: lastMessageId
                 ? typeof lastMessageId === 'object' && '_id' in lastMessageId
-                    ? serializeMessage(lastMessageId)
+                    ? serializeMessage(lastMessageId, hiddenUserIds)
                     : lastMessageId
+                : undefined,
+            pinMessage: pinMessageId
+                ? typeof pinMessageId === 'object' && '_id' in pinMessageId
+                    ? serializeMessage(pinMessageId, hiddenUserIds)
+                    : pinMessageId
                 : undefined,
         };
     }
@@ -171,10 +202,38 @@ export class ConversationsService {
                     CONVERSATION_MESSAGES.GROUP_MIN_3_USERS,
                 );
             }
+
+            if (
+                normalizedUsers.length >
+                CONVERSATION_CONSTANTS.MAX_GROUP_MEMBERS
+            ) {
+                throw new BadRequestException(
+                    CONVERSATION_MESSAGES.GROUP_MAX_MEMBERS_EXCEEDED,
+                );
+            }
         }
-        const listMember = normalizedUsers.map((id) =>
-            toObjectId(id, `user id`),
+        const blockList = new Set(
+            await this.relationshipsService.getBlockedUserIdsAmongUsers(
+                currentUserId,
+                users,
+            ),
         );
+
+        const listMember = normalizedUsers
+            .map((id) => toObjectId(id, `user id`))
+            .filter((member) => !blockList.has(member.toString()));
+
+        if (!isGroup && listMember.length !== 2) {
+            throw new BadRequestException(
+                CONVERSATION_MESSAGES.DIRECT_MUST_BE_2_USERS,
+            );
+        }
+
+        if (isGroup && listMember.length < 3) {
+            throw new BadRequestException(
+                CONVERSATION_MESSAGES.GROUP_MIN_3_USERS,
+            );
+        }
 
         const existingUsersCount =
             await this.userService.countUserIdsExist(listMember);
@@ -223,7 +282,7 @@ export class ConversationsService {
                                 },
                             },
                             {
-                                new: true,
+                                returnDocument: 'after',
                                 arrayFilters: [
                                     {
                                         'item.userId': new Types.ObjectId(
@@ -242,9 +301,11 @@ export class ConversationsService {
                         .populate('lastMessageId', '-__v')
                         .lean();
 
-                    return this.serializeConversation(updatedConversation);
+                    return await this.serializeConversation(
+                        updatedConversation,
+                    );
                 }
-                return this.serializeConversation(existingConversation);
+                return await this.serializeConversation(existingConversation);
             }
         }
         const adminGroupId = isGroup ? objectCurrentUserId : undefined;
@@ -296,7 +357,7 @@ export class ConversationsService {
         const { __v, ...result } = (
             createConversation as ConversationDocument
         ).toObject();
-        const res = this.serializeConversation(result);
+        const res = await this.serializeConversation(result);
         if (isGroup) {
             this.conversationGroupCreated$.next({
                 conversationId: res._id.toString(),
@@ -350,6 +411,19 @@ export class ConversationsService {
                 populate: { path: 'avatar', select: '-__v' },
             })
             .populate('lastMessageId', '-__v')
+            .populate({
+                path: 'pinMessageId',
+                select: '-__v',
+                populate: [
+                    {
+                        path: 'senderId',
+                        select: '-password -email -phone -__v',
+                        populate: { path: 'avatar', select: '-__v' },
+                    },
+                    { path: 'replyTo', select: '-__v' },
+                    { path: 'mediaId', select: '-__v' },
+                ],
+            })
             .populate('avatar', '-__v')
             .sort({ updatedAt: -1 })
             .limit(limit + 1)
@@ -366,11 +440,33 @@ export class ConversationsService {
                       conversations[conversations.length - 1] as any
                   ).updatedAt.toISOString()
                 : null;
+        const hiddenUserIds =
+            await this.relationshipsService.getBlockedUserIdsAmongUsers(
+                userId,
+                [
+                    ...new Set(
+                        conversations.flatMap((conversation: any) => {
+                            return Array.isArray(conversation.users)
+                                ? conversation.users.map((user: any) =>
+                                      user._id.toString(),
+                                  )
+                                : [];
+                        }),
+                    ),
+                ],
+            );
 
         const res: ListConversationResponse = {
             nextCursor,
-            conversations: conversations.map((conversation) =>
-                this.serializeConversation(conversation as any),
+            conversations: await Promise.all(
+                conversations.map((conversation) =>
+                    this.serializeConversation(
+                        conversation as any,
+                        userId,
+                        hiddenUserIds,
+                        conversation.isGroup,
+                    ),
+                ),
             ),
         };
         return res;
@@ -405,9 +501,24 @@ export class ConversationsService {
                 populate: { path: 'avatar', select: '-__v' },
             })
             .populate('lastMessageId', '-__v')
+            .populate({
+                path: 'pinMessageId',
+                select: '-__v',
+                populate: [
+                    {
+                        path: 'senderId',
+                        select: '-password -email -phone -__v',
+                        populate: { path: 'avatar', select: '-__v' },
+                    },
+                    { path: 'replyTo', select: '-__v' },
+                    { path: 'mediaId', select: '-__v' },
+                ],
+            })
             .populate('avatar', '-__v')
             .lean();
-        return res ? this.serializeConversation(res) : null;
+        return res
+            ? await this.serializeConversation(res, userId, [], res.isGroup)
+            : null;
     }
 
     /**
@@ -434,9 +545,42 @@ export class ConversationsService {
                     [`readReceipts.${userId}`]: objectMessageId,
                 },
             },
-            { new: true, arrayFilters: [{ 'item.isHidden': true }], session },
+            {
+                returnDocument: 'after',
+                arrayFilters: [{ 'item.isHidden': true }],
+                session,
+            },
         );
         return result;
+    }
+
+    async pinMessage(
+        conversationId: string,
+        messageId: string,
+        session?: ClientSession,
+    ) {
+        const objectConversationId = toObjectId(
+            conversationId,
+            'conversation id',
+        );
+        const objectMessageId = toObjectId(messageId, 'message id');
+        return await this.conversationModel.findByIdAndUpdate(
+            objectConversationId,
+            { $set: { pinMessageId: objectMessageId } },
+            { returnDocument: 'after', session },
+        );
+    }
+
+    async unpinMessage(conversationId: string, session?: ClientSession) {
+        const objectConversationId = toObjectId(
+            conversationId,
+            'conversation id',
+        );
+        return await this.conversationModel.findByIdAndUpdate(
+            objectConversationId,
+            { $unset: { pinMessageId: 1 } },
+            { returnDocument: 'after', session },
+        );
     }
 
     /**
@@ -467,7 +611,7 @@ export class ConversationsService {
             .findByIdAndUpdate(
                 objectConversationId,
                 { $set: { name: normalizedName } },
-                { new: true },
+                { returnDocument: 'after' },
             )
             .lean();
         const res: UpdateNameConversationResponse = {
@@ -494,15 +638,66 @@ export class ConversationsService {
         const objectMemberIds = memberIds.map((memberId) =>
             toObjectId(memberId, `member id`),
         );
+        const existingMemberIds = new Set(
+            conversation.users.map((member) => member.toString()),
+        );
+        const uniqueMemberIds = [
+            ...new Map(
+                objectMemberIds.map((memberId) => [
+                    memberId.toString(),
+                    memberId,
+                ]),
+            ).values(),
+        ];
+
+        const validMemberIds = (
+            await Promise.all(
+                uniqueMemberIds.map(async (memberId) => {
+                    const memberIdString = memberId.toString();
+
+                    if (existingMemberIds.has(memberIdString)) {
+                        return null;
+                    }
+
+                    const user = await this.userService.findOne(memberIdString);
+                    if (
+                        !user ||
+                        user.isDisabled ||
+                        !user.isActive ||
+                        (user.banUntil && user.banUntil > new Date())
+                    ) {
+                        return null;
+                    }
+
+                    const isBlocked =
+                        await this.relationshipsService.checkIsBlocked(
+                            currentUserId,
+                            memberIdString,
+                        );
+                    if (isBlocked) {
+                        return null;
+                    }
+
+                    return memberId;
+                }),
+            )
+        ).filter((memberId): memberId is Types.ObjectId => memberId !== null);
 
         this.ensureGroupConversation(conversation);
         this.ensureGroupAdmin(conversation, currentUserId);
 
-        const checkuser =
-            await this.userService.countUserIdsExist(objectMemberIds);
-        if (checkuser !== objectMemberIds.length) {
+        if (validMemberIds.length === 0) {
             throw new BadRequestException(
                 CONVERSATION_MESSAGES.USERS_NOT_EXIST,
+            );
+        }
+
+        if (
+            conversation.users.length + validMemberIds.length >
+            CONVERSATION_CONSTANTS.MAX_GROUP_MEMBERS
+        ) {
+            throw new BadRequestException(
+                CONVERSATION_MESSAGES.GROUP_MAX_MEMBERS_EXCEEDED,
             );
         }
 
@@ -512,12 +707,12 @@ export class ConversationsService {
                 {
                     $addToSet: {
                         users: {
-                            $each: objectMemberIds,
+                            $each: validMemberIds,
                         },
                     },
                     $push: {
                         hiddenHistory: {
-                            $each: objectMemberIds.map((memberId) => ({
+                            $each: validMemberIds.map((memberId) => ({
                                 userId: memberId,
                                 isHidden: false,
                                 hiddenAt: new Date(),
@@ -525,7 +720,7 @@ export class ConversationsService {
                         },
                     },
                 },
-                { new: true },
+                { returnDocument: 'after' },
             )
             .select('-__v')
             .populate({
@@ -540,7 +735,9 @@ export class ConversationsService {
         if (result) {
             const addedUsers = result.users as any[];
             const addedNames = addedUsers
-                .filter((u) => memberIds.includes(u._id.toString()))
+                .filter((u) =>
+                    validMemberIds.some((memberId) => memberId.equals(u._id)),
+                )
                 .map((u) => u.name)
                 .join(', ');
 
@@ -553,10 +750,17 @@ export class ConversationsService {
 
             this.memberAdded$.next({
                 conversationId: id,
-                addedMemberIds: memberIds,
+                addedMemberIds: validMemberIds.map((memberId) =>
+                    memberId.toString(),
+                ),
                 adderId: currentUserId,
             });
-            return this.serializeConversation(result);
+            return await this.serializeConversation(
+                result,
+                currentUserId,
+                [],
+                true,
+            );
         }
         return null;
     }
@@ -602,7 +806,7 @@ export class ConversationsService {
                         [`readReceipts.${memberId}`]: 1,
                     },
                 },
-                { new: true },
+                { returnDocument: 'after' },
             )
             .select('-__v')
             .populate({
@@ -619,7 +823,7 @@ export class ConversationsService {
                 CONVERSATION_MESSAGES.CONVERSATION_NOT_FOUND,
             );
         }
-        const removedUser = await this.userService.findOneForApi(memberId);
+        const removedUser = await this.userService.findOne(memberId);
         const removedName = removedUser?.name || memberId;
 
         const messageContent =
@@ -758,6 +962,19 @@ export class ConversationsService {
         this.ensureMemberInConversation(conversation, newAdminId);
         this.ensureMemberAcceptedConversation(conversation, newAdminId);
 
+        await this.userService.checkUser(newAdminId, true, true, true);
+
+        const relationshipBlock =
+            await this.relationshipsService.checkIsBlocked(
+                currentUserId,
+                newAdminId,
+            );
+        if (relationshipBlock) {
+            throw new BadRequestException(
+                CONVERSATION_MESSAGES.CHANGE_ADMIN_FAILED,
+            );
+        }
+
         if (currentUserId === newAdminId) {
             throw new BadRequestException(
                 CONVERSATION_MESSAGES.CURRENT_USER_IS_ALREADY_ADMIN,
@@ -774,7 +991,7 @@ export class ConversationsService {
                     .findByIdAndUpdate(
                         objectConversationId,
                         { $set: { adminGroupId: objectNewAdminId } },
-                        { new: true, session },
+                        { returnDocument: 'after', session },
                     )
                     .populate('users', 'name _id')
                     .lean();
@@ -896,7 +1113,7 @@ export class ConversationsService {
                         },
                     },
                     updateData,
-                    { new: true, session },
+                    { returnDocument: 'after', session },
                 )
                 .lean();
         } else {
@@ -920,7 +1137,7 @@ export class ConversationsService {
                         'hiddenHistory.userId': { $ne: objectUserId },
                     },
                     updateData,
-                    { new: true, session },
+                    { returnDocument: 'after', session },
                 )
                 .lean();
         }
@@ -1008,7 +1225,7 @@ export class ConversationsService {
                     [`readReceipts.${userId}`]: objectMessageId,
                 },
             },
-            { new: true },
+            { returnDocument: 'after' },
         );
     }
 
@@ -1060,7 +1277,7 @@ export class ConversationsService {
                                     avatar: createdMedia._id,
                                 },
                             },
-                            { new: true, session },
+                            { returnDocument: 'after', session },
                         )
                         .select('-__v')
                         .populate({
@@ -1102,7 +1319,12 @@ export class ConversationsService {
             }
 
             isUpdatedUser = true;
-            return this.serializeConversation(conversationUpdated);
+            return await this.serializeConversation(
+                conversationUpdated,
+                userId,
+                [],
+                true,
+            );
         } catch (error) {
             if (uploadedAvatar && uploadedAvatar.publicId && !isUpdatedUser) {
                 await this.mediaService.deleteImageFromCloudinaryWithCleanup(
@@ -1149,7 +1371,7 @@ export class ConversationsService {
                                     avatar: '',
                                 },
                             },
-                            { new: true, session },
+                            { returnDocument: 'after', session },
                         )
                         .select('-__v')
                         .populate({
@@ -1185,7 +1407,12 @@ export class ConversationsService {
                     },
                 );
             }
-            return this.serializeConversation(conversationUpdated);
+            return await this.serializeConversation(
+                conversationUpdated,
+                userId,
+                [],
+                true,
+            );
         } finally {
             await session.endSession();
         }

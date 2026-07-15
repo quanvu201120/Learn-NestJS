@@ -82,3 +82,12 @@ export type RelationshipDeletedPayload = {
 export type RelationshipBlockedPayload = {
     targetUserId: string;
 };
+
+export type PinMessageEventPayload = {
+    conversationId: string;
+    messageId: string;
+};
+export type UnpinMessageEventPayload = {
+    conversationId: string;
+    messageId: string;
+};

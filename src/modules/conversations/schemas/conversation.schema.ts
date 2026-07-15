@@ -28,6 +28,9 @@ export class Conversation {
     @Prop({ type: Types.ObjectId, ref: 'Message' })
     lastMessageId?: Types.ObjectId;
 
+    @Prop({ type: Types.ObjectId, ref: 'Message' })
+    pinMessageId?: Types.ObjectId;
+
     @Prop({
         type: [
             {

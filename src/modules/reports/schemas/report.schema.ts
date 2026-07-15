@@ -1,6 +1,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
-import { ReportReasonEnum, ReportStatusEnum } from '../types/report.type';
+import {
+    PenaltyTypeEnum,
+    ReportReasonEnum,
+    ReportStatusEnum,
+} from '../types/report.type';
 
 export type ReportDocument = HydratedDocument<Report>;
 
@@ -60,6 +64,9 @@ export class Report {
     appealDeadline?: Date;
 
     @Prop()
+    appealReviewDeadline?: Date;
+
+    @Prop()
     appealText?: string;
 
     @Prop({ type: [{ type: Types.ObjectId, ref: 'Media' }] })
@@ -70,6 +77,12 @@ export class Report {
 
     @Prop()
     penaltyApplied?: string;
+
+    @Prop({
+        type: String,
+        enum: Object.values(PenaltyTypeEnum),
+    })
+    penaltyType?: PenaltyTypeEnum;
 }
 
 export const ReportSchema = SchemaFactory.createForClass(Report);

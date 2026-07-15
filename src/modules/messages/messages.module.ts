@@ -8,6 +8,7 @@ import { MediaModule } from '../media/media.module';
 import { RelationshipsModule } from '../relationships/relationships.module';
 import { StatsModule } from '../stats/stats.module';
 import { UsersModule } from '../users/users.module';
+import { RedisModule } from '@/redis/redis.module';
 
 @Module({
     imports: [
@@ -18,7 +19,8 @@ import { UsersModule } from '../users/users.module';
         forwardRef(() => MediaModule),
         forwardRef(() => RelationshipsModule),
         forwardRef(() => UsersModule),
-        StatsModule,
+        forwardRef(() => StatsModule),
+        forwardRef(() => RedisModule),
     ],
     controllers: [MessagesController],
     providers: [MessagesService],

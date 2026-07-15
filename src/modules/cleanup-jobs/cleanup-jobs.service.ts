@@ -295,7 +295,7 @@ export class CleanupJobsService {
                     lockedUntil: 1,
                 },
             },
-            { new: true },
+            { returnDocument: 'after' },
         );
         if (!cleanupJob) {
             throw new NotFoundException(
@@ -525,7 +525,7 @@ export class CleanupJobsService {
                     lockedBy: 1,
                 },
             },
-            { new: true },
+            { returnDocument: 'after' },
         );
         if (!result) {
             throw new BadRequestException(
@@ -566,7 +566,7 @@ export class CleanupJobsService {
                     lockedBy: 1,
                 },
             },
-            { new: true },
+            { returnDocument: 'after' },
         );
         if (!result) {
             throw new BadRequestException(
@@ -607,7 +607,7 @@ export class CleanupJobsService {
                     lockedBy: 1,
                 },
             },
-            { new: true },
+            { returnDocument: 'after' },
         );
 
         if (!result) {
@@ -641,7 +641,7 @@ export class CleanupJobsService {
                         ),
                     },
                 },
-                { new: true },
+                { returnDocument: 'after' },
             )
             .lean();
         if (!cleanupJob) {

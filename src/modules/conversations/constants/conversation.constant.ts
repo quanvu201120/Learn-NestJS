@@ -1,10 +1,18 @@
+export const CONVERSATION_CONSTANTS = {
+    MAX_GROUP_MEMBERS: 1000,
+} as const;
+
 export const CONVERSATION_MESSAGES = {
     DIRECT_MUST_BE_2_USERS: 'Trò chuyện trực tiếp phải là 2 người',
     GROUP_NAME_REQUIRED: 'Vui lòng nhập tên nhóm',
     GROUP_MIN_3_USERS: 'Trò chuyện nhóm phải có ít nhất 3 người',
     USERS_NOT_EXIST: 'Một hoặc nhiều người dùng không tồn tại',
+    UNPIN_MESSAGE_FAILED: 'Bỏ ghim tin nhắn thất bại',
+    PIN_MESSAGE_FAILED: 'Ghim tin nhắn thất bại',
     USER_NOT_FOUND: 'Không tìm thấy người dùng',
+    CHANGE_ADMIN_FAILED: 'Thay đổi quản trị viên thất bại',
     NAME_REQUIRED: 'Vui lòng nhập tên',
+    CREATE_CONVERSATION_FAILED: 'Tạo cuộc trò chuyện thất bại',
     CANNOT_REMOVE_ADMIN: 'Không thể xóa quản trị viên của nhóm này',
     NOT_A_MEMBER: 'Người dùng không thuộc cuộc trò chuyện',
     USER_DISABLED:
@@ -24,6 +32,7 @@ export const CONVERSATION_MESSAGES = {
     NAME_NOT_CHANGED: 'Tên không thay đổi',
     CURRENT_USER_IS_ALREADY_ADMIN: 'Người dùng hiện tại đã là quản trị viên',
     NOT_A_GROUP: 'Đây không phải là cuộc trò chuyện nhóm',
+    GROUP_MAX_MEMBERS_EXCEEDED: 'Nhóm không được vượt quá 1000 thành viên',
     AVATAR_UPLOAD_FAILED: 'Tải ảnh đại diện lên thất bại',
     AVATAR_NOT_FOUND: 'Không tìm thấy ảnh đại diện',
     AVATAR_DELETE_FAILED: 'Xóa ảnh đại diện thất bại',

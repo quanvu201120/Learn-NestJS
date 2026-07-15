@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 /* eslint-disable prefer-const */
 
@@ -40,6 +42,7 @@ import {
 import { CONVERSATION_MESSAGES } from '../conversations/constants/conversation.constant';
 import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
 import { serializeMedia } from './utils/media.serializer';
+import { RelationshipsService } from '../relationships/relationships.service';
 
 type MediaCleanupContext = {
     resourceType: CleanupJobResourceEnum;
@@ -57,6 +60,8 @@ export class MediaService implements OnModuleInit {
         private readonly r2Service: R2Service,
         @Inject(forwardRef(() => CleanupJobsService))
         private readonly cleanupJobsService: CleanupJobsService,
+        @Inject(forwardRef(() => RelationshipsService))
+        private readonly relationshipsService: RelationshipsService,
     ) {}
 
     async onModuleInit() {
@@ -106,7 +111,7 @@ export class MediaService implements OnModuleInit {
                 _id: objectConversationId,
                 users: objectUserId,
             })
-            .select('_id hiddenHistory');
+            .select('_id hiddenHistory users');
 
         if (session) {
             query.session(session);
@@ -132,11 +137,30 @@ export class MediaService implements OnModuleInit {
             createdAtFilter.$gte = userHidden.hiddenAt;
         }
 
+        const blockedUserIds =
+            await this.relationshipsService.getBlockedUserIdsAmongUsers(
+                userId,
+                Array.isArray(conversation.users)
+                    ? conversation.users
+                          .map((item: any) => item?.toString())
+                          .filter((item): item is string => !!item)
+                    : [],
+            );
+
         let mediaQuery = this.mediaModel.find({
             ownerId: objectConversationId,
             ownerType: OwnerTypeEnum.CONVERSATION,
             resourceType: type, // Filter theo type
             isDeleted: { $ne: true }, // Không lấy media đã bị thu hồi
+            ...(blockedUserIds.length > 0
+                ? {
+                      uploadedBy: {
+                          $nin: blockedUserIds.map((blockedUserId) =>
+                              toObjectId(blockedUserId, 'blocked user id'),
+                          ),
+                      },
+                  }
+                : {}),
             ...(Object.keys(createdAtFilter).length > 0
                 ? { createdAt: createdAtFilter }
                 : {}),
@@ -518,7 +542,7 @@ export class MediaService implements OnModuleInit {
                     ownerId: objectConversationId,
                 },
                 { $set: { isDeleted: true, deletedAt: new Date() } },
-                { new: true, session },
+                { returnDocument: 'after', session },
             )
             .select('_id')
             .lean();

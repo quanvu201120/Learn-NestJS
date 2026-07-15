@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable prettier/prettier */
 /* eslint-disable @typescript-eslint/no-floating-promises */
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
@@ -15,7 +19,12 @@ import { UpdateMessageDto } from './dto/update-message.dto';
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
 import { Message, MessageDocument } from './schemas/message.schema';
 import { Connection, Model, Types, ClientSession } from 'mongoose';
-import { formatDateTime, parseDateOrThrow, toObjectId } from '@/utils/utils';
+import {
+    formatDateTime,
+    parseDateOrThrow,
+    toObjectId,
+    validateObjectId,
+} from '@/utils/utils';
 import { ConversationsService } from '../conversations/conversations.service';
 import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
 import { serializeMessage } from './utils/message.serializer';
@@ -47,6 +56,8 @@ import {
 import { RelationshipsService } from '../relationships/relationships.service';
 import { StatsService } from '../stats/stats.service';
 import { AUTH_MESSAGES } from '@/auth/constants/auth.constant';
+import { ConversationDocument } from '../conversations/schemas/conversation.schema';
+import { CONVERSATION_MESSAGES } from '../conversations/constants/conversation.constant';
 
 @Injectable()
 export class MessagesService {
@@ -61,6 +72,14 @@ export class MessagesService {
 
     public readonly updatedMessage$ = new Subject<MessageResponse>();
     public readonly createdMessage$ = new Subject<MessageResponse>();
+    public readonly pinnedMessage$ = new Subject<{
+        conversationId: string;
+        messageId: string;
+    }>();
+    public readonly unpinnedMessage$ = new Subject<{
+        conversationId: string;
+        messageId: string;
+    }>();
 
     constructor(
         @InjectModel(Message.name)
@@ -69,9 +88,11 @@ export class MessagesService {
         private readonly conversationService: ConversationsService,
         @InjectConnection()
         private readonly connection: Connection,
+        @Inject(forwardRef(() => MediaService))
         private readonly mediaService: MediaService,
         @Inject(forwardRef(() => UsersService))
         private readonly usersService: UsersService,
+        @Inject(forwardRef(() => RedisService))
         private readonly redisService: RedisService,
         @Inject(forwardRef(() => RelationshipsService))
         private readonly relationshipsService: RelationshipsService,
@@ -400,7 +421,10 @@ export class MessagesService {
     /**
      * Lấy tin nhắn mới nhất của một cuộc trò chuyện dựa trên lastMessageId.
      */
-    async getLatestMessageOfConversation(conversationId: string) {
+    async getLatestMessageOfConversation(
+        conversationId: string,
+        currentUserId?: string,
+    ) {
         const { conversation, objectConversationId } =
             await this.conversationService.getConversationOrThrow(
                 conversationId,
@@ -424,7 +448,24 @@ export class MessagesService {
         if (!lastMessage) {
             throw new BadRequestException(MESSAGE_MESSAGES.MESSAGE_NOT_FOUND);
         }
-        return serializeMessage(lastMessage);
+        const hiddenUserIds =
+            currentUserId && conversation.users?.length
+                ? await this.getHiddenUserIdsForConversation(
+                      conversation,
+                      currentUserId,
+                  )
+                : [];
+        return serializeMessage(lastMessage, hiddenUserIds);
+    }
+
+    private async getHiddenUserIdsForConversation(
+        conversation: any,
+        currentUserId: string,
+    ) {
+        return await this.relationshipsService.getBlockedUserIdsAmongUsers(
+            currentUserId,
+            conversation.users.map((user: any) => user.toString()),
+        );
     }
 
     /**
@@ -456,6 +497,11 @@ export class MessagesService {
             createdAtFilter.$gte = userHidden.hiddenAt;
         }
 
+        const hiddenUserIds = await this.getHiddenUserIdsForConversation(
+            conversation,
+            userId,
+        );
+
         const result = await this.messageModel
             .find({
                 conversationId: objectConversationId,
@@ -477,7 +523,9 @@ export class MessagesService {
         if (result.length === 0) {
             return { nextCursor: null, messages: [] } as ListMessagesResponse;
         }
-        const messages = result.map((message) => serializeMessage(message));
+        const messages = result.map((message) =>
+            serializeMessage(message, hiddenUserIds),
+        );
 
         const hasNextPage =
             messages.length === GLOBAL_CONSTANTS.LIMIT_MESSAGES_DEFAULT;
@@ -528,6 +576,8 @@ export class MessagesService {
             throw new BadRequestException(MESSAGE_MESSAGES.ALREADY_DELETED);
         }
         const objectMessageId = toObjectId(messageId, 'message id');
+        const shouldClearPin =
+            conversation.pinMessageId?.equals(objectMessageId);
 
         const session = await this.connection.startSession();
         try {
@@ -542,7 +592,7 @@ export class MessagesService {
                             isDeleted: true,
                             deletedAt: new Date(),
                         },
-                        { new: true, session },
+                    { returnDocument: 'after', session },
                     )
                     .lean();
 
@@ -553,12 +603,119 @@ export class MessagesService {
                         session,
                     );
                 }
+
+                if (shouldClearPin) {
+                    await this.conversationService.unpinMessage(
+                        conversationId,
+                        session,
+                    );
+                }
             });
+
+            if (shouldClearPin) {
+                this.unpinnedMessage$.next({
+                    conversationId,
+                    messageId,
+                });
+            }
 
             return MESSAGE_MESSAGES.DELETE_SUCCESS;
         } finally {
             await session.endSession();
         }
+    }
+
+    private ensureCanPinConversation(
+        conversation: ConversationDocument,
+        currentUserId: string,
+    ) {
+        if (conversation.isGroup) {
+            this.conversationService.ensureGroupAdmin(
+                conversation,
+                currentUserId,
+            );
+        } else {
+            this.conversationService.ensureMemberInConversation(
+                conversation,
+                currentUserId,
+            );
+        }
+    }
+
+    async pinMessage(
+        conversationId: string,
+        messageId: string,
+        userId: string,
+    ) {
+        const { conversation } =
+            await this.conversationService.getConversationOrThrow(
+                conversationId,
+            );
+        validateObjectId(messageId, 'message id');
+
+        this.ensureCanPinConversation(conversation, userId);
+
+        const message = await this.checkMessageExistInConversation(
+            messageId,
+            conversationId,
+        );
+
+        if (message.isDeleted) {
+            throw new BadRequestException(MESSAGE_MESSAGES.ALREADY_DELETED);
+        }
+
+        const pin = await this.conversationService.pinMessage(
+            conversationId,
+            messageId,
+        );
+
+        if (!pin) {
+            throw new BadRequestException(
+                CONVERSATION_MESSAGES.PIN_MESSAGE_FAILED,
+            );
+        }
+
+        this.pinnedMessage$.next({
+            conversationId,
+            messageId,
+        });
+
+        return { success: true };
+    }
+
+    async unpinMessage(
+        conversationId: string,
+        messageId: string,
+        userId: string,
+    ) {
+        const { conversation } =
+            await this.conversationService.getConversationOrThrow(
+                conversationId,
+            );
+        this.ensureCanPinConversation(conversation, userId);
+
+        const objectMessageId = toObjectId(messageId, 'message id');
+        if (!conversation.pinMessageId?.equals(objectMessageId)) {
+            throw new BadRequestException(
+                MESSAGE_MESSAGES.PIN_MESSAGE_NOT_PINNED,
+            );
+        }
+
+        const unpin =
+            await this.conversationService.unpinMessage(conversationId);
+
+        if (!unpin) {
+            throw new BadRequestException(
+                CONVERSATION_MESSAGES.UNPIN_MESSAGE_FAILED,
+            );
+        }
+
+        this.unpinnedMessage$.next({
+            conversationId,
+            messageId,
+        });
+
+        return { success: true };
     }
 
     /**
@@ -637,7 +794,7 @@ export class MessagesService {
                 {
                     $set: { content },
                 },
-                { new: true },
+                { returnDocument: 'after' },
             )
             .populate({
                 path: 'senderId',
@@ -668,12 +825,24 @@ export class MessagesService {
             await this.redisService.getUserOnlineInListIds(members)
         ).filter((item) => item.toString() !== senderId);
 
-        if (membersOnline.length === 0) {
+        const hiddenUserIds =
+            membersOnline.length > 0
+                ? await this.relationshipsService.getBlockedUserIdsAmongUsers(
+                      senderId,
+                      membersOnline.map((item) => item.toString()),
+                  )
+                : [];
+        const hiddenUserIdSet = new Set(hiddenUserIds);
+        const visibleMembersOnline = membersOnline.filter(
+            (item) => !hiddenUserIdSet.has(item.toString()),
+        );
+
+        if (visibleMembersOnline.length === 0) {
             return;
         }
 
         const resultUnseen = await this.redisService.setUnseenMessage(
-            membersOnline,
+            visibleMembersOnline,
             conversationId,
         );
 
@@ -681,7 +850,7 @@ export class MessagesService {
             resultUnseen
                 ?.map(([pipelineError, result], index) =>
                     !pipelineError && Number(result) > 0
-                        ? membersOnline[index]?.toString()
+                        ? visibleMembersOnline[index]?.toString()
                         : null,
                 )
                 .filter((userId): userId is string => !!userId) ?? [];
@@ -730,7 +899,7 @@ export class MessagesService {
                       {
                           $push: { reactions: { user: objectUserId, type } },
                       },
-                      { new: true, runValidators: true },
+                      { returnDocument: 'after', runValidators: true },
                   )
                   .populate({
                       path: 'senderId',
@@ -748,7 +917,7 @@ export class MessagesService {
                       },
                       {
                           arrayFilters: [{ 'elem.user': objectUserId }],
-                          new: true,
+                          returnDocument: 'after',
                           runValidators: true,
                       },
                   )
@@ -799,7 +968,7 @@ export class MessagesService {
                 {
                     $pull: { reactions: { user: objectUserId } },
                 },
-                { new: true, runValidators: true },
+                { returnDocument: 'after', runValidators: true },
             )
             .populate({
                 path: 'senderId',

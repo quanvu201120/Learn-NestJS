@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import {
     SystemDailyStat,
@@ -14,7 +14,7 @@ import { MediaModule } from '../media/media.module';
         MongooseModule.forFeature([
             { name: SystemDailyStat.name, schema: SystemDailyStatSchema },
         ]),
-        MediaModule,
+        forwardRef(() => MediaModule),
     ],
     controllers: [StatsController],
     providers: [StatsService, StatsCron],

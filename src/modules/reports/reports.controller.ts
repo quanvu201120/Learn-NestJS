@@ -18,6 +18,7 @@ import {
     UseInterceptors,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { Public } from '@/utils/decorator-customize';
 import { CreateReportDto } from './dto/create-report.dto';
 import { ResolveReportDto } from './dto/resolve-report.dto';
 import { RolesGuard } from '@/auth/passport/roles.guard';
@@ -27,6 +28,7 @@ import { GetReportsDto } from './dto/get-reports.dto';
 import { ManualBanDto } from './dto/manual-ban.dto';
 import { AdminActionWithPasswordDto } from '@/modules/users/dto/update-user.dto';
 import { QuickPenaltyDto } from './dto/quick-penalty.dto';
+import { AppealReportDto } from './dto/appeal-report.dto';
 import { ReportsService } from './reports.service';
 import { REPORT_MESSAGES } from './constants/report.constant';
 import { ReportStatusEnum } from './types/report.type';
@@ -116,6 +118,45 @@ export class ReportsController {
             req.user.role,
             req,
         );
+    }
+
+    @Patch(':id/appeal')
+    @Public()
+    @UseInterceptors(
+        FilesInterceptor('files', 5, {
+            limits: {
+                fileSize: 5 * 1024 * 1024,
+            },
+            fileFilter: (_req, file, callback) => {
+                if (!file.mimetype.startsWith('image/')) {
+                    callback(
+                        new BadRequestException(MEDIA_MESSAGES.WRONG_FILE_TYPE),
+                        false,
+                    );
+                    return;
+                }
+
+                callback(null, true);
+            },
+        }),
+    )
+    async appeal(
+        @Param('id') id: string,
+        @Body() appealDto: AppealReportDto,
+        @UploadedFiles() files: Express.Multer.File[],
+        @Request() req,
+    ) {
+        return await this.reportsService.appeal(
+            id,
+            req.headers.authorization as string | undefined,
+            appealDto,
+            files || [],
+        );
+    }
+
+    @Get(':id/appeal-access')
+    async getAppealAccess(@Param('id') id: string, @Request() req) {
+        return await this.reportsService.getAppealAccess(id, req.user._id);
     }
 
     @Post('quick-penalty/:targetUserId')

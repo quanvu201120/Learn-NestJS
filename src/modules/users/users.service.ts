@@ -91,14 +91,18 @@ export class UsersService {
     /**
      * Chuẩn hóa dữ liệu avatar lồng bên trong trước khi trả object user về cho client.
      */
-    private serializeUserResponse(user: UserResponse | null, forAdmin = false) {
+    private serializeUserResponse(
+        user: UserResponse | null,
+        forAdmin = false,
+        hidden = false,
+    ) {
         if (!user) {
             return user;
         }
 
         return forAdmin
             ? (serializeAdminUser(user) as UserResponse)
-            : (serializeUser(user, false) as UserResponse);
+            : (serializeUser(user, false, hidden) as UserResponse);
     }
 
     /**
@@ -470,7 +474,9 @@ export class UsersService {
         }
 
         const updatedUser = await this.userModel
-            .findByIdAndUpdate(currentUser, updateQuery, { new: true })
+            .findByIdAndUpdate(currentUser, updateQuery, {
+                returnDocument: 'after',
+            })
             .select('-password -__v')
             .populate('avatar', '-__v')
             .lean();
@@ -984,7 +990,7 @@ export class UsersService {
                                 avatar: createdMedia._id,
                             },
                         },
-                        { new: true, session },
+                        { returnDocument: 'after', session },
                     )
                     .select('-password -email -phone -__v')
                     .populate('avatar', '-__v')
@@ -1081,7 +1087,7 @@ export class UsersService {
                                 avatar: '',
                             },
                         },
-                        { new: true, session },
+                        { returnDocument: 'after', session },
                     )
                     .select('-password -email -phone -__v')
                     .populate('avatar', '-__v')
@@ -1259,7 +1265,7 @@ export class UsersService {
                                 email,
                             },
                         },
-                        { new: true, session },
+                        { returnDocument: 'after', session },
                     )
                     .select('-password -__v')
                     .populate('avatar', '-__v')

@@ -11,6 +11,7 @@ Goal: make the smallest correct change.
 - Do not rename files, DTOs, methods, fields, or variables unless required.
 - Do not add new abstractions, helpers, logs, comments, caching, or optimizations unless asked.
 - Do not modify `.spec.ts` files unless explicitly requested.
+- Preserve existing file encoding and Unicode text; do not rewrite Vietnamese strings or other non-ASCII content unless the user explicitly asks for it.
 - Ask only when blocked by missing requirements.
 
 ## NestJS Rules

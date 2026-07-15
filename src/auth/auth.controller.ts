@@ -89,21 +89,26 @@ export class AuthController {
             deviceName,
         );
 
-        response.cookie(
-            'refreshToken',
-            data.refreshToken,
-            this.getRefreshCookieOptions(
-                ms(
-                    this.configService.get<string>(
-                        'COOKIE_EXPIRES_IN',
-                    ) as StringValue,
+        if (data.refreshToken) {
+            response.cookie(
+                'refreshToken',
+                data.refreshToken,
+                this.getRefreshCookieOptions(
+                    ms(
+                        this.configService.get<string>(
+                            'COOKIE_EXPIRES_IN',
+                        ) as StringValue,
+                    ),
                 ),
-            ),
-        );
+            );
+        }
 
         return {
             accessToken: data.accessToken,
             user: data.user,
+            isBanned: data.isBanned,
+            banUntil: data.banUntil,
+            appeal: data.appeal,
         } as LoginResponse;
     }
 
