@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/require-await */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
@@ -49,6 +50,7 @@ import {
 import { UserResponse, UserRole } from '@/modules/users/types/user';
 import { RolesGuard } from './passport/roles.guard';
 import { AdminActionReasonDto } from '@/modules/users/dto/update-user.dto';
+import { GoogleOAuthDto } from './dto/google-auth.dto';
 
 @ApiTags('Auth - Xác thực')
 @Controller('auth')
@@ -71,24 +73,17 @@ export class AuthController {
         };
     }
 
-    @HttpCode(HttpStatus.OK)
-    @Public()
-    @UseGuards(LocalAuthGuard)
-    @Post('login')
-    @ApiOperation({ summary: 'Đăng nhập tài khoản' })
-    @ApiBody({ type: LoginDto })
-    async handleLogin(
-        @Request() req,
-        @Res({ passthrough: true }) response: express.Response,
+    private async handleAuthResponse(
+        data: {
+            accessToken?: string;
+            refreshToken?: string;
+            user?: unknown;
+            isBanned?: boolean;
+            banUntil?: Date;
+            appeal?: unknown;
+        },
+        response: express.Response,
     ) {
-        const userAgent = req.headers['user-agent'] as string | undefined;
-        const deviceName = buildDeviceNameFromUA(userAgent);
-        const data = await this.authService.login(
-            req.user,
-            userAgent,
-            deviceName,
-        );
-
         if (data.refreshToken) {
             response.cookie(
                 'refreshToken',
@@ -110,6 +105,47 @@ export class AuthController {
             banUntil: data.banUntil,
             appeal: data.appeal,
         } as LoginResponse;
+    }
+
+    @Post('google')
+    @Public()
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Đăng nhập bằng Google' })
+    @ApiBody({ type: GoogleOAuthDto })
+    async handleGoogleLogin(
+        @Body() googleOAuthDto: GoogleOAuthDto,
+        @Request() req,
+        @Res({ passthrough: true }) response: express.Response,
+    ) {
+        const userAgent = req.headers['user-agent'] as string | undefined;
+        const deviceName = buildDeviceNameFromUA(userAgent);
+
+        const data = await this.authService.googleLogin(
+            googleOAuthDto.code,
+            userAgent,
+            deviceName,
+        );
+        return await this.handleAuthResponse(data, response);
+    }
+
+    @HttpCode(HttpStatus.OK)
+    @Public()
+    @UseGuards(LocalAuthGuard)
+    @Post('login')
+    @ApiOperation({ summary: 'Đăng nhập tài khoản' })
+    @ApiBody({ type: LoginDto })
+    async handleLogin(
+        @Request() req,
+        @Res({ passthrough: true }) response: express.Response,
+    ) {
+        const userAgent = req.headers['user-agent'] as string | undefined;
+        const deviceName = buildDeviceNameFromUA(userAgent);
+        const data = await this.authService.login(
+            req.user,
+            userAgent,
+            deviceName,
+        );
+        return await this.handleAuthResponse(data, response);
     }
 
     @Get('sessions')

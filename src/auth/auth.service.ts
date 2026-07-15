@@ -4,7 +4,7 @@
 
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { AUTH_MESSAGES } from './constants/auth.constant';
-import { PayloadJWT, User } from '@/modules/users/schemas/user.schema';
+import { PayloadJWT } from '@/modules/users/schemas/user.schema';
 import { UsersService } from '@/modules/users/users.service';
 import { ReportsService } from '@/modules/reports/reports.service';
 import {
@@ -39,8 +39,18 @@ import {
     AuditLogActionEnum,
     AuditLogTargetEnum,
 } from '@/modules/audit-log/types/audit-log.type';
-import { UserRole } from '@/modules/users/types/user';
+import { UserResponse, UserRole } from '@/modules/users/types/user';
 import { USER_MESSAGES } from '@/modules/users/constants/user.constant';
+import { Types } from 'mongoose';
+
+type LoginUser = UserResponse & {
+    _id: string | Types.ObjectId;
+    role: UserRole;
+    tokenVersion: number;
+    banUntil?: Date;
+    isDisabled?: boolean;
+    isActive?: boolean;
+};
 
 @Injectable()
 export class AuthService {
@@ -87,55 +97,22 @@ export class AuthService {
      * Nếu user đang bị ban, method không cấp access token mà trả về context
      * kháng cáo cho án ban hiện tại để FE điều hướng sang màn hình appeal.
      */
-    async login(
-        user: User & { _id: string },
-        userAgent?: string,
-        deviceName?: string,
-    ) {
+    async login(user: LoginUser, userAgent?: string, deviceName?: string) {
         if (user.banUntil && user.banUntil > new Date()) {
-            const appealContext =
-                await this.reportsService.findCurrentAppealContextByUserId(
-                    user._id.toString(),
-                );
-
-            return {
-                isBanned: true,
-                banUntil: user.banUntil,
-                appeal: appealContext
-                    ? {
-                          reportId: appealContext.reportId,
-                          status: appealContext.status,
-                          appealDeadline: appealContext.appealDeadline,
-                          appealReviewDeadline:
-                              appealContext.appealReviewDeadline,
-                          penaltyApplied: appealContext.penaltyApplied,
-                          penaltyType: appealContext.penaltyType,
-                          appealToken:
-                              appealContext.status === 'resolved' &&
-                              appealContext.appealDeadline &&
-                              new Date(appealContext.appealDeadline) >
-                                  new Date()
-                                  ? await this.reportsService.generateAppealToken(
-                                        user._id.toString(),
-                                        appealContext.reportId,
-                                    )
-                                  : undefined,
-                      }
-                    : undefined,
-            };
+            return await this.buildBannedLoginResponse(user);
         }
 
         let sessionId = '';
         try {
             const createSessionDto: CreateSessionDto = {
-                userId: user._id,
+                userId: user._id.toString(),
                 userAgent,
                 deviceName,
             };
             const session = await this.sessionService.create(createSessionDto);
             sessionId = session._id.toString();
             const payload: PayloadJWT = {
-                _id: user._id,
+                _id: user._id.toString(),
                 role: user.role,
                 sessionId,
                 tokenVersion: user.tokenVersion,
@@ -167,7 +144,7 @@ export class AuthService {
             if (sessionId) {
                 await this.sessionService.revokeWithCleanup(
                     sessionId,
-                    user._id,
+                    user._id.toString(),
                 );
             }
             console.log(error);
@@ -182,6 +159,134 @@ export class AuthService {
     async register(registerAuthDto: RegisterAuthDto) {
         const { email, password } = registerAuthDto;
         return await this.usersService.register(email, password);
+    }
+
+    //Xử lý logic khi user bị ban
+    private async buildBannedLoginResponse(user: LoginUser) {
+        const appealContext =
+            await this.reportsService.findCurrentAppealContextByUserId(
+                user._id.toString(),
+            );
+
+        return {
+            isBanned: true,
+            banUntil: user.banUntil,
+            appeal: appealContext
+                ? {
+                      reportId: appealContext.reportId,
+                      status: appealContext.status,
+                      appealDeadline: appealContext.appealDeadline,
+                      appealReviewDeadline: appealContext.appealReviewDeadline,
+                      penaltyApplied: appealContext.penaltyApplied,
+                      penaltyType: appealContext.penaltyType,
+                      appealToken:
+                          appealContext.status === 'resolved' &&
+                          appealContext.appealDeadline &&
+                          new Date(appealContext.appealDeadline) > new Date()
+                              ? await this.reportsService.generateAppealToken(
+                                    user._id.toString(),
+                                    appealContext.reportId,
+                                )
+                              : undefined,
+                  }
+                : undefined,
+        };
+    }
+
+    /**
+     * Đăng nhập bằng Google code, tự tìm hoặc tạo account theo email đã verify.
+     */
+    async googleLogin(code: string, userAgent?: string, deviceName?: string) {
+        const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+        const clientSecret = this.configService.get<string>(
+            'GOOGLE_CLIENT_SECRET',
+        );
+        const redirectUri = this.configService.get<string>(
+            'GOOGLE_REDIRECT_URI',
+        );
+
+        if (!clientId || !clientSecret || !redirectUri) {
+            throw new InternalServerErrorException(AUTH_MESSAGES.LOGIN_FAILED);
+        }
+
+        const tokenResponse = await fetch(
+            'https://oauth2.googleapis.com/token',
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({
+                    code,
+                    client_id: clientId,
+                    client_secret: clientSecret,
+                    redirect_uri: redirectUri,
+                    grant_type: 'authorization_code',
+                }),
+            },
+        );
+
+        if (!tokenResponse.ok) {
+            throw new BadRequestException(AUTH_MESSAGES.LOGIN_FAILED);
+        }
+
+        const tokenData = (await tokenResponse.json()) as {
+            id_token?: string;
+        };
+
+        if (!tokenData.id_token) {
+            throw new BadRequestException(AUTH_MESSAGES.LOGIN_FAILED);
+        }
+
+        const verifyResponse = await fetch(
+            `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(
+                tokenData.id_token,
+            )}`,
+        );
+
+        if (!verifyResponse.ok) {
+            throw new BadRequestException(AUTH_MESSAGES.LOGIN_FAILED);
+        }
+
+        const googlePayload = (await verifyResponse.json()) as {
+            email?: string;
+            email_verified?: string | boolean;
+            name?: string;
+        };
+
+        const email = googlePayload.email?.toLowerCase();
+        const emailVerified =
+            googlePayload.email_verified === true ||
+            googlePayload.email_verified === 'true';
+
+        if (!email || !emailVerified) {
+            throw new BadRequestException(AUTH_MESSAGES.LOGIN_FAILED);
+        }
+
+        const existingUser = await this.usersService.findByEmailForLogin(email);
+        const user: LoginUser = existingUser
+            ? (() => {
+                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                  const { password, __v, ...result } = existingUser.toObject();
+                  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+                  return result as LoginUser;
+              })()
+            : await this.usersService.createGoogleAccount(
+                  email,
+                  googlePayload.name,
+              );
+
+        if (user.isDisabled) {
+            throw new UnauthorizedException(AUTH_MESSAGES.USER_DISABLED);
+        }
+        if (user.isActive === false) {
+            throw new BadRequestException(USER_MESSAGES.USER_NOT_ACTIVE);
+        }
+        if (user.banUntil && user.banUntil > new Date()) {
+            return await this.buildBannedLoginResponse(user);
+        }
+
+        return await this.login(user, userAgent, deviceName);
     }
 
     async getSessions(userId: string): Promise<SessionDeviceResponse[]> {

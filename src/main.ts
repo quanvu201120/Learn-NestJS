@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
@@ -10,6 +13,7 @@ import {
 import { TransformInterceptor } from './common/transform.interceptor';
 import cookieParser from 'cookie-parser';
 import { VALIDATION_MESSAGES } from './common/constants/validation.constant';
+import { join, extname } from 'path';
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
@@ -58,6 +62,26 @@ async function bootstrap() {
     );
     app.useGlobalInterceptors(new TransformInterceptor());
     app.use(cookieParser());
+    //xử lí bổ sung cho client FE khi deplpy chung huggingface
+    app.use((req, res, next) => {
+        if (req.method !== 'GET') {
+            next();
+            return;
+        }
+
+        const url = req.originalUrl || req.url || '';
+        if (
+            url.startsWith('/api/') ||
+            url.startsWith('/swagger') ||
+            url.startsWith('/assets/') ||
+            extname(url)
+        ) {
+            next();
+            return;
+        }
+
+        res.sendFile(join(process.cwd(), 'client', 'index.html'));
+    });
 
     // CONFIG SWAGGER
     const config = new DocumentBuilder()
