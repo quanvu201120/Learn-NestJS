@@ -9,6 +9,10 @@ import {
 import { UsersModule } from '../users/users.module';
 import { ConversationsModule } from '../conversations/conversations.module';
 import { MessagesModule } from '../messages/messages.module';
+import { RelationshipAccessService } from './relationship-access.service';
+import { RelationshipBlockService } from './relationship-block.service';
+import { RelationshipQueryService } from './relationship-query.service';
+import { RelationshipRequestService } from './relationship-request.service';
 
 @Module({
     imports: [
@@ -20,7 +24,13 @@ import { MessagesModule } from '../messages/messages.module';
         forwardRef(() => MessagesModule),
     ],
     controllers: [RelationshipsController],
-    providers: [RelationshipsService],
+    providers: [
+        RelationshipsService,
+        RelationshipAccessService,
+        RelationshipBlockService,
+        RelationshipQueryService,
+        RelationshipRequestService,
+    ],
     exports: [RelationshipsService],
 })
 export class RelationshipsModule {}

@@ -10,6 +10,9 @@ import { CleanupJobsCron } from './cron/cleanup-jobs.cron';
 import { BullModule } from '@nestjs/bullmq';
 import { CLEANUP_JOB_CONSTANTS } from './constants/cleanup-job.constant';
 import { CleanupJobsProcessor } from './processor/cleanup-jobs.processor';
+import { CleanupJobCommandService } from './cleanup-job-command.service';
+import { CleanupJobDispatcherService } from './cleanup-job-dispatcher.service';
+import { CleanupJobQueryService } from './cleanup-job-query.service';
 
 @Module({
     imports: [
@@ -27,7 +30,14 @@ import { CleanupJobsProcessor } from './processor/cleanup-jobs.processor';
         }),
     ],
     controllers: [CleanupJobsController],
-    providers: [CleanupJobsService, CleanupJobsCron, CleanupJobsProcessor],
+    providers: [
+        CleanupJobsService,
+        CleanupJobCommandService,
+        CleanupJobDispatcherService,
+        CleanupJobQueryService,
+        CleanupJobsCron,
+        CleanupJobsProcessor,
+    ],
     exports: [CleanupJobsService],
 })
 export class CleanupJobsModule {}

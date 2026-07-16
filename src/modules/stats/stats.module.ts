@@ -8,6 +8,9 @@ import { StatsService } from './stats.service';
 import { StatsController } from './stats.controller';
 import { StatsCron } from './cron/stats.cron';
 import { MediaModule } from '../media/media.module';
+import { StatsWriteService } from './stats-write.service';
+import { StatsReadService } from './stats-read.service';
+import { StatsHealthService } from './stats-health.service';
 
 @Module({
     imports: [
@@ -17,7 +20,13 @@ import { MediaModule } from '../media/media.module';
         forwardRef(() => MediaModule),
     ],
     controllers: [StatsController],
-    providers: [StatsService, StatsCron],
+    providers: [
+        StatsService,
+        StatsWriteService,
+        StatsReadService,
+        StatsHealthService,
+        StatsCron,
+    ],
     exports: [StatsService],
 })
 export class StatsModule {}

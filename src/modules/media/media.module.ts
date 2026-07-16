@@ -11,6 +11,11 @@ import {
     ConversationSchema,
 } from '../conversations/schemas/conversation.schema';
 import { MediaController } from './media.controller';
+import { MediaStorageService } from './media-storage.service';
+import { MediaPersistenceService } from './media-persistence.service';
+import { MediaCleanupService } from './media-cleanup.service';
+import { MediaQueryService } from './media-query.service';
+import { MediaDownloadService } from './media-download.service';
 
 @Module({
     imports: [
@@ -22,7 +27,16 @@ import { MediaController } from './media.controller';
         forwardRef(() => RelationshipsModule),
     ],
     controllers: [MediaController],
-    providers: [MediaService, CloudinaryService, R2Service],
+    providers: [
+        MediaService,
+        MediaStorageService,
+        MediaPersistenceService,
+        MediaCleanupService,
+        MediaQueryService,
+        MediaDownloadService,
+        CloudinaryService,
+        R2Service,
+    ],
     exports: [MediaService, CloudinaryService, R2Service],
 })
 export class MediaModule {}

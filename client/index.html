@@ -2,17 +2,114 @@
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/halo-icon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/halo-icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/halo-icon-180.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="HaloChat - Quản lý thông tin cá nhân tài khoản của bạn" />
     <title>HaloChat</title>
+    <style>
+      :root {
+        --bg-primary: #f5f6fa;
+        --text-primary: #1e2235;
+      }
+      :root[data-theme="dark"] {
+        --bg-primary: #0f111a;
+        --text-primary: #f8fafc;
+      }
+      html,
+      body,
+      #root {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+      }
+      .boot-shell {
+        display: none;
+      }
+      :root[data-show-boot="1"] .boot-shell {
+        display: flex;
+      }
+      .boot-shell {
+        position: relative;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        min-height: 100dvh;
+        font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+        overflow: hidden;
+      }
+      .boot-shell *,
+      .boot-shell *::before,
+      .boot-shell *::after {
+        box-sizing: border-box;
+      }
+      .boot-card {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        width: min(260px, calc(100vw - 48px));
+        padding: 28px 20px;
+      }
+      .boot-brand {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+      }
+      .boot-logo {
+        width: 64px;
+        height: 64px;
+        object-fit: cover;
+        border-radius: 0;
+        filter: drop-shadow(0 8px 18px rgba(99, 102, 241, 0.12));
+      }
+      .boot-brand-name {
+        font-size: 20px;
+        font-weight: 800;
+        letter-spacing: -0.4px;
+        white-space: nowrap;
+        color: var(--text-primary);
+      }
+    </style>
+    <script>
+      (function () {
+        try {
+          var hasSession = Boolean(localStorage.getItem('user') || sessionStorage.getItem('accessToken'));
+          document.documentElement.dataset.showBoot = hasSession ? '1' : '0';
+
+          var stored = localStorage.getItem('halochat-theme');
+          var theme = stored === 'dark' || stored === 'light'
+            ? stored
+            : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+        } catch (error) {
+          document.documentElement.dataset.showBoot = '0';
+          document.documentElement.dataset.theme = 'light';
+          document.documentElement.style.colorScheme = 'light';
+        }
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-    <script type="module" crossorigin src="/assets/index-B8DsyW7-.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-BdzZnXT8.css">
+    <script type="module" crossorigin src="/assets/index-D30Xp-Bc.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-3QUHCh-s.css">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot-shell">
+        <section class="boot-card" aria-hidden="true">
+          <img class="boot-logo" src="/halo-icon-96.png" alt="HaloChat" />
+          <div class="boot-brand-name">HaloChat</div>
+        </section>
+      </div>
+    </div>
   </body>
 </html>
