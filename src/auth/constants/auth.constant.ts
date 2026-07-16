@@ -21,3 +21,10 @@ export const AUTH_MESSAGES = {
     ACCESS_TOKEN_INVALID: 'Access Token không hợp lệ',
     APPEAL_TOKEN_INVALID: 'Appeal Token không hợp lệ',
 } as const;
+
+export const THROTTLE_LIMITS = {
+    ONE_MINUTE: 60 * 1000,
+    GLOBAL_LIMIT: 200,
+    AUTH_LIMIT: 5,
+    MAIL_LIMIT: 1,
+} as const;

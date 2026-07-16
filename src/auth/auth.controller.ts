@@ -6,7 +6,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
-import { AUTH_MESSAGES } from './constants/auth.constant';
+import { AUTH_MESSAGES, THROTTLE_LIMITS } from './constants/auth.constant';
 import {
     Controller,
     Post,
@@ -51,6 +51,7 @@ import { UserResponse, UserRole } from '@/modules/users/types/user';
 import { RolesGuard } from './passport/roles.guard';
 import { AdminActionReasonDto } from '@/modules/users/dto/update-user.dto';
 import { GoogleOAuthDto } from './dto/google-auth.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('Auth - Xác thực')
 @Controller('auth')
@@ -109,6 +110,12 @@ export class AuthController {
 
     @Post('google')
     @Public()
+    @Throttle({
+        default: {
+            limit: THROTTLE_LIMITS.AUTH_LIMIT,
+            ttl: THROTTLE_LIMITS.ONE_MINUTE,
+        },
+    })
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Đăng nhập bằng Google' })
     @ApiBody({ type: GoogleOAuthDto })
@@ -130,6 +137,12 @@ export class AuthController {
 
     @HttpCode(HttpStatus.OK)
     @Public()
+    @Throttle({
+        default: {
+            limit: THROTTLE_LIMITS.AUTH_LIMIT,
+            ttl: THROTTLE_LIMITS.ONE_MINUTE,
+        },
+    })
     @UseGuards(LocalAuthGuard)
     @Post('login')
     @ApiOperation({ summary: 'Đăng nhập tài khoản' })
@@ -183,6 +196,12 @@ export class AuthController {
 
     @Post('refreshToken')
     @Public()
+    @Throttle({
+        default: {
+            limit: THROTTLE_LIMITS.AUTH_LIMIT,
+            ttl: THROTTLE_LIMITS.ONE_MINUTE,
+        },
+    })
     @ApiOperation({ summary: 'Làm mới token (Refresh Token)' })
     async refreshToken(
         @Cookies('refreshToken') refreshTokenOld: string,
@@ -251,6 +270,12 @@ export class AuthController {
 
     @Post('register')
     @Public()
+    @Throttle({
+        default: {
+            limit: THROTTLE_LIMITS.MAIL_LIMIT,
+            ttl: THROTTLE_LIMITS.ONE_MINUTE,
+        },
+    })
     @ApiOperation({ summary: 'Đăng ký tài khoản mới' })
     async handleRegister(@Body() registerAuthDto: RegisterAuthDto) {
         const data = await this.authService.register(registerAuthDto);
@@ -260,6 +285,12 @@ export class AuthController {
     @Post('active')
     @HttpCode(HttpStatus.OK)
     @Public()
+    @Throttle({
+        default: {
+            limit: THROTTLE_LIMITS.AUTH_LIMIT,
+            ttl: THROTTLE_LIMITS.ONE_MINUTE,
+        },
+    })
     @ApiOperation({ summary: 'Kích hoạt tài khoản bằng mã code gửi qua email' })
     async handleActive(@Body() activeAuthDto: ActiveAuthDto) {
         return await this.authService.activateUser(
@@ -271,6 +302,12 @@ export class AuthController {
     @Post('resend-code-active')
     @HttpCode(HttpStatus.OK)
     @Public()
+    @Throttle({
+        default: {
+            limit: THROTTLE_LIMITS.MAIL_LIMIT,
+            ttl: THROTTLE_LIMITS.ONE_MINUTE,
+        },
+    })
     @ApiOperation({ summary: 'Gửi lại mã kích hoạt tài khoản' })
     async handleResendCodeActive(@Body() resendCodeAuthDto: ResendCodeAuthDto) {
         return await this.authService.reSendCodeActive(resendCodeAuthDto.email);
@@ -307,6 +344,12 @@ export class AuthController {
 
     @Post('forgot-password')
     @Public()
+    @Throttle({
+        default: {
+            limit: THROTTLE_LIMITS.MAIL_LIMIT,
+            ttl: THROTTLE_LIMITS.ONE_MINUTE,
+        },
+    })
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: 'Yêu cầu gửi mã đặt lại mật khẩu (Quên mật khẩu)',
@@ -321,6 +364,12 @@ export class AuthController {
 
     @Post('reset-password')
     @Public()
+    @Throttle({
+        default: {
+            limit: THROTTLE_LIMITS.AUTH_LIMIT,
+            ttl: THROTTLE_LIMITS.ONE_MINUTE,
+        },
+    })
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Đặt lại mật khẩu mới' })
     async handleResetPassword(
@@ -344,6 +393,12 @@ export class AuthController {
 
     @Post('send-code-update-email')
     @HttpCode(HttpStatus.OK)
+    @Throttle({
+        default: {
+            limit: THROTTLE_LIMITS.MAIL_LIMIT,
+            ttl: THROTTLE_LIMITS.ONE_MINUTE,
+        },
+    })
     @ApiOperation({ summary: 'Gửi mã cập nhật email' })
     async handleSendCodeUpdateEmail(
         @Body() sendCodeUpdateEmailAuthDto: SendCodeUpdateEmailAuthDto,

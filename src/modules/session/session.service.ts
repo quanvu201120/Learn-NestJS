@@ -6,7 +6,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Session } from './schemas/session.schema';
 import { Model, Types } from 'mongoose';
 import { CreateSessionDto } from './dto/create-session.dto';
-import { validateObjectId } from '@/utils/utils';
+import { toObjectId, validateObjectId } from '@/utils/utils';
 import { CleanupJobsService } from '../cleanup-jobs/cleanup-jobs.service';
 import { CreateCleanupJobDto } from '../cleanup-jobs/dto/create-cleanup-job.dto';
 import {
@@ -27,7 +27,11 @@ export class SessionService {
      * Tạo session đăng nhập bền vững cho một thiết bị hoặc trình duyệt.
      */
     async create(createSessionDto: CreateSessionDto) {
-        return await this.sessionModel.create(createSessionDto);
+        const userId = toObjectId(createSessionDto.userId, 'user id');
+        return await this.sessionModel.create({
+            ...createSessionDto,
+            userId,
+        });
     }
 
     /**
@@ -42,10 +46,10 @@ export class SessionService {
      * Lấy các session chưa bị revoke của user.
      */
     async findSessionsByUserId(userId: string) {
-        validateObjectId(userId, 'user id');
+        const objectId = toObjectId(userId, 'user id');
 
         const sessions = await this.sessionModel
-            .find({ userId: new Types.ObjectId(userId), isRevoked: false })
+            .find({ userId: objectId, isRevoked: false })
             .sort({ lastUsedAt: -1, createdAt: -1 })
             .select(
                 '_id deviceName userAgent expiresAt lastUsedAt createdAt updatedAt',

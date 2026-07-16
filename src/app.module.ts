@@ -23,6 +23,9 @@ import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { BullModule } from '@nestjs/bullmq';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { THROTTLE_LIMITS } from './auth/constants/auth.constant';
+import { ThrottlerUserIpGuard } from './common/throttler-user-ip.guard';
 
 @Module({
     imports: [
@@ -37,6 +40,22 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
         AuditLogModule,
         ReportsModule,
         NotificationsModule,
+        ThrottlerModule.forRoot({
+            throttlers: [
+                {
+                    ttl: THROTTLE_LIMITS.ONE_MINUTE,
+                    limit: THROTTLE_LIMITS.GLOBAL_LIMIT,
+                    blockDuration: THROTTLE_LIMITS.ONE_MINUTE,
+                },
+            ],
+            errorMessage: (_context, detail) => {
+                const seconds = Math.max(
+                    detail.timeToBlockExpire || detail.timeToExpire || 1,
+                    1,
+                );
+                return `Bạn thao tác quá nhanh, vui lòng thử lại sau ${seconds} giây.`;
+            },
+        }),
         ConfigModule.forRoot({ isGlobal: true }),
         EventEmitterModule.forRoot(),
         RelationshipsModule,
@@ -72,6 +91,10 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
         {
             provide: APP_GUARD,
             useClass: JwtAuthGuard,
+        },
+        {
+            provide: APP_GUARD,
+            useClass: ThrottlerUserIpGuard,
         },
     ],
 })

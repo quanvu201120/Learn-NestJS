@@ -61,8 +61,14 @@ import { SessionService } from '../session/session.service';
 import { MessageEnumType } from '../messages/types/message';
 import { RelationshipsService } from '../relationships/relationships.service';
 import { Notification } from '../notifications/schemas/notification.schema';
+
+const socketCorsOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
 @WebSocketGateway({
-    cors: { origin: '*' },
+    cors: { origin: socketCorsOrigins },
     transports: ['websocket'],
 })
 @Injectable()

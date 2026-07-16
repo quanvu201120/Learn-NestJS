@@ -280,7 +280,7 @@ export class AuthService {
             throw new UnauthorizedException(AUTH_MESSAGES.USER_DISABLED);
         }
         if (user.isActive === false) {
-            throw new BadRequestException(USER_MESSAGES.USER_NOT_ACTIVE);
+            throw new ForbiddenException(USER_MESSAGES.USER_NOT_ACTIVE);
         }
         if (user.banUntil && user.banUntil > new Date()) {
             return await this.buildBannedLoginResponse(user);

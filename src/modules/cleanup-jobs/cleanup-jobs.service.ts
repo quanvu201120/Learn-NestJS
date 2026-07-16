@@ -58,6 +58,9 @@ export class CleanupJobsService {
             CLEANUP_JOB_CONSTANTS.DEFAULT_MAX_RETRIES;
         const cleanupJob = await this.cleanupJobModel.create({
             ...createDto,
+            entityId: createDto.entityId
+                ? toObjectId(createDto.entityId, 'entityId')
+                : undefined,
             maxRetries,
         });
 

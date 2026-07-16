@@ -37,7 +37,7 @@ import {
     ReportStatusEnum,
 } from './types/report.type';
 import { PENALTY_RULES } from './constants/penalty.constant';
-import { formatDateTime, validateObjectId } from '@/utils/utils';
+import { formatDateTime, toObjectId, validateObjectId } from '@/utils/utils';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -176,7 +176,11 @@ export class ReportsService {
         reporterId: string,
         files: Express.Multer.File[] = [],
     ) {
-        validateObjectId(createReportDto.targetUserId, 'targetUserId');
+        const objectReporterId = toObjectId(reporterId, 'reporterId');
+        const objectTargetUserId = toObjectId(
+            createReportDto.targetUserId,
+            'targetUserId',
+        );
 
         if (reporterId === createReportDto.targetUserId) {
             throw new BadRequestException(REPORT_MESSAGES.CANNOT_REPORT_SELF);
@@ -192,8 +196,8 @@ export class ReportsService {
             // Validate rate limit: Max 3 reports per 24h from this reporter to this target
             const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
             const reportCount = await this.reportModel.countDocuments({
-                reporterId,
-                targetUserId: createReportDto.targetUserId,
+                reporterId: objectReporterId,
+                targetUserId: objectTargetUserId,
                 createdAt: { $gte: oneDayAgo },
             });
 
@@ -220,7 +224,8 @@ export class ReportsService {
             const report = new this.reportModel({
                 ...createReportDto,
                 evidenceMediaIds: uploadedMediaDocs.map((media) => media._id),
-                reporterId,
+                reporterId: objectReporterId,
+                targetUserId: objectTargetUserId,
                 snapshot: {
                     avatarMediaId: targetUser.avatar,
                     displayName: targetUser.name,
@@ -1189,6 +1194,8 @@ export class ReportsService {
         req: any,
     ) {
         await this.verifyAdminPassword(adminId, adminRole, dto.password);
+        const objectAdminId = toObjectId(adminId, 'adminId');
+        const objectTargetUserId = toObjectId(targetUserId, 'targetUserId');
 
         const targetUser = await this.usersService.findOne(targetUserId);
         if (!targetUser) {
@@ -1199,8 +1206,8 @@ export class ReportsService {
 
         // Tạo ngầm 1 report
         const report = new this.reportModel({
-            reporterId: adminId,
-            targetUserId,
+            reporterId: objectAdminId,
+            targetUserId: objectTargetUserId,
             reason: dto.reason as ReportReasonEnum,
             snapshot: {
                 avatarMediaId: targetUser.avatar,
@@ -1251,6 +1258,8 @@ export class ReportsService {
         req: any,
     ) {
         await this.verifyAdminPassword(adminId, adminRole, dto.password);
+        const objectAdminId = toObjectId(adminId, 'adminId');
+        const objectTargetUserId = toObjectId(targetUserId, 'targetUserId');
 
         const targetUser = await this.usersService.findOne(targetUserId);
         if (!targetUser) {
@@ -1261,8 +1270,8 @@ export class ReportsService {
 
         // Tạo ngầm 1 report
         const report = new this.reportModel({
-            reporterId: adminId,
-            targetUserId,
+            reporterId: objectAdminId,
+            targetUserId: objectTargetUserId,
             reason: ReportReasonEnum.OTHER,
             snapshot: {
                 avatarMediaId: targetUser.avatar,
@@ -1315,7 +1324,7 @@ export class ReportsService {
         req: any,
     ) {
         await this.verifyAdminPassword(adminId, adminRole, dto.password);
-        validateObjectId(targetUserId, 'targetUserId');
+        const objectTargetUserId = toObjectId(targetUserId, 'targetUserId');
 
         const targetUser = await this.usersService.findOne(targetUserId);
         if (!targetUser)
@@ -1326,7 +1335,10 @@ export class ReportsService {
 
         // Tìm report resolved gần nhất và đổi thành dismissed để kháng cáo (trừ án tích)
         const lastReport = await this.reportModel
-            .findOne({ targetUserId, status: ReportStatusEnum.RESOLVED })
+            .findOne({
+                targetUserId: objectTargetUserId,
+                status: ReportStatusEnum.RESOLVED,
+            })
             .sort({ resolvedAt: -1 });
         if (lastReport) {
             lastReport.status = ReportStatusEnum.DISMISSED;
@@ -1360,7 +1372,7 @@ export class ReportsService {
         req: any,
     ) {
         await this.verifyAdminPassword(adminId, adminRole, dto.password);
-        validateObjectId(targetUserId, 'targetUserId');
+        const objectTargetUserId = toObjectId(targetUserId, 'targetUserId');
 
         const targetUser = await this.usersService.findOne(targetUserId);
         if (!targetUser)
@@ -1371,7 +1383,10 @@ export class ReportsService {
 
         // Tìm report resolved gần nhất và đổi thành dismissed để kháng cáo (trừ án tích)
         const lastReport = await this.reportModel
-            .findOne({ targetUserId, status: ReportStatusEnum.RESOLVED })
+            .findOne({
+                targetUserId: objectTargetUserId,
+                status: ReportStatusEnum.RESOLVED,
+            })
             .sort({ resolvedAt: -1 });
         if (lastReport) {
             lastReport.status = ReportStatusEnum.DISMISSED;
@@ -1408,14 +1423,17 @@ export class ReportsService {
         req: any,
     ) {
         await this.verifyAdminPassword(adminId, adminRole, dto.password);
-        validateObjectId(targetUserId, 'targetUserId');
+        const objectTargetUserId = toObjectId(targetUserId, 'targetUserId');
 
         const targetUser = await this.usersService.findOne(targetUserId);
         if (!targetUser)
             throw new BadRequestException(REPORT_MESSAGES.USER_NOT_FOUND);
 
         const lastReport = await this.reportModel
-            .findOne({ targetUserId, status: ReportStatusEnum.RESOLVED })
+            .findOne({
+                targetUserId: objectTargetUserId,
+                status: ReportStatusEnum.RESOLVED,
+            })
             .sort({ resolvedAt: -1 });
         if (lastReport) {
             lastReport.status = ReportStatusEnum.DISMISSED;
