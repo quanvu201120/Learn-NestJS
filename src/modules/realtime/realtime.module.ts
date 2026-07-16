@@ -7,6 +7,9 @@ import { RedisModule } from '@/redis/redis.module';
 import { UsersModule } from '../users/users.module';
 import { SessionModule } from '../session/session.module';
 import { RelationshipsModule } from '../relationships/relationships.module';
+import { RealtimeAuthService } from './realtime-auth.service';
+import { RealtimeChatCommandService } from './realtime-chat-command.service';
+import { RealtimeEventBridgeService } from './realtime-event-bridge.service';
 @Module({
     imports: [
         AuthModule,
@@ -18,6 +21,11 @@ import { RelationshipsModule } from '../relationships/relationships.module';
         RelationshipsModule,
     ],
     exports: [ChatGateway],
-    providers: [ChatGateway],
+    providers: [
+        ChatGateway,
+        RealtimeAuthService,
+        RealtimeChatCommandService,
+        RealtimeEventBridgeService,
+    ],
 })
 export class RealtimeModule {}

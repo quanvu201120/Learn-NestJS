@@ -9,6 +9,12 @@ import { RelationshipsModule } from '../relationships/relationships.module';
 import { StatsModule } from '../stats/stats.module';
 
 import { ReportsModule } from '../reports/reports.module';
+import { UserQueryService } from './user-query.service';
+import { UserSerializerService } from './user-serializer.service';
+import { UserCodeService } from './user-code.service';
+import { UserMailService } from './user-mail.service';
+import { UserPasswordService } from './user-password.service';
+import { UserAuthProfileService } from './user-auth-profile.service';
 
 @Module({
     imports: [
@@ -20,7 +26,15 @@ import { ReportsModule } from '../reports/reports.module';
         StatsModule,
     ],
     controllers: [UsersController],
-    providers: [UsersService],
+    providers: [
+        UsersService,
+        UserQueryService,
+        UserSerializerService,
+        UserCodeService,
+        UserMailService,
+        UserPasswordService,
+        UserAuthProfileService,
+    ],
     exports: [UsersService],
 })
 export class UsersModule {}

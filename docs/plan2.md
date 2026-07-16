@@ -7,9 +7,124 @@ Mục tiêu của plan này là giảm tình trạng service phình to, nhưng v
 - Chỉ tách nhỏ theo trách nhiệm trong nội bộ từng module.
 - Giữ controller mỏng, không chuyển business logic lên controller.
 - Giữ nguyên contract public hiện tại của module nếu chưa thật sự cần đổi.
-- Ưu tiên tạo các service nội bộ theo use case thay vì tạo helper chung quá sớm.
+- Ưu tiên tạo các service nội bộ theo use case thay vì tạo helper chung quá sớm. nhưng nếu các helper đó được dùng ở nhiều service thì hãy tách ra
 - Mỗi lần chỉ refactor một module lớn để giảm rủi ro.
 - Không refactor chéo nhiều module trong cùng một đợt nếu chưa cần.
+
+## Cách làm được chọn
+
+Hướng triển khai phù hợp nhất cho codebase hiện tại:
+
+- dùng `facade + service con theo use case`
+- service con trong cùng module được phép inject `Model` trực tiếp
+- chỉ tạo `repository` hoặc `data-access service` khi query bắt đầu lặp đáng kể
+- Các hàm helper kiểm tra kĩ trước khi phân tách vì các service con có thể sử dụng chung hoặc service ngoài module cũng sử dụng
+  Mô hình khuyến nghị:
+
+- controller vẫn gọi service public hiện tại của module
+- service public hiện tại đóng vai trò facade mỏng
+- facade chỉ điều phối và delegate sang các service con
+- mỗi service con xử lý một nhóm nghiệp vụ rõ ràng
+- service con nào cần đọc/ghi MongoDB thì inject cùng `Mongoose Model` ngay trong module đó
+
+Ví dụ với `reports`:
+
+- `ReportsService` vẫn là service controller đang dùng
+- `ReportsService` gọi sang `ReportQueryService`, `ReportCommandService`, `ReportAppealService`, `ReportCleanupService`
+- các service con này có thể cùng inject `@InjectModel(Report.name)` nếu cần
+
+Lý do chọn cách này:
+
+- hợp với style NestJS + Mongoose hiện tại của repo
+- giảm nhanh kích thước các god service mà không đại tu kiến trúc
+- không tạo thêm tầng gọi vòng vo không cần thiết
+- dễ refactor từng bước, dễ rollback nếu có lỗi
+- vẫn mở đường để tách repository về sau nếu thật sự cần
+
+## Khi nào service con được gọi model trực tiếp
+
+Cho phép service con gọi model trực tiếp trong các trường hợp:
+
+- query chỉ phục vụ riêng cho service đó
+- logic DB nằm trọn trong cùng module nghiệp vụ
+- chưa có dấu hiệu lặp query ở nhiều nơi
+- service đó chỉ inject model của chính module nó
+
+Quy tắc boundary giữa các module:
+
+- service của module nào thì chỉ nên inject model của module đó
+- nếu cần dữ liệu hoặc nghiệp vụ của module khác thì gọi service của module kia
+- không nên inject model của nhiều module khác nhau vào cùng một service nghiệp vụ
+
+Ví dụ:
+
+- `ReportQueryService` inject `ReportModel`
+- `ReportPenaltyService` cần khóa user thì gọi `UsersService`
+- `ReportPenaltyService` cần revoke session thì gọi `SessionService`
+- `ReportMediaService` cần upload hoặc xóa media thì gọi `MediaService`
+
+Không nên ép mọi service con phải đi qua service cha mới được đụng DB, vì:
+
+- không giảm coupling thật sự
+- service cha dễ tiếp tục phình to
+- thêm một tầng gọi nhưng không thêm giá trị rõ ràng
+
+## Khi nào mới nên tạo repository
+
+Chỉ cân nhắc tạo `repository` hoặc `data-access service` khi có một trong các dấu hiệu sau:
+
+- nhiều service con lặp lại cùng một query phức tạp
+- cùng một `populate`, `aggregate pipeline`, `filter builder` xuất hiện ở nhiều nơi
+- cần gom logic truy cập dữ liệu để phục vụ transaction hoặc tối ưu query rõ ràng hơn
+
+Nếu chưa có các dấu hiệu trên, ưu tiên giữ cấu trúc đơn giản:
+
+- service con theo use case
+- inject model trực tiếp
+- chỉ tách repository khi thật sự mang lại lợi ích rõ ràng
+
+Tóm tắt rule:
+
+- model của module mình thì inject trực tiếp được
+- logic hoặc dữ liệu của module khác thì đi qua service của module đó
+
+## JSDoc khi tách service
+
+Khi di chuyển method sang service con:
+
+- Nếu method được chuyển nguyên logic từ service cũ sang service mới, copy lại JSDoc cũ sang service mới.
+- Không xóa JSDoc ở facade nếu facade vẫn giữ method public để controller/module khác gọi.
+- Nếu method mới được tách từ một phần nhỏ của method cũ, tự thêm JSDoc mới mô tả đúng trách nhiệm mới.
+- JSDoc mới nên mô tả nghiệp vụ hoặc side effect chính, không chỉ nhắc lại tên method.
+
+Ví dụ:
+
+- `generateAppealToken` chuyển nguyên sang `ReportAppealService` thì copy doc cũ.
+- `uploadEvidenceImages` được tách từ flow create/appeal thì thêm doc mới về upload evidence và rollback.
+- `rollbackEvidenceImages` là method mới sau refactor thì phải có doc mới.
+
+## forwardRef khi tách service
+
+Khi module đang có quan hệ vòng qua `forwardRef`, service con mới tách cũng phải inject dependency vòng bằng `@Inject(forwardRef(() => ServiceName))`.
+
+Ví dụ trong `reports`:
+
+- `ReportsModule` import `forwardRef(() => UsersModule)`
+- `UsersModule` import `forwardRef(() => ReportsModule)`
+- service con trong `reports` nếu inject `UsersService` thì dùng:
+
+```ts
+@Inject(forwardRef(() => UsersService))
+private readonly usersService: UsersService
+```
+
+Áp dụng rule này cho mọi service con mới tách, không chỉ service public ban đầu.
+
+Lý do:
+
+- TypeScript build có thể vẫn pass dù DI runtime bị undefined.
+- Lỗi thường chỉ xuất hiện khi Nest khởi động provider.
+- Sau khi tách service mới, cần chạy `npm run start` hoặc một smoke test bootstrap ngắn nếu service đó inject dependency từ module đang dùng `forwardRef`.
 
 ## Đánh giá hiện trạng
 
@@ -49,35 +164,35 @@ Nhận xét:
 Đề xuất tách:
 
 - `report-command.service.ts`
-  - `create`
-  - `appeal`
-  - `resolve`
+    - `create`
+    - `appeal`
+    - `resolve`
 - `report-query.service.ts`
-  - `findAll`
-  - `findOne`
-  - `findByIdForApi`
-  - `findCurrentAppealContextByUserId`
+    - `findAll`
+    - `findOne`
+    - `findByIdForApi`
+    - `findCurrentAppealContextByUserId`
 - `report-appeal.service.ts`
-  - `generateAppealToken`
-  - `verifyAppealToken`
-  - `getAppealAccess`
+    - `generateAppealToken`
+    - `verifyAppealToken`
+    - `getAppealAccess`
 - `report-penalty.service.ts`
-  - logic xác định hình phạt
-  - apply ban/mute/strike
-  - revoke session nếu cần
-  - reset avatar/bio/name nếu có
+    - logic xác định hình phạt
+    - apply ban/mute/strike
+    - revoke session nếu cần
+    - reset avatar/bio/name nếu có
 - `report-admin-action.service.ts`
-  - `quickPenalty`
-  - `manualBan`
-  - `unban`
-  - `unmute`
-  - `clearStrike`
+    - `quickPenalty`
+    - `manualBan`
+    - `unban`
+    - `unmute`
+    - `clearStrike`
 - `report-media.service.ts`
-  - upload evidence
-  - rollback media khi create/appeal fail
+    - upload evidence
+    - rollback media khi create/appeal fail
 - `report-cleanup.service.ts`
-  - `deleteMediasAndReportDismissed`
-  - logic xác định media/report orphan
+    - `deleteMediasAndReportDismissed`
+    - logic xác định media/report orphan
 
 Gợi ý triển khai:
 
@@ -149,14 +264,14 @@ Lưu ý:
 Nhóm này có thể refactor sau khi xử lý các service nghiệp vụ chính:
 
 - `cleanup-jobs.service.ts`
-  - có thể tách `cleanup-job-command.service.ts`
-  - có thể tách `cleanup-job-query.service.ts`
-  - có thể tách `cleanup-job-dispatcher.service.ts`
+    - có thể tách `cleanup-job-command.service.ts`
+    - có thể tách `cleanup-job-query.service.ts`
+    - có thể tách `cleanup-job-dispatcher.service.ts`
 - `stats.service.ts`
-  - có thể tách `stats-write.service.ts`
-  - có thể tách `stats-read.service.ts`
+    - có thể tách `stats-write.service.ts`
+    - có thể tách `stats-read.service.ts`
 - `media.service.ts`
-  - có thể tách theo upload, persistence, cleanup, provider orchestration
+    - có thể tách theo upload, persistence, cleanup, provider orchestration
 
 ## Đánh giá riêng cho Session module
 

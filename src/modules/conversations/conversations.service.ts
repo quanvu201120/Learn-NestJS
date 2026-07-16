@@ -1,4 +1,3 @@
-/* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-floating-promises */
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
@@ -21,7 +20,7 @@ import {
     NotFoundException,
     ForbiddenException,
 } from '@nestjs/common';
-import { formatDateTime, toObjectId } from '@/utils/utils';
+import { toObjectId } from '@/utils/utils';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
 import { ClientSession, Model, Types, Connection } from 'mongoose';
@@ -29,18 +28,15 @@ import {
     Conversation,
     ConversationDocument,
 } from './schemas/conversation.schema';
-import { serializeMessage } from '../messages/utils/message.serializer';
 import { MESSAGE_MESSAGES } from '../messages/constants/message.constant';
 import { MessagesService } from '../messages/messages.service';
 import { UsersService } from '../users/users.service';
 import {
     ConversationResponse,
-    ListConversationResponse,
     UpdateAdminConversationResponse,
     UpdateNameConversationResponse,
 } from './types/conversation';
 import { RedisService } from '@/redis/redis.service';
-import { Subject } from 'rxjs';
 import { MediaService } from '../media/media.service';
 import { Media } from '../media/schemas/media.schema';
 import {
@@ -49,50 +45,31 @@ import {
 } from '../media/constants/media.constant';
 import { MediaProviderEnum, OwnerTypeEnum } from '../media/types/media';
 import { MessageEnumType } from '../messages/types/message';
-import { serializeMedia } from '../media/utils/media.serializer';
-import { serializeUser } from '../users/utils/user.serializer';
 import {
     CleanupJobEntityEnum,
     CleanupJobResourceEnum,
 } from '../cleanup-jobs/types/cleanup-job';
-import { RelationshipsService } from '../relationships/relationships.service';
 import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
+import { RelationshipsService } from '../relationships/relationships.service';
 import { StatsService } from '../stats/stats.service';
-import { AUTH_MESSAGES } from '@/auth/constants/auth.constant';
+import { ConversationAccessService } from './conversation-access.service';
+import { ConversationCommandService } from './conversation-command.service';
+import { ConversationEventService } from './conversation-event.service';
+import { ConversationGroupAdminService } from './conversation-group-admin.service';
+import { ConversationMediaService } from './conversation-media.service';
+import { ConversationMemberService } from './conversation-member.service';
+import { ConversationQueryService } from './conversation-query.service';
+import { ConversationSerializerService } from './conversation-serializer.service';
+import { ConversationStateService } from './conversation-state.service';
 
 @Injectable()
 export class ConversationsService {
-    public readonly conversationDisbanded$ = new Subject<{
-        conversationId: string;
-        memberIds: string[];
-    }>();
-    public readonly conversationGroupCreated$ = new Subject<{
-        conversationId: string;
-        memberIds: string[];
-    }>();
-
-    public readonly memberAdded$ = new Subject<{
-        conversationId: string;
-        addedMemberIds: string[];
-        adderId: string;
-    }>();
-
-    public readonly memberRemoved$ = new Subject<{
-        conversationId: string;
-        removedMemberId: string;
-        removerId: string;
-    }>();
-
-    public readonly conversationNameChanged$ = new Subject<{
-        conversationId: string;
-        name: string;
-    }>();
-
-    public readonly conversationAdminChanged$ = new Subject<{
-        conversationId: string;
-        newAdminId: string;
-        membersOnline: string[];
-    }>();
+    public readonly conversationDisbanded$: ConversationEventService['conversationDisbanded$'];
+    public readonly conversationGroupCreated$: ConversationEventService['conversationGroupCreated$'];
+    public readonly memberAdded$: ConversationEventService['memberAdded$'];
+    public readonly memberRemoved$: ConversationEventService['memberRemoved$'];
+    public readonly conversationNameChanged$: ConversationEventService['conversationNameChanged$'];
+    public readonly conversationAdminChanged$: ConversationEventService['conversationAdminChanged$'];
 
     constructor(
         @InjectModel(Conversation.name)
@@ -117,7 +94,36 @@ export class ConversationsService {
         private readonly relationshipsService: RelationshipsService,
 
         private readonly statsService: StatsService,
-    ) {}
+
+        private readonly conversationAccessService: ConversationAccessService,
+
+        private readonly conversationCommandService: ConversationCommandService,
+
+        private readonly conversationEventService: ConversationEventService,
+
+        private readonly conversationGroupAdminService: ConversationGroupAdminService,
+
+        private readonly conversationMediaService: ConversationMediaService,
+
+        private readonly conversationMemberService: ConversationMemberService,
+
+        private readonly conversationQueryService: ConversationQueryService,
+
+        private readonly conversationSerializerService: ConversationSerializerService,
+
+        private readonly conversationStateService: ConversationStateService,
+    ) {
+        this.conversationDisbanded$ =
+            this.conversationEventService.conversationDisbanded$;
+        this.conversationGroupCreated$ =
+            this.conversationEventService.conversationGroupCreated$;
+        this.memberAdded$ = this.conversationEventService.memberAdded$;
+        this.memberRemoved$ = this.conversationEventService.memberRemoved$;
+        this.conversationNameChanged$ =
+            this.conversationEventService.conversationNameChanged$;
+        this.conversationAdminChanged$ =
+            this.conversationEventService.conversationAdminChanged$;
+    }
 
     /**
      * Helper nội bộ: Format dữ liệu conversation trước khi trả về client.
@@ -129,44 +135,12 @@ export class ConversationsService {
         preloadedHiddenUserIds?: string[],
         checkHiddenUserBlock = false,
     ): Promise<ConversationResponse> {
-        const { lastMessageId, pinMessageId, avatar, users, ...rest } =
-            conversation;
-
-        let processedUsers = users;
-
-        const hiddenUserIds = checkHiddenUserBlock
-            ? preloadedHiddenUserIds && preloadedHiddenUserIds.length > 0
-                ? preloadedHiddenUserIds
-                : currentUserId && Array.isArray(processedUsers)
-                  ? await this.relationshipsService.getBlockedUserIdsAmongUsers(
-                        currentUserId,
-                        processedUsers.map((user: any) => user._id.toString()),
-                    )
-                  : []
-            : [];
-        const hiddenUserIdSet = new Set(hiddenUserIds);
-
-        return {
-            ...rest,
-            users: processedUsers?.map((user: any) =>
-                serializeUser(
-                    user,
-                    true,
-                    hiddenUserIdSet.has(user._id.toString()),
-                ),
-            ),
-            avatar: avatar ? serializeMedia(avatar) : avatar,
-            lastMessage: lastMessageId
-                ? typeof lastMessageId === 'object' && '_id' in lastMessageId
-                    ? serializeMessage(lastMessageId, hiddenUserIds)
-                    : lastMessageId
-                : undefined,
-            pinMessage: pinMessageId
-                ? typeof pinMessageId === 'object' && '_id' in pinMessageId
-                    ? serializeMessage(pinMessageId, hiddenUserIds)
-                    : pinMessageId
-                : undefined,
-        };
+        return this.conversationSerializerService.serializeConversation(
+            conversation,
+            currentUserId,
+            preloadedHiddenUserIds,
+            checkHiddenUserBlock,
+        );
     }
 
     /**
@@ -178,196 +152,10 @@ export class ConversationsService {
         createConversationDto: CreateConversationDto,
         currentUserId: string,
     ) {
-        const { users = [], isGroup = false, name } = createConversationDto;
-        const objectCurrentUserId = toObjectId(currentUserId, 'user id');
-
-        const normalizedUsers = [...new Set([currentUserId, ...users])];
-
-        if (!isGroup) {
-            if (normalizedUsers.length !== 2) {
-                throw new BadRequestException(
-                    CONVERSATION_MESSAGES.DIRECT_MUST_BE_2_USERS,
-                );
-            }
-        }
-        if (isGroup) {
-            if (!name?.trim()) {
-                throw new BadRequestException(
-                    CONVERSATION_MESSAGES.GROUP_NAME_REQUIRED,
-                );
-            }
-
-            if (normalizedUsers.length < 3) {
-                throw new BadRequestException(
-                    CONVERSATION_MESSAGES.GROUP_MIN_3_USERS,
-                );
-            }
-
-            if (
-                normalizedUsers.length >
-                CONVERSATION_CONSTANTS.MAX_GROUP_MEMBERS
-            ) {
-                throw new BadRequestException(
-                    CONVERSATION_MESSAGES.GROUP_MAX_MEMBERS_EXCEEDED,
-                );
-            }
-        }
-        const blockList = new Set(
-            await this.relationshipsService.getBlockedUserIdsAmongUsers(
-                currentUserId,
-                users,
-            ),
+        return this.conversationCommandService.createConversation(
+            createConversationDto,
+            currentUserId,
         );
-
-        const listMember = normalizedUsers
-            .map((id) => toObjectId(id, `user id`))
-            .filter((member) => !blockList.has(member.toString()));
-
-        if (!isGroup && listMember.length !== 2) {
-            throw new BadRequestException(
-                CONVERSATION_MESSAGES.DIRECT_MUST_BE_2_USERS,
-            );
-        }
-
-        if (isGroup && listMember.length < 3) {
-            throw new BadRequestException(
-                CONVERSATION_MESSAGES.GROUP_MIN_3_USERS,
-            );
-        }
-
-        const existingUsersCount =
-            await this.userService.countUserIdsExist(listMember);
-
-        if (existingUsersCount !== listMember.length) {
-            throw new BadRequestException(
-                CONVERSATION_MESSAGES.USERS_NOT_EXIST,
-            );
-        }
-
-        // 1. Nếu là chat 1-1, kiểm tra xem đã tồn tại cuộc trò chuyện nào chưa
-        if (!isGroup) {
-            const existingConversation = await this.conversationModel
-                .findOne({
-                    isGroup: false,
-                    users: {
-                        $all: listMember,
-                        $size: 2,
-                    },
-                })
-                .select('-__v')
-                .populate({
-                    path: 'users',
-                    select: '-password -email -phone -__v',
-                    populate: { path: 'avatar', select: '-__v' },
-                })
-                .populate('lastMessageId', '-__v')
-                .lean();
-
-            if (existingConversation) {
-                const isRemove = existingConversation.hiddenHistory?.find(
-                    (item) =>
-                        item.userId.equals(currentUserId) &&
-                        item.isHidden === true,
-                );
-                if (isRemove) {
-                    const updatedConversation = await this.conversationModel
-                        .findByIdAndUpdate(
-                            existingConversation._id,
-                            {
-                                $set: {
-                                    'hiddenHistory.$[item].isHidden': false,
-                                },
-                                $push: {
-                                    acceptedBy: objectCurrentUserId,
-                                },
-                            },
-                            {
-                                returnDocument: 'after',
-                                arrayFilters: [
-                                    {
-                                        'item.userId': new Types.ObjectId(
-                                            currentUserId,
-                                        ),
-                                    },
-                                ],
-                            },
-                        )
-                        .select('-__v')
-                        .populate({
-                            path: 'users',
-                            select: '-password -email -phone -__v',
-                            populate: { path: 'avatar', select: '-__v' },
-                        })
-                        .populate('lastMessageId', '-__v')
-                        .lean();
-
-                    return await this.serializeConversation(
-                        updatedConversation,
-                    );
-                }
-                return await this.serializeConversation(existingConversation);
-            }
-        }
-        const adminGroupId = isGroup ? objectCurrentUserId : undefined;
-        const hiddenHistory = !isGroup
-            ? listMember
-                  .filter((member) => !member.equals(objectCurrentUserId))
-                  .map((member) => ({
-                      userId: member,
-                      isHidden: true,
-                      hiddenAt: new Date(),
-                  }))
-            : undefined;
-        // Tính toán danh sách acceptedBy (Tin nhắn chờ)
-        const acceptedBy: Types.ObjectId[] = [objectCurrentUserId];
-
-        if (!isGroup) {
-            const targetId = users.find((id) => id !== currentUserId);
-            if (targetId) {
-                const isFriend = await this.relationshipsService.checkIsFriend(
-                    currentUserId,
-                    targetId,
-                );
-                if (isFriend) {
-                    acceptedBy.push(toObjectId(targetId, 'user id'));
-                }
-            }
-        } else {
-            const otherUserIds = users.filter((id) => id !== currentUserId);
-            const friendIds =
-                await this.relationshipsService.getFriendIdsAmongUsers(
-                    currentUserId,
-                    otherUserIds,
-                );
-
-            for (const friendId of friendIds) {
-                acceptedBy.push(toObjectId(friendId, 'user id'));
-            }
-        }
-
-        // 2. Nếu là group chat hoặc phòng 1-1 chưa tồn tại -> Tiến hành tạo mới
-        const createConversation = await this.conversationModel.create({
-            name,
-            isGroup,
-            users: listMember,
-            adminGroupId,
-            hiddenHistory,
-            acceptedBy,
-        });
-        const { __v, ...result } = (
-            createConversation as ConversationDocument
-        ).toObject();
-        const res = await this.serializeConversation(result);
-        if (isGroup) {
-            this.conversationGroupCreated$.next({
-                conversationId: res._id.toString(),
-                memberIds: normalizedUsers,
-            });
-            this.statsService.incrementNewGroup();
-        } else {
-            this.statsService.incrementNewDirect();
-        }
-        return res;
     }
 
     /**
@@ -380,145 +168,18 @@ export class ConversationsService {
         cursor?: string,
         limit: number = GLOBAL_CONSTANTS.LIMIT_CONVERSATIONS_DEFAULT,
     ) {
-        const objectUserId = toObjectId(userId, 'user id');
-        const user = await this.userService.findOne(userId);
-        if (!user) {
-            throw new BadRequestException(CONVERSATION_MESSAGES.USER_NOT_FOUND);
-        }
-
-        const query: any = {
-            users: objectUserId,
-            hiddenHistory: {
-                $not: {
-                    $elemMatch: {
-                        userId: objectUserId,
-                        isHidden: true,
-                    },
-                },
-            },
-        };
-
-        if (cursor) {
-            query.updatedAt = { $lt: new Date(cursor) };
-        }
-
-        const resultList = await this.conversationModel
-            .find(query)
-            .select('-__v')
-            .populate({
-                path: 'users',
-                select: '-password -email -phone -__v',
-                populate: { path: 'avatar', select: '-__v' },
-            })
-            .populate('lastMessageId', '-__v')
-            .populate({
-                path: 'pinMessageId',
-                select: '-__v',
-                populate: [
-                    {
-                        path: 'senderId',
-                        select: '-password -email -phone -__v',
-                        populate: { path: 'avatar', select: '-__v' },
-                    },
-                    { path: 'replyTo', select: '-__v' },
-                    { path: 'mediaId', select: '-__v' },
-                ],
-            })
-            .populate('avatar', '-__v')
-            .sort({ updatedAt: -1 })
-            .limit(limit + 1)
-            .lean();
-
-        const hasNextPage = resultList.length > limit;
-        const conversations = hasNextPage
-            ? resultList.slice(0, -1)
-            : resultList;
-
-        const nextCursor =
-            conversations.length > 0
-                ? (
-                      conversations[conversations.length - 1] as any
-                  ).updatedAt.toISOString()
-                : null;
-        const hiddenUserIds =
-            await this.relationshipsService.getBlockedUserIdsAmongUsers(
-                userId,
-                [
-                    ...new Set(
-                        conversations.flatMap((conversation: any) => {
-                            return Array.isArray(conversation.users)
-                                ? conversation.users.map((user: any) =>
-                                      user._id.toString(),
-                                  )
-                                : [];
-                        }),
-                    ),
-                ],
-            );
-
-        const res: ListConversationResponse = {
-            nextCursor,
-            conversations: await Promise.all(
-                conversations.map((conversation) =>
-                    this.serializeConversation(
-                        conversation as any,
-                        userId,
-                        hiddenUserIds,
-                        conversation.isGroup,
-                    ),
-                ),
-            ),
-        };
-        return res;
+        return this.conversationQueryService.findAllByUser(
+            userId,
+            cursor,
+            limit,
+        );
     }
 
     /**
      * Lấy chi tiết một phòng chat theo ID (dành cho user hiện tại).
      */
     async findOne(conversationId: string, userId: string) {
-        const objectConversationId = toObjectId(
-            conversationId,
-            'conversation id',
-        );
-        const objectUserId = toObjectId(userId, 'user id');
-        const res = await this.conversationModel
-            .findOne({
-                _id: objectConversationId,
-                users: objectUserId,
-                hiddenHistory: {
-                    $not: {
-                        $elemMatch: {
-                            userId: objectUserId,
-                            isHidden: true,
-                        },
-                    },
-                },
-            })
-            .select('-__v')
-            .populate({
-                path: 'users',
-                select: '-password -email -phone -__v',
-                populate: { path: 'avatar', select: '-__v' },
-            })
-            .populate('lastMessageId', '-__v')
-            .populate({
-                path: 'pinMessageId',
-                select: '-__v',
-                populate: [
-                    {
-                        path: 'senderId',
-                        select: '-password -email -phone -__v',
-                        populate: { path: 'avatar', select: '-__v' },
-                    },
-                    { path: 'replyTo', select: '-__v' },
-                    { path: 'mediaId', select: '-__v' },
-                ],
-            })
-            .populate('avatar', '-__v')
-            .lean();
-        return res
-            ? await this.serializeConversation(res, userId, [], res.isGroup)
-            : null;
+        return this.conversationQueryService.findOne(conversationId, userId);
     }
 
     /**
@@ -532,26 +193,12 @@ export class ConversationsService {
         userId: string,
         session?: ClientSession,
     ) {
-        const objectConversationId = toObjectId(id, 'conversation id');
-        const objectMessageId = toObjectId(messageId, 'message id');
-
-        const _ = toObjectId(userId, 'user id');
-        const result = await this.conversationModel.findByIdAndUpdate(
-            objectConversationId,
-            {
-                $set: {
-                    lastMessageId: objectMessageId,
-                    'hiddenHistory.$[item].isHidden': false,
-                    [`readReceipts.${userId}`]: objectMessageId,
-                },
-            },
-            {
-                returnDocument: 'after',
-                arrayFilters: [{ 'item.isHidden': true }],
-                session,
-            },
+        return this.conversationStateService.updateLastMessageAndRestoreConversation(
+            id,
+            messageId,
+            userId,
+            session,
         );
-        return result;
     }
 
     async pinMessage(
@@ -559,27 +206,17 @@ export class ConversationsService {
         messageId: string,
         session?: ClientSession,
     ) {
-        const objectConversationId = toObjectId(
+        return this.conversationStateService.pinMessage(
             conversationId,
-            'conversation id',
-        );
-        const objectMessageId = toObjectId(messageId, 'message id');
-        return await this.conversationModel.findByIdAndUpdate(
-            objectConversationId,
-            { $set: { pinMessageId: objectMessageId } },
-            { returnDocument: 'after', session },
+            messageId,
+            session,
         );
     }
 
     async unpinMessage(conversationId: string, session?: ClientSession) {
-        const objectConversationId = toObjectId(
+        return this.conversationStateService.unpinMessage(
             conversationId,
-            'conversation id',
-        );
-        return await this.conversationModel.findByIdAndUpdate(
-            objectConversationId,
-            { $unset: { pinMessageId: 1 } },
-            { returnDocument: 'after', session },
+            session,
         );
     }
 
@@ -591,39 +228,11 @@ export class ConversationsService {
         currentUserId: string,
         name: string,
     ) {
-        const { conversation, objectConversationId } =
-            await this.getConversationOrThrow(id);
-
-        this.ensureGroupConversation(conversation);
-        this.ensureGroupAdmin(conversation, currentUserId);
-        const normalizedName = name.trim();
-        if (!normalizedName) {
-            throw new BadRequestException(CONVERSATION_MESSAGES.NAME_REQUIRED);
-        }
-
-        if (normalizedName === conversation.name) {
-            throw new BadRequestException(
-                CONVERSATION_MESSAGES.NAME_NOT_CHANGED,
-            );
-        }
-
-        const result = await this.conversationModel
-            .findByIdAndUpdate(
-                objectConversationId,
-                { $set: { name: normalizedName } },
-                { returnDocument: 'after' },
-            )
-            .lean();
-        const res: UpdateNameConversationResponse = {
-            updated: !!result,
-        };
-        if (result) {
-            this.conversationNameChanged$.next({
-                conversationId: id,
-                name: result.name!,
-            });
-        }
-        return res;
+        return this.conversationStateService.updateNameConversation(
+            id,
+            currentUserId,
+            name,
+        );
     }
 
     /**
@@ -633,136 +242,11 @@ export class ConversationsService {
      * system message và phát sự kiện realtime để client cập nhật sidebar/phòng chat.
      */
     async addMembers(id: string, currentUserId: string, memberIds: string[]) {
-        const { conversation, objectConversationId } =
-            await this.getConversationOrThrow(id);
-        const objectMemberIds = memberIds.map((memberId) =>
-            toObjectId(memberId, `member id`),
+        return this.conversationMemberService.addMembers(
+            id,
+            currentUserId,
+            memberIds,
         );
-        const existingMemberIds = new Set(
-            conversation.users.map((member) => member.toString()),
-        );
-        const uniqueMemberIds = [
-            ...new Map(
-                objectMemberIds.map((memberId) => [
-                    memberId.toString(),
-                    memberId,
-                ]),
-            ).values(),
-        ];
-
-        const validMemberIds = (
-            await Promise.all(
-                uniqueMemberIds.map(async (memberId) => {
-                    const memberIdString = memberId.toString();
-
-                    if (existingMemberIds.has(memberIdString)) {
-                        return null;
-                    }
-
-                    const user = await this.userService.findOne(memberIdString);
-                    if (
-                        !user ||
-                        user.isDisabled ||
-                        !user.isActive ||
-                        (user.banUntil && user.banUntil > new Date())
-                    ) {
-                        return null;
-                    }
-
-                    const isBlocked =
-                        await this.relationshipsService.checkIsBlocked(
-                            currentUserId,
-                            memberIdString,
-                        );
-                    if (isBlocked) {
-                        return null;
-                    }
-
-                    return memberId;
-                }),
-            )
-        ).filter((memberId): memberId is Types.ObjectId => memberId !== null);
-
-        this.ensureGroupConversation(conversation);
-        this.ensureGroupAdmin(conversation, currentUserId);
-
-        if (validMemberIds.length === 0) {
-            throw new BadRequestException(
-                CONVERSATION_MESSAGES.USERS_NOT_EXIST,
-            );
-        }
-
-        if (
-            conversation.users.length + validMemberIds.length >
-            CONVERSATION_CONSTANTS.MAX_GROUP_MEMBERS
-        ) {
-            throw new BadRequestException(
-                CONVERSATION_MESSAGES.GROUP_MAX_MEMBERS_EXCEEDED,
-            );
-        }
-
-        const result = await this.conversationModel
-            .findByIdAndUpdate(
-                objectConversationId,
-                {
-                    $addToSet: {
-                        users: {
-                            $each: validMemberIds,
-                        },
-                    },
-                    $push: {
-                        hiddenHistory: {
-                            $each: validMemberIds.map((memberId) => ({
-                                userId: memberId,
-                                isHidden: false,
-                                hiddenAt: new Date(),
-                            })),
-                        },
-                    },
-                },
-                { returnDocument: 'after' },
-            )
-            .select('-__v')
-            .populate({
-                path: 'users',
-                select: '-password -email -phone -__v',
-                populate: { path: 'avatar', select: '-__v' },
-            })
-            .populate('lastMessageId', '-__v')
-            .populate('avatar', '-__v')
-            .lean();
-
-        if (result) {
-            const addedUsers = result.users as any[];
-            const addedNames = addedUsers
-                .filter((u) =>
-                    validMemberIds.some((memberId) => memberId.equals(u._id)),
-                )
-                .map((u) => u.name)
-                .join(', ');
-
-            await this.messageService.createMessage(
-                currentUserId,
-                id,
-                MessageEnumType.SYSTEM,
-                CONVERSATION_MESSAGES.SYSTEM_ADDED_MEMBERS(addedNames),
-            );
-
-            this.memberAdded$.next({
-                conversationId: id,
-                addedMemberIds: validMemberIds.map((memberId) =>
-                    memberId.toString(),
-                ),
-                adderId: currentUserId,
-            });
-            return await this.serializeConversation(
-                result,
-                currentUserId,
-                [],
-                true,
-            );
-        }
-        return null;
     }
 
     /**
@@ -771,85 +255,11 @@ export class ConversationsService {
      * gửi system message tương ứng và phát sự kiện realtime để các client cập nhật trạng thái.
      */
     async removeMember(id: string, currentUserId: string, memberId: string) {
-        const { conversation, objectConversationId } =
-            await this.getConversationOrThrow(id);
-
-        this.ensureGroupConversation(conversation);
-        if (currentUserId !== memberId) {
-            this.ensureGroupAdmin(conversation, currentUserId);
-        }
-
-        if (
-            currentUserId === memberId &&
-            currentUserId === conversation.adminGroupId?.toString()
-        ) {
-            throw new BadRequestException(
-                CONVERSATION_MESSAGES.CANNOT_REMOVE_ADMIN,
-            );
-        }
-
-        const objectMemberId = this.ensureMemberInConversation(
-            conversation,
-            memberId,
-        );
-
-        const result = await this.conversationModel
-            .findByIdAndUpdate(
-                objectConversationId,
-                {
-                    $pull: {
-                        users: objectMemberId,
-                        hiddenHistory: { userId: objectMemberId },
-                        acceptedBy: objectMemberId,
-                    },
-                    $unset: {
-                        [`readReceipts.${memberId}`]: 1,
-                    },
-                },
-                { returnDocument: 'after' },
-            )
-            .select('-__v')
-            .populate({
-                path: 'users',
-                select: '-password -email -phone -__v',
-                populate: { path: 'avatar', select: '-__v' },
-            })
-            .populate('lastMessageId', '-__v')
-            .populate('avatar', '-__v')
-            .lean();
-
-        if (!result) {
-            throw new BadRequestException(
-                CONVERSATION_MESSAGES.CONVERSATION_NOT_FOUND,
-            );
-        }
-        const removedUser = await this.userService.findOne(memberId);
-        const removedName = removedUser?.name || memberId;
-
-        const messageContent =
-            currentUserId === memberId
-                ? CONVERSATION_MESSAGES.SYSTEM_LEFT_GROUP(removedName)
-                : CONVERSATION_MESSAGES.SYSTEM_REMOVED_FROM_GROUP(removedName);
-
-        await this.messageService.createMessage(
+        return this.conversationMemberService.removeMember(
+            id,
             currentUserId,
-            id,
-            MessageEnumType.SYSTEM,
-            messageContent,
-        );
-
-        await this.redisService.removeUnseenConversationWithCleanup(
             memberId,
-            id,
         );
-
-        this.memberRemoved$.next({
-            conversationId: id,
-            removedMemberId: memberId,
-            removerId: currentUserId,
-        });
-
-        return { remove: result ? true : false };
     }
 
     /**
@@ -859,91 +269,10 @@ export class ConversationsService {
      * xóa group khỏi sidebar ngay lập tức.
      */
     async disbandGroup(id: string, currentUserId: string) {
-        const { conversation, objectConversationId } =
-            await this.getConversationOrThrow(id);
-
-        this.ensureGroupConversation(conversation);
-        this.ensureGroupAdmin(conversation, currentUserId);
-
-        const session = await this.connection.startSession();
-
-        const mediaList = {
-            publicIds: [] as string[],
-            objectKeys: [] as string[],
-        };
-
-        try {
-            await session.withTransaction(async () => {
-                const getMedia =
-                    await this.mediaService.getMediaCleanupKeysByConversation(
-                        conversation._id.toString(),
-                        session,
-                    );
-                mediaList.publicIds = getMedia.listPublicId;
-                mediaList.objectKeys = getMedia.listObjectKey;
-
-                // Xóa toàn bộ tin nhắn thuộc conversation trong database
-                await this.messageService.deleteMessagesByConversationId(
-                    id,
-                    session,
-                );
-
-                // Xóa toàn bộ media thuộc conversation trong database
-                await this.mediaService.deleteAllMediaByConversation(
-                    id,
-                    session,
-                );
-
-                // Sau đó xóa nhóm
-                await this.conversationModel.findByIdAndDelete(
-                    objectConversationId,
-                    { session },
-                );
-            });
-        } catch (error) {
-            throw new InternalServerErrorException(
-                CONVERSATION_MESSAGES.DELETE_FAILED,
-            );
-        } finally {
-            await session.endSession();
-        }
-
-        //Kiểm tra và xóa unseen conversation trong redis, không throw lỗi
-        await this.redisService
-            .removeAllUnseenConversationWithCleanup(conversation.users, id)
-            .catch((error) => {
-                console.error('Remove all unseen conversation failed', error);
-            });
-
-        // Xóa toàn bộ media thuộc conversation trong r2
-        if (mediaList.objectKeys && mediaList.objectKeys.length > 0) {
-            await this.mediaService.deleteFilesFromR2WithCleanup(
-                mediaList.objectKeys,
-                {
-                    entityType: CleanupJobEntityEnum.CONVERSATION,
-                    entityId: conversation._id.toString(),
-                    resourceType: CleanupJobResourceEnum.CONVERSATION_MEDIA,
-                },
-            );
-        }
-        // Xóa toàn bộ media thuộc conversation trong cloudinary
-        if (mediaList.publicIds && mediaList.publicIds.length > 0) {
-            await this.mediaService.deleteImagesFromCloudinaryWithCleanup(
-                mediaList.publicIds,
-                {
-                    entityType: CleanupJobEntityEnum.CONVERSATION,
-                    entityId: conversation._id.toString(),
-                    resourceType: CleanupJobResourceEnum.CONVERSATION_MEDIA,
-                },
-            );
-        }
-
-        this.conversationDisbanded$.next({
-            conversationId: id,
-            memberIds: conversation.users.map((user) => user.toString()),
-        });
-
-        return { message: CONVERSATION_MESSAGES.DELETE_SUCCESS };
+        return this.conversationGroupAdminService.disbandGroup(
+            id,
+            currentUserId,
+        );
     }
 
     /**
@@ -954,98 +283,11 @@ export class ConversationsService {
         newAdminId: string,
         conversationId: string,
     ) {
-        const { conversation, objectConversationId } =
-            await this.getConversationOrThrow(conversationId);
-
-        this.ensureGroupConversation(conversation);
-        this.ensureGroupAdmin(conversation, currentUserId);
-        this.ensureMemberInConversation(conversation, newAdminId);
-        this.ensureMemberAcceptedConversation(conversation, newAdminId);
-
-        await this.userService.checkUser(newAdminId, true, true, true);
-
-        const relationshipBlock =
-            await this.relationshipsService.checkIsBlocked(
-                currentUserId,
-                newAdminId,
-            );
-        if (relationshipBlock) {
-            throw new BadRequestException(
-                CONVERSATION_MESSAGES.CHANGE_ADMIN_FAILED,
-            );
-        }
-
-        if (currentUserId === newAdminId) {
-            throw new BadRequestException(
-                CONVERSATION_MESSAGES.CURRENT_USER_IS_ALREADY_ADMIN,
-            );
-        }
-
-        const objectNewAdminId = toObjectId(newAdminId, 'new admin id');
-
-        const session = await this.connection.startSession();
-        let result: any = null;
-        try {
-            await session.withTransaction(async () => {
-                result = await this.conversationModel
-                    .findByIdAndUpdate(
-                        objectConversationId,
-                        { $set: { adminGroupId: objectNewAdminId } },
-                        { returnDocument: 'after', session },
-                    )
-                    .populate('users', 'name _id')
-                    .lean();
-
-                if (!result) {
-                    throw new BadRequestException(
-                        CONVERSATION_MESSAGES.CONVERSATION_NOT_FOUND,
-                    );
-                }
-
-                const currentUserObj = result.users.find(
-                    (u: any) => u._id.toString() === currentUserId,
-                );
-                const newAdminObj = result.users.find(
-                    (u: any) => u._id.toString() === newAdminId,
-                );
-                const currentName =
-                    (currentUserObj as any)?.name ||
-                    CONVERSATION_MESSAGES.ADMIN_LABEL;
-                const newName =
-                    (newAdminObj as any)?.name ||
-                    CONVERSATION_MESSAGES.MEMBER_LABEL;
-
-                await this.messageService.createMessage(
-                    currentUserId,
-                    conversationId,
-                    MessageEnumType.SYSTEM,
-                    CONVERSATION_MESSAGES.SYSTEM_TRANSFER_ADMIN(
-                        currentName,
-                        newName,
-                    ),
-                    undefined,
-                    undefined,
-                    session,
-                );
-            });
-        } finally {
-            await session.endSession();
-        }
-
-        const userIds = result.users.map((u: any) => u._id.toString());
-        const membersOnline =
-            await this.redisService.getUserOnlineInListIds(userIds);
-        if (membersOnline.length > 0) {
-            this.conversationAdminChanged$.next({
-                conversationId,
-                newAdminId,
-                membersOnline: membersOnline.map((userId) => userId.toString()),
-            });
-        }
-        const res: UpdateAdminConversationResponse = {
-            updated: true,
-        };
-        return res;
+        return this.conversationGroupAdminService.changeAdminGroup(
+            currentUserId,
+            newAdminId,
+            conversationId,
+        );
     }
 
     /**
@@ -1058,138 +300,21 @@ export class ConversationsService {
         userId: string,
         session?: ClientSession,
     ) {
-        const { conversation, objectConversationId } =
-            await this.getConversationOrThrow(conversationId);
-
-        const objectUserId = toObjectId(userId, 'user id');
-        const isExistUser = conversation.users.some(
-            (user) => user.toString() === userId,
+        return this.conversationStateService.hiddenHistory(
+            conversationId,
+            userId,
+            session,
         );
-        if (!isExistUser) {
-            throw new BadRequestException(CONVERSATION_MESSAGES.NOT_A_MEMBER);
-        }
-        const userhiddenHistory = conversation.hiddenHistory?.find(
-            (item) => item.userId.toString() === userId,
-        );
-
-        if (userhiddenHistory?.isHidden) {
-            throw new BadRequestException(CONVERSATION_MESSAGES.ALREADY_HIDDEN);
-        }
-        // Check if we need to remove from acceptedBy
-        let isFriend = true;
-        if (!conversation.isGroup) {
-            const targetId = conversation.users.find(
-                (user) => user.toString() !== userId,
-            );
-            if (targetId) {
-                isFriend = await this.relationshipsService.checkIsFriend(
-                    userId,
-                    targetId.toString(),
-                );
-            }
-        }
-
-        let result: any = null;
-        if (userhiddenHistory) {
-            const updateData: any = {
-                $set: {
-                    'hiddenHistory.$.isHidden': true,
-                    'hiddenHistory.$.hiddenAt': new Date(),
-                },
-            };
-            if (!conversation.isGroup && !isFriend) {
-                updateData.$pull = { acceptedBy: objectUserId };
-            }
-
-            result = await this.conversationModel
-                .findOneAndUpdate(
-                    {
-                        _id: objectConversationId,
-                        hiddenHistory: {
-                            $elemMatch: {
-                                userId: objectUserId,
-                                isHidden: false,
-                            },
-                        },
-                    },
-                    updateData,
-                    { returnDocument: 'after', session },
-                )
-                .lean();
-        } else {
-            const updateData: any = {
-                $push: {
-                    hiddenHistory: {
-                        userId: objectUserId,
-                        isHidden: true,
-                        hiddenAt: new Date(),
-                    },
-                },
-            };
-            if (!conversation.isGroup && !isFriend) {
-                updateData.$pull = { acceptedBy: objectUserId };
-            }
-
-            result = await this.conversationModel
-                .findOneAndUpdate(
-                    {
-                        _id: objectConversationId,
-                        'hiddenHistory.userId': { $ne: objectUserId },
-                    },
-                    updateData,
-                    { returnDocument: 'after', session },
-                )
-                .lean();
-        }
-
-        if (result) {
-            await this.redisService.removeUnseenConversationWithCleanup(
-                userId,
-                conversationId,
-            );
-            return CONVERSATION_MESSAGES.DELETE_SUCCESS;
-        }
-        throw new BadRequestException(CONVERSATION_MESSAGES.DELETE_FAILED);
     }
 
     /**
      * Xóa tin nhắn chờ và block user gửi tin nhắn đó.
      */
     async blockAndDelete(conversationId: string, userId: string) {
-        const objectUserId = toObjectId(userId, 'user id');
-        const session = await this.connection.startSession();
-        try {
-            await session.withTransaction(async () => {
-                const { conversation } =
-                    await this.getConversationOrThrow(conversationId);
-                this.ensureMemberInConversation(conversation, userId);
-                if (conversation.isGroup) {
-                    throw new BadRequestException(
-                        CONVERSATION_MESSAGES.CANNOT_BLOCK_IN_GROUP,
-                    );
-                }
-
-                const blockUser = conversation.users.find(
-                    (user) => user.toString() !== objectUserId.toString(),
-                );
-
-                if (!blockUser) {
-                    throw new BadRequestException(
-                        CONVERSATION_MESSAGES.USER_NOT_FOUND,
-                    );
-                }
-
-                await this.relationshipsService.blockUser(
-                    objectUserId.toString(),
-                    blockUser.toString(),
-                    session,
-                );
-                await this.hiddenHistory(conversationId, userId, session);
-            });
-            return true;
-        } finally {
-            await session.endSession();
-        }
+        return this.conversationStateService.blockAndDelete(
+            conversationId,
+            userId,
+        );
     }
 
     /**
@@ -1201,31 +326,10 @@ export class ConversationsService {
         userId: string,
         messageId: string,
     ) {
-        const { conversation, objectConversationId } =
-            await this.getConversationOrThrow(conversationId);
-        const { objectMessageId } = await this.getMessageInConverOrThrow(
-            messageId,
+        return this.conversationStateService.markAsRead(
             conversationId,
-        );
-        this.ensureMemberInConversation(conversation, userId);
-        const lastReadMessageId = conversation.readReceipts?.get(userId);
-
-        if (
-            lastReadMessageId &&
-            this.isObjectIdAfter(lastReadMessageId, objectMessageId)
-        ) {
-            throw new BadRequestException(
-                CONVERSATION_MESSAGES.CANNOT_READ_OLDER,
-            );
-        }
-        return await this.conversationModel.findByIdAndUpdate(
-            objectConversationId,
-            {
-                $set: {
-                    [`readReceipts.${userId}`]: objectMessageId,
-                },
-            },
-            { returnDocument: 'after' },
+            userId,
+            messageId,
         );
     }
 
@@ -1237,201 +341,30 @@ export class ConversationsService {
         userId: string,
         file: Express.Multer.File,
     ) {
-        const { conversation, objectConversationId } =
-            await this.getConversationOrThrow(conversationId);
-        this.ensureGroupConversation(conversation);
-        const objectUserId = this.ensureGroupAdmin(conversation, userId);
-        let uploadedAvatar: Media | null = null;
-        let isUpdatedUser = false;
-        const session = await this.connection.startSession();
-        try {
-            uploadedAvatar = await this.mediaService.uploadImageToCloudinary(
-                objectUserId,
-                OwnerTypeEnum.CONVERSATION,
-                objectConversationId,
-                file,
-                MEDIA_CONSTANTS.CONVERSATION_AVATAR_FOLDER,
-            );
-            if (!uploadedAvatar) {
-                throw new BadRequestException(
-                    MEDIA_MESSAGES.FILE_UPLOAD_FAILED,
-                );
-            }
-            const avatarOld = conversation.avatar
-                ? await this.mediaService.findById(
-                      conversation.avatar?.toString(),
-                  )
-                : null;
-
-            const conversationUpdated = await session.withTransaction(
-                async () => {
-                    const createdMedia = await this.mediaService.createMedia(
-                        uploadedAvatar as Media,
-                        session,
-                    );
-                    const updated = await this.conversationModel
-                        .findByIdAndUpdate(
-                            objectConversationId,
-                            {
-                                $set: {
-                                    avatar: createdMedia._id,
-                                },
-                            },
-                            { returnDocument: 'after', session },
-                        )
-                        .select('-__v')
-                        .populate({
-                            path: 'users',
-                            select: '-password -email -phone -__v',
-                            populate: { path: 'avatar', select: '-__v' },
-                        })
-                        .populate('lastMessageId', '-__v')
-                        .populate('avatar', '-__v')
-                        .lean();
-                    if (!updated) {
-                        throw new BadRequestException(
-                            CONVERSATION_MESSAGES.AVATAR_UPLOAD_FAILED,
-                        );
-                    }
-                    if (avatarOld) {
-                        await this.mediaService.deleteMedia(
-                            avatarOld._id.toString(),
-                            session,
-                        );
-                    }
-                    return updated;
-                },
-            );
-            if (avatarOld && avatarOld.publicId) {
-                await this.mediaService
-                    .deleteImageFromCloudinaryWithCleanup(avatarOld.publicId, {
-                        entityType: CleanupJobEntityEnum.CONVERSATION,
-                        entityId: conversation._id.toString(),
-                        resourceType:
-                            CleanupJobResourceEnum.CONVERSATION_AVATAR,
-                    })
-                    .catch((cleanupError) => {
-                        console.error(
-                            'Failed to cleanup uploaded avatar:',
-                            cleanupError,
-                        );
-                    });
-            }
-
-            isUpdatedUser = true;
-            return await this.serializeConversation(
-                conversationUpdated,
-                userId,
-                [],
-                true,
-            );
-        } catch (error) {
-            if (uploadedAvatar && uploadedAvatar.publicId && !isUpdatedUser) {
-                await this.mediaService.deleteImageFromCloudinaryWithCleanup(
-                    uploadedAvatar.publicId,
-                    {
-                        entityType: CleanupJobEntityEnum.CONVERSATION,
-                        entityId: conversation._id.toString(),
-                        resourceType:
-                            CleanupJobResourceEnum.CONVERSATION_AVATAR,
-                    },
-                );
-            }
-            throw error;
-        } finally {
-            await session.endSession();
-        }
+        return this.conversationMediaService.uploadAvatar(
+            conversationId,
+            userId,
+            file,
+        );
     }
 
     /**
      * Xóa ảnh nhóm chat
      */
     async deleteAvatar(conversationId: string, userId: string) {
-        const { conversation, objectConversationId } =
-            await this.getConversationOrThrow(conversationId);
-        this.ensureGroupConversation(conversation);
-        this.ensureGroupAdmin(conversation, userId);
-        if (!conversation.avatar) {
-            throw new BadRequestException(
-                CONVERSATION_MESSAGES.AVATAR_NOT_EXIST,
-            );
-        }
-        const avatarOld = await this.mediaService.findById(
-            conversation.avatar.toString(),
+        return this.conversationMediaService.deleteAvatar(
+            conversationId,
+            userId,
         );
-        const session = await this.connection.startSession();
-        try {
-            const conversationUpdated = await session.withTransaction(
-                async () => {
-                    const update = await this.conversationModel
-                        .findByIdAndUpdate(
-                            objectConversationId,
-                            {
-                                $unset: {
-                                    avatar: '',
-                                },
-                            },
-                            { returnDocument: 'after', session },
-                        )
-                        .select('-__v')
-                        .populate({
-                            path: 'users',
-                            select: '-password -email -phone -__v',
-                            populate: { path: 'avatar', select: '-__v' },
-                        })
-                        .populate('lastMessageId', '-__v')
-                        .populate('avatar', '-__v')
-                        .lean();
-                    if (!update) {
-                        throw new BadRequestException(
-                            CONVERSATION_MESSAGES.AVATAR_DELETE_FAILED,
-                        );
-                    }
-                    if (avatarOld) {
-                        await this.mediaService.deleteMedia(
-                            avatarOld._id.toString(),
-                            session,
-                        );
-                    }
-                    return update;
-                },
-            );
-            if (avatarOld?.publicId) {
-                await this.mediaService.deleteImageFromCloudinaryWithCleanup(
-                    avatarOld.publicId,
-                    {
-                        entityType: CleanupJobEntityEnum.CONVERSATION,
-                        entityId: conversation._id.toString(),
-                        resourceType:
-                            CleanupJobResourceEnum.CONVERSATION_AVATAR,
-                    },
-                );
-            }
-            return await this.serializeConversation(
-                conversationUpdated,
-                userId,
-                [],
-                true,
-            );
-        } finally {
-            await session.endSession();
-        }
     }
 
     /**
      * Lấy mảng tất cả các Conversation ID mà user đang tham gia (Dùng để khởi tạo Socket Join).
      */
     async getAllConversationIdsByUser(userId: string): Promise<string[]> {
-        const objectUserId = toObjectId(userId, 'user id');
-
-        const res = await this.conversationModel
-            .find({
-                users: objectUserId,
-            })
-            .select('_id')
-            .lean();
-
-        return res.map((conv) => conv._id.toString());
+        return this.conversationQueryService.getAllConversationIdsByUser(
+            userId,
+        );
     }
 
     /**
@@ -1456,29 +389,18 @@ export class ConversationsService {
      * Helper: Tìm Conversation, nếu không tồn tại thì ném lỗi.
      */
     async getConversationOrThrow(conversationId: string) {
-        const objectConversationId = toObjectId(
+        return this.conversationAccessService.getConversationOrThrow(
             conversationId,
-            'conversation id',
         );
-        const conversation =
-            await this.conversationModel.findById(objectConversationId);
-
-        if (!conversation) {
-            throw new BadRequestException(
-                CONVERSATION_MESSAGES.CONVERSATION_NOT_FOUND,
-            );
-        }
-
-        return { conversation, objectConversationId };
     }
 
     /**
      * Helper: Kiểm tra xem conversation có phải là nhóm hay không.
      */
     ensureGroupConversation(conversation: ConversationDocument) {
-        if (!conversation.isGroup) {
-            throw new BadRequestException(CONVERSATION_MESSAGES.NOT_A_GROUP);
-        }
+        return this.conversationAccessService.ensureGroupConversation(
+            conversation,
+        );
     }
 
     /**
@@ -1488,31 +410,10 @@ export class ConversationsService {
         conversation: ConversationDocument,
         currentUserId: string,
     ) {
-        if (!conversation.isGroup) {
-            const otherUserId = conversation.users.find(
-                (id) => id.toString() !== currentUserId,
-            );
-            if (otherUserId) {
-                const otherUser = await this.userService.findOne(
-                    otherUserId.toString(),
-                );
-                if (otherUser && otherUser.isDisabled) {
-                    throw new BadRequestException(
-                        CONVERSATION_MESSAGES.USER_DISABLED,
-                    );
-                }
-                if (
-                    otherUser &&
-                    otherUser.banUntil &&
-                    otherUser.banUntil > new Date()
-                ) {
-                    const time = formatDateTime(otherUser.banUntil);
-                    throw new BadRequestException(
-                        AUTH_MESSAGES.ACCOUNT_BANNED_UNTIL(time),
-                    );
-                }
-            }
-        }
+        return this.conversationAccessService.ensureDirectChatActive(
+            conversation,
+            currentUserId,
+        );
     }
 
     /**
@@ -1522,15 +423,10 @@ export class ConversationsService {
         conversation: ConversationDocument,
         currentUserId: string,
     ) {
-        const objectCurrentUserId = toObjectId(currentUserId, 'user id');
-
-        if (!conversation.adminGroupId?.equals(objectCurrentUserId)) {
-            throw new BadRequestException(
-                CONVERSATION_MESSAGES.NOT_GROUP_ADMIN,
-            );
-        }
-
-        return objectCurrentUserId;
+        return this.conversationAccessService.ensureGroupAdmin(
+            conversation,
+            currentUserId,
+        );
     }
 
     /**
@@ -1540,18 +436,10 @@ export class ConversationsService {
         conversation: ConversationDocument,
         memberId: string,
     ) {
-        const objectMemberId = toObjectId(memberId, 'member id');
-        const isMember = conversation.users.some((member) =>
-            member.equals(objectMemberId),
+        return this.conversationAccessService.ensureMemberInConversation(
+            conversation,
+            memberId,
         );
-
-        if (!isMember) {
-            throw new BadRequestException(
-                CONVERSATION_MESSAGES.USER_NOT_IN_CONVERSATION,
-            );
-        }
-
-        return objectMemberId;
     }
 
     /**
@@ -1561,16 +449,10 @@ export class ConversationsService {
         conversation: ConversationDocument,
         memberId: string,
     ) {
-        const objectMemberId = toObjectId(memberId, 'member id');
-        const isAccept = conversation.acceptedBy.some((member) =>
-            member.equals(objectMemberId),
+        return this.conversationAccessService.ensureMemberAcceptedConversation(
+            conversation,
+            memberId,
         );
-
-        if (!isAccept) {
-            throw new BadRequestException(
-                CONVERSATION_MESSAGES.USER_NOT_ACCEPTED_CONVERSATION,
-            );
-        }
     }
 
     /**
@@ -1578,37 +460,18 @@ export class ConversationsService {
      * Dùng để check logic xem tin nhắn nào cũ hơn/mới hơn dựa vào ID sinh theo timestamp.
      */
     isObjectIdAfter(currentId: Types.ObjectId, nextId: Types.ObjectId) {
-        if (currentId.equals(nextId)) {
-            return false;
-        }
-
-        return currentId.toString() > nextId.toString();
+        return this.conversationAccessService.isObjectIdAfter(
+            currentId,
+            nextId,
+        );
     }
     /**
      * Chấp nhận tin nhắn chờ (Thêm user vào acceptedBy)
      */
     async acceptConversation(conversationId: string, currentUserId: string) {
-        const conversation =
-            await this.conversationModel.findById(conversationId);
-        if (!conversation) {
-            throw new NotFoundException(
-                CONVERSATION_MESSAGES.CONVERSATION_NOT_FOUND,
-            );
-        }
-
-        const objectUserId = toObjectId(currentUserId, 'currentUserId');
-
-        if (!conversation.users.some((id) => id.equals(objectUserId))) {
-            throw new ForbiddenException(CONVERSATION_MESSAGES.NOT_A_MEMBER);
-        }
-
-        if (conversation.acceptedBy.some((id) => id.equals(objectUserId))) {
-            return { message: CONVERSATION_MESSAGES.ALREADY_ACCEPTED };
-        }
-
-        conversation.acceptedBy.push(objectUserId);
-        await conversation.save();
-
-        return { message: CONVERSATION_MESSAGES.ACCEPT_SUCCESS };
+        return this.conversationCommandService.acceptConversation(
+            conversationId,
+            currentUserId,
+        );
     }
 }
