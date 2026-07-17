@@ -100,6 +100,18 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
 
     /**
+     * Đặt key nếu chưa tồn tại, có TTL. Dùng cho lock ngắn hạn.
+     */
+    async setIfNotExistsWithTTL(
+        key: string,
+        value: string,
+        ttlSeconds: number,
+    ) {
+        const result = await this.redis.set(key, value, 'EX', ttlSeconds, 'NX');
+        return result === 'OK';
+    }
+
+    /**
      * Tăng giá trị số nguyên của một key, nếu key chưa có thì tạo mới với TTL.
             [
                 [null, 3],   // phần tử số 0 = kết quả của INCR, trả về số sau khi tăng 
@@ -110,7 +122,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     async incrWithTTL(key: string, ttlSeconds: number) {
         const pipeline = this.redis.pipeline();
         pipeline.incr(key);
-        pipeline.expire(key, ttlSeconds);
+        pipeline.expire(key, ttlSeconds, 'NX');
         const result = await pipeline.exec();
         return Number(result?.[0]?.[1] ?? 0);
     }
@@ -120,6 +132,31 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
      */
     async ttl(key: string) {
         return this.redis.ttl(key);
+    }
+
+    /**
+     * Lấy danh sách key theo pattern bằng SCAN để tránh block Redis.
+     */
+    async scanKeys(pattern: string): Promise<string[]> {
+        return new Promise((resolve, reject) => {
+            const keys: string[] = [];
+            const stream = this.redis.scanStream({
+                match: pattern,
+                count: 100,
+            });
+
+            stream.on('data', (chunk: string[]) => {
+                keys.push(...chunk);
+            });
+
+            stream.on('end', () => {
+                resolve(keys);
+            });
+
+            stream.on('error', (error) => {
+                reject(error);
+            });
+        });
     }
 
     /**

@@ -3,9 +3,10 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-misused-promises */
 import { getRoomNameUser, validateObjectId } from '@/utils/utils';
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { Cron } from '@nestjs/schedule';
 import { Server, Socket } from 'socket.io';
 import { RedisService } from '@/redis/redis.service';
 import { CallService } from '../calls/call.service';
@@ -14,12 +15,14 @@ import { RealtimeAuthService } from './realtime-auth.service';
 import {
     CallIdSocketDto,
     CallAnswerSocketDto,
+    CallHeartbeatSocketDto,
     CallIceCandidateSocketDto,
     CallOfferSocketDto,
     EndCallSocketDto,
     StartCallSocketDto,
 } from './dto/call-socket.dto';
 import {
+    CallHeartbeatResult,
     CallAckResult,
     CallTokenPayload,
     SignalAckResult,
@@ -27,17 +30,18 @@ import {
 } from './types/responseSocket';
 import { REALTIME_CONSTANT } from './constants/realtime.constant';
 import {
+    CALL_HEARTBEAT_CONSTANT,
     CALL_MESSAGES,
     CALL_RATE_LIMIT_CONSTANT,
 } from '../calls/constants/call.constant';
 
 @Injectable()
 export class RealtimeCallService {
+    private readonly logger = new Logger(RealtimeCallService.name);
     private readonly callTimeoutTimers = new Map<
         string,
         ReturnType<typeof setTimeout>
     >();
-
     constructor(
         private readonly realtimeAuthService: RealtimeAuthService,
         private readonly callService: CallService,
@@ -46,6 +50,16 @@ export class RealtimeCallService {
         private readonly jwtService: JwtService,
     ) {}
 
+    /**
+     * Tạo key Redis dùng để giữ heartbeat cho call đã accepted.
+     */
+    private getCallAcceptedHeartbeatKey(callId: string) {
+        return `call:heartbeat:accepted:${callId}`;
+    }
+
+    /**
+     * Xóa timer ring-timeout của một call nếu nó còn tồn tại trong bộ nhớ.
+     */
     private clearCallTimeout(callId: string) {
         const timer = this.callTimeoutTimers.get(callId);
         if (!timer) {
@@ -56,6 +70,59 @@ export class RealtimeCallService {
         this.callTimeoutTimers.delete(callId);
     }
 
+    /**
+     * Gắn call hiện tại cho socket đang thao tác cuộc gọi.
+     */
+    private setSocketActiveCall(client: Socket, callId: string) {
+        client.data.activeCallId = callId;
+    }
+
+    /**
+     * Gỡ call hiện tại khỏi socket sau khi call đã kết thúc.
+     */
+    private clearSocketActiveCall(client: Socket) {
+        if (client.data.activeCallId) {
+            delete client.data.activeCallId;
+        }
+    }
+
+    /**
+     * Tạo danh sách lock key theo thứ tự caller -> callee.
+     */
+    private getStartCallLockKeys(callerId: string, calleeId: string) {
+        return [callerId, calleeId]
+            .sort()
+            .map((userId) => `call:start:lock:${userId}`);
+    }
+
+    /**
+     * Giành quyền khóa caller/callee trước lúc start call
+     * để không có cuộc gọi nào khác được tạo trùng user.
+     */
+    private async lockStartCallUsers(lockKeys: string[]) {
+        const acquiredKeys: string[] = [];
+
+        for (const lockKey of lockKeys) {
+            const acquired = await this.redisService.setIfNotExistsWithTTL(
+                lockKey,
+                'locked',
+                5,
+            );
+            if (!acquired) {
+                await Promise.all(
+                    acquiredKeys.map((key) => this.redisService.del(key)),
+                );
+                throw new BadRequestException(CALL_MESSAGES.CALL_BUSY);
+            }
+            acquiredKeys.push(lockKey);
+        }
+
+        return acquiredKeys;
+    }
+
+    /**
+     * Đặt timer để tự mark call thành `missed` nếu người nhận không bắt máy đúng hạn.
+     */
     private scheduleCallTimeout(
         server: Server,
         callId: string,
@@ -93,6 +160,9 @@ export class RealtimeCallService {
         this.callTimeoutTimers.set(callId, timer);
     }
 
+    /**
+     * Xác nhận người dùng hiện tại là thành viên của call và call đang ở đúng status mong đợi.
+     */
     private async ensureCurrentUserInCallAndStatus(
         callId: string,
         currentUserId: string,
@@ -116,6 +186,9 @@ export class RealtimeCallService {
         return call;
     }
 
+    /**
+     * Chặn signaling nếu conversation trong payload không khớp với call trong DB.
+     */
     private ensureCallMatchesConversation(
         callConversationId: string,
         bodyConversationId: string,
@@ -126,6 +199,49 @@ export class RealtimeCallService {
         }
     }
 
+    /**
+     * Gia hạn heartbeat Redis cho call đã accepted.
+     */
+    private async refreshAcceptedHeartbeat(callId: string) {
+        await this.redisService.setWithTTL(
+            this.getCallAcceptedHeartbeatKey(callId),
+            'alive',
+            CALL_HEARTBEAT_CONSTANT.ACCEPT_HEARTBEAT_TTL_SECONDS,
+        );
+    }
+
+    /**
+     * Gia hạn heartbeat cho call đã accepted từ phía callee.
+     */
+    async refreshCallHeartbeat(
+        client: Socket,
+        body: CallHeartbeatSocketDto,
+    ): Promise<SocketResponse<CallHeartbeatResult>> {
+        const payload =
+            await this.realtimeAuthService.validateActiveSession(client);
+        const call = await this.ensureCurrentUserInCallAndStatus(
+            body.callId,
+            payload._id,
+            CallStatusEnum.ACCEPTED,
+        );
+
+        if (call.calleeId.toString() !== payload._id) {
+            throw new BadRequestException(CALL_MESSAGES.USER_NOT_ALLOWED);
+        }
+
+        await this.refreshAcceptedHeartbeat(call._id.toString());
+
+        return {
+            ok: true,
+            data: {
+                refreshed: true,
+            },
+        };
+    }
+
+    /**
+     * Tạo JWT ngắn hạn để ràng buộc signaling theo đúng call/conversation/user.
+     */
     private async createCallToken(call: {
         _id: { toString(): string };
         conversationId: { toString(): string };
@@ -146,6 +262,9 @@ export class RealtimeCallService {
         );
     }
 
+    /**
+     * Xác thực JWT call token trước khi cho phép forward signaling WebRTC.
+     */
     private async ensureValidCallToken(
         call: {
             _id: { toString(): string };
@@ -177,14 +296,23 @@ export class RealtimeCallService {
         }
     }
 
+    /**
+     * Tạo key Redis để đếm số lần start call trong cửa sổ thời gian.
+     */
     private getCallRateLimitKey(userId: string) {
         return `call:rate-limit:start:${userId}`;
     }
 
+    /**
+     * Tạo key Redis khóa tạm khi user gọi vượt ngưỡng rate limit.
+     */
     private getCallRateLimitLockKey(userId: string) {
         return `call:rate-limit:lock:${userId}`;
     }
 
+    /**
+     * Áp rate limit cho hành động start call để chặn spam gọi liên tục.
+     */
     private async ensureStartCallRateLimit(userId: string) {
         const lockKey = this.getCallRateLimitLockKey(userId);
         const locked = await this.redisService.get(lockKey);
@@ -220,45 +348,55 @@ export class RealtimeCallService {
 
         await this.ensureStartCallRateLimit(payload._id);
 
-        const [callerActiveCall, calleeActiveCall] = await Promise.all([
-            this.callService.findActiveCallByUserId(payload._id),
-            this.callService.findActiveCallByUserId(body.calleeId),
-        ]);
-        if (callerActiveCall || calleeActiveCall) {
-            throw new BadRequestException(CALL_MESSAGES.CALL_BUSY);
-        }
+        const lockKeys = this.getStartCallLockKeys(payload._id, body.calleeId);
+        await this.lockStartCallUsers(lockKeys);
 
-        const call = await this.callService.createCall({
-            callerId: payload._id,
-            calleeId: body.calleeId,
-            conversationId: body.conversationId,
-            callType: body.callType,
-        });
-        const callToken = await this.createCallToken(call);
+        try {
+            const [callerActiveCall, calleeActiveCall] = await Promise.all([
+                this.callService.findActiveCallByUserId(payload._id),
+                this.callService.findActiveCallByUserId(body.calleeId),
+            ]);
+            if (callerActiveCall || calleeActiveCall) {
+                throw new BadRequestException(CALL_MESSAGES.CALL_BUSY);
+            }
 
-        const calleeRoom = getRoomNameUser(body.calleeId);
-        server.to(calleeRoom).emit('call:incoming', {
-            callId: call._id.toString(),
-            callerId: payload._id,
-            calleeId: body.calleeId,
-            conversationId: body.conversationId,
-            callType: body.callType,
-            callToken,
-        });
-        this.scheduleCallTimeout(
-            server,
-            call._id.toString(),
-            body.conversationId,
-        );
-
-        return {
-            ok: true,
-            data: {
-                callId: call._id.toString(),
+            const call = await this.callService.createCall({
+                callerId: payload._id,
+                calleeId: body.calleeId,
                 conversationId: body.conversationId,
+                callType: body.callType,
+            });
+            this.setSocketActiveCall(client, call._id.toString());
+            const callToken = await this.createCallToken(call);
+
+            const calleeRoom = getRoomNameUser(body.calleeId);
+            server.to(calleeRoom).emit('call:incoming', {
+                callId: call._id.toString(),
+                callerId: payload._id,
+                calleeId: body.calleeId,
+                conversationId: body.conversationId,
+                callType: body.callType,
                 callToken,
-            },
-        };
+            });
+            this.scheduleCallTimeout(
+                server,
+                call._id.toString(),
+                body.conversationId,
+            );
+
+            return {
+                ok: true,
+                data: {
+                    callId: call._id.toString(),
+                    conversationId: body.conversationId,
+                    callToken,
+                },
+            };
+        } finally {
+            await Promise.all(
+                lockKeys.map((key) => this.redisService.del(key)),
+            );
+        }
     }
 
     /**
@@ -275,7 +413,9 @@ export class RealtimeCallService {
             body.callId,
             payload._id,
         );
+        this.setSocketActiveCall(client, call._id.toString());
         this.clearCallTimeout(call._id.toString());
+        await this.refreshAcceptedHeartbeat(call._id.toString());
         const callToken = await this.createCallToken(call);
 
         const callerRoom = getRoomNameUser(call.callerId.toString());
@@ -320,6 +460,7 @@ export class RealtimeCallService {
             payload._id,
         );
         this.clearCallTimeout(call._id.toString());
+        this.clearSocketActiveCall(client);
 
         const callerRoom = getRoomNameUser(call.callerId.toString());
         const calleeRoom = getRoomNameUser(call.calleeId.toString());
@@ -360,6 +501,10 @@ export class RealtimeCallService {
             body.endReason,
         );
         this.clearCallTimeout(call._id.toString());
+        await this.redisService.del(
+            this.getCallAcceptedHeartbeatKey(call._id.toString()),
+        );
+        this.clearSocketActiveCall(client);
 
         const callerRoom = getRoomNameUser(call.callerId.toString());
         const calleeRoom = getRoomNameUser(call.calleeId.toString());
@@ -408,6 +553,7 @@ export class RealtimeCallService {
             payload._id,
             CallStatusEnum.ACCEPTED,
         );
+        this.setSocketActiveCall(client, call._id.toString());
         this.ensureCallMatchesConversation(
             call.conversationId.toString(),
             body.conversationId,
@@ -448,6 +594,7 @@ export class RealtimeCallService {
             payload._id,
             CallStatusEnum.ACCEPTED,
         );
+        this.setSocketActiveCall(client, call._id.toString());
         this.ensureCallMatchesConversation(
             call.conversationId.toString(),
             body.conversationId,
@@ -487,6 +634,7 @@ export class RealtimeCallService {
             payload._id,
             CallStatusEnum.ACCEPTED,
         );
+        this.setSocketActiveCall(client, call._id.toString());
         this.ensureCallMatchesConversation(
             call.conversationId.toString(),
             body.conversationId,
@@ -509,5 +657,149 @@ export class RealtimeCallService {
                 forwarded: true,
             },
         };
+    }
+
+    /**
+     * Cron dọn call bị treo:
+     * - `calling` quá timeout thì mark `missed`
+     * - `accepted` mất heartbeat thì end với `network_lost`
+     */
+    @Cron('0 * * * * *')
+    async cleanupStuckCalls() {
+        const now = new Date();
+        const staleBefore = new Date(
+            now.getTime() - REALTIME_CONSTANT.CALL_RING_TIMEOUT_MS,
+        );
+
+        try {
+            const staleCallingCalls =
+                await this.callService.findStaleCallingCalls(staleBefore);
+            await Promise.allSettled(
+                staleCallingCalls.map(async (call) => {
+                    try {
+                        const missed = await this.callService.markMissed(
+                            call._id.toString(),
+                        );
+                        if (
+                            !missed ||
+                            missed.status !== CallStatusEnum.MISSED
+                        ) {
+                            return;
+                        }
+
+                        this.clearCallTimeout(call._id.toString());
+                        await this.redisService.del(
+                            this.getCallAcceptedHeartbeatKey(
+                                call._id.toString(),
+                            ),
+                        );
+                    } catch (error) {
+                        this.logger.warn(
+                            `Failed to cleanup stale calling call ${call._id.toString()}: ${(error as Error)?.message || error}`,
+                        );
+                    }
+                }),
+            );
+
+            const acceptedCalls = await this.callService.findAcceptedCalls();
+            const acceptedCallChecks = await Promise.all(
+                acceptedCalls.map(async (call) => ({
+                    call,
+                    ttl: await this.redisService.ttl(
+                        this.getCallAcceptedHeartbeatKey(call._id.toString()),
+                    ),
+                })),
+            );
+
+            await Promise.allSettled(
+                acceptedCallChecks.map(async ({ call, ttl }) => {
+                    if (ttl > 0) {
+                        return;
+                    }
+
+                    try {
+                        const ended = await this.callService.endCall(
+                            call._id.toString(),
+                            call.callerId.toString(),
+                            CallEndReasonEnum.NETWORK_LOST,
+                        );
+                        if (!ended || ended.status !== CallStatusEnum.ENDED) {
+                            return;
+                        }
+
+                        this.clearCallTimeout(call._id.toString());
+                        await this.redisService.del(
+                            this.getCallAcceptedHeartbeatKey(
+                                call._id.toString(),
+                            ),
+                        );
+                        this.logger.debug(
+                            `Ended accepted call due to missing heartbeat: ${call._id.toString()}`,
+                        );
+                    } catch (error) {
+                        this.logger.warn(
+                            `Failed to cleanup accepted call ${call._id.toString()}: ${(error as Error)?.message || error}`,
+                        );
+                    }
+                }),
+            );
+        } catch (error) {
+            this.logger.error(
+                `cleanupStuckCalls failed: ${(error as Error)?.message || error}`,
+            );
+        }
+    }
+
+    /**
+     * Khi socket user disconnect, tự kết thúc call active của user đó nếu có.
+     */
+    async handleDisconnectedUser(
+        server: Server,
+        userId: string,
+        callId: string,
+    ) {
+        const activeCall = await this.callService.findById(callId);
+        if (
+            !activeCall ||
+            activeCall.status === CallStatusEnum.ENDED ||
+            (activeCall.callerId.toString() !== userId &&
+                activeCall.calleeId.toString() !== userId)
+        ) {
+            return;
+        }
+
+        const currentUserId = userId.toString();
+        const call = await this.callService.endCall(
+            activeCall._id.toString(),
+            currentUserId,
+            CallEndReasonEnum.NETWORK_LOST,
+        );
+
+        this.clearCallTimeout(call._id.toString());
+        await this.redisService.del(
+            this.getCallAcceptedHeartbeatKey(call._id.toString()),
+        );
+
+        const callerRoom = getRoomNameUser(call.callerId.toString());
+        const calleeRoom = getRoomNameUser(call.calleeId.toString());
+        server.to(callerRoom).emit('call:ended', {
+            callId: call._id.toString(),
+            conversationId: call.conversationId.toString(),
+            endedBy: currentUserId,
+            endReason: CallEndReasonEnum.NETWORK_LOST,
+        });
+        server.to(calleeRoom).emit('call:ended', {
+            callId: call._id.toString(),
+            conversationId: call.conversationId.toString(),
+            endedBy: currentUserId,
+            endReason: CallEndReasonEnum.NETWORK_LOST,
+        });
+        server.to(calleeRoom).emit('call:close', {
+            callId: call._id.toString(),
+            conversationId: call.conversationId.toString(),
+            endedBy: currentUserId,
+            endReason: CallEndReasonEnum.NETWORK_LOST,
+            reason: 'ended',
+        });
     }
 }

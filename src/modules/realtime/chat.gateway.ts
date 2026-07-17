@@ -43,6 +43,7 @@ import { RealtimeCallService } from './realtime-call.service';
 import {
     CallAnswerSocketDto,
     CallIdSocketDto,
+    CallHeartbeatSocketDto,
     CallIceCandidateSocketDto,
     CallOfferSocketDto,
     EndCallSocketDto,
@@ -80,6 +81,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
      * Sau khi xác thực JWT, socket được gắn payload user, join vào room cá nhân,
      * cập nhật presence trong Redis và broadcast `user:online` tới các conversation
      * mà user hiện đang tham gia để các client khác đồng bộ trạng thái online.
+     */
+    /**
+     * Xác thực socket khi client vừa connect và join room cá nhân cho user.
      */
     async handleConnection(client: Socket) {
         try {
@@ -155,7 +159,26 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
      * Xử lý sự kiện khi client ngắt kết nối.
      * Hiện tại không cần logic phức tạp vì trạng thái online quản lý bằng TTL của Redis Heartbeat.
      */
-    handleDisconnect(client: Socket) {}
+    async handleDisconnect(client: Socket) {
+        const payload = client.data.user as PayloadJWT | undefined;
+        const activeCallId = client.data.activeCallId as string | undefined;
+        if (!payload?._id) {
+            return;
+        }
+        if (!activeCallId) {
+            return;
+        }
+
+        try {
+            await this.realtimeCallService.handleDisconnectedUser(
+                this.server,
+                payload._id,
+                activeCallId,
+            );
+        } catch (error) {
+            console.log('Error handling call disconnect:', error);
+        }
+    }
 
     /**
      * Đăng ký toàn bộ realtime bridge giữa domain service/Redis và Socket.IO.
@@ -461,6 +484,27 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             ack?.(res);
         } catch (error) {
             console.log('Error ending call:', error);
+            ack?.(this.toErrorResponse(error));
+        }
+    }
+
+    /**
+     * Gia hạn heartbeat cho cuộc gọi đang accepted.
+     */
+    @SubscribeMessage('call:heartbeat')
+    async handleCallHeartbeat(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() body: CallHeartbeatSocketDto,
+        @Ack() ack: (response: any) => void,
+    ) {
+        try {
+            const res = await this.realtimeCallService.refreshCallHeartbeat(
+                client,
+                body,
+            );
+            ack?.(res);
+        } catch (error) {
+            console.log('Error refreshing call heartbeat:', error);
             ack?.(this.toErrorResponse(error));
         }
     }

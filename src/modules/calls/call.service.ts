@@ -23,10 +23,17 @@ export class CallService {
         private readonly relationshipsService: RelationshipsService,
     ) {}
 
+    /**
+     * Lấy một cuộc gọi theo ID để kiểm tra hoặc cập nhật trạng thái.
+     */
     async findById(callId: string) {
         return this.callModel.findById(toObjectId(callId, 'callId'));
     }
 
+    /**
+     * Tìm cuộc gọi active của một user, gồm cả `calling` và `accepted`.
+     * Dùng để chặn start call mới khi user còn đang trong cuộc gọi khác.
+     */
     async findActiveCallByUserId(userId: string) {
         const objectUserId = toObjectId(userId, 'userId');
         return this.callModel
@@ -35,6 +42,29 @@ export class CallService {
                     $in: [CallStatusEnum.CALLING, CallStatusEnum.ACCEPTED],
                 },
                 $or: [{ callerId: objectUserId }, { calleeId: objectUserId }],
+            })
+            .lean();
+    }
+
+    /**
+     * Lấy các cuộc gọi `calling` đã quá ngưỡng timeout để cron dọn dẹp.
+     */
+    async findStaleCallingCalls(beforeDate: Date) {
+        return this.callModel
+            .find({
+                status: CallStatusEnum.CALLING,
+                createdAt: { $lte: beforeDate },
+            })
+            .lean();
+    }
+
+    /**
+     * Lấy các cuộc gọi `accepted` để cron kiểm tra heartbeat và phát hiện call chết.
+     */
+    async findAcceptedCalls() {
+        return this.callModel
+            .find({
+                status: CallStatusEnum.ACCEPTED,
             })
             .lean();
     }
@@ -74,16 +104,19 @@ export class CallService {
             throw new BadRequestException(CALL_MESSAGES.CALL_FORBIDDEN);
         }
 
-        const conversation =
+        const { conversation } =
             await this.conversationsService.getConversationOrThrow(
                 conversationId,
             );
+        if (conversation.isGroup) {
+            throw new BadRequestException(CALL_MESSAGES.CALL_NOT_SUPPORT_GROUP);
+        }
         this.conversationsService.ensureMemberInConversation(
-            conversation.conversation,
+            conversation,
             callerId,
         );
         this.conversationsService.ensureMemberInConversation(
-            conversation.conversation,
+            conversation,
             calleeId,
         );
 
@@ -101,20 +134,30 @@ export class CallService {
      */
     async acceptCall(callId: string, currentUserId: string) {
         const objectCallId = toObjectId(callId, 'call id');
-        const call = await this.callModel.findById(objectCallId);
+        const call = await this.callModel.findOneAndUpdate(
+            {
+                _id: objectCallId,
+                status: CallStatusEnum.CALLING,
+                calleeId: toObjectId(currentUserId, 'current user id'),
+            },
+            {
+                $set: {
+                    status: CallStatusEnum.ACCEPTED,
+                    startedAt: new Date(),
+                },
+            },
+            { returnDocument: 'after' },
+        );
         if (!call) {
-            throw new NotFoundException(CALL_MESSAGES.CALL_NOT_FOUND);
-        }
-        if (call.status !== CallStatusEnum.CALLING) {
+            const existingCall = await this.callModel.findById(objectCallId);
+            if (!existingCall) {
+                throw new NotFoundException(CALL_MESSAGES.CALL_NOT_FOUND);
+            }
+            if (existingCall.calleeId.toString() !== currentUserId) {
+                throw new BadRequestException(CALL_MESSAGES.CALL_FORBIDDEN);
+            }
             throw new BadRequestException(CALL_MESSAGES.ALREADY_ENDED);
         }
-        if (call.calleeId.toString() !== currentUserId) {
-            throw new BadRequestException(CALL_MESSAGES.CALL_FORBIDDEN);
-        }
-
-        call.status = CallStatusEnum.ACCEPTED;
-        call.startedAt = call.startedAt || new Date();
-        await call.save();
         return call;
     }
 
@@ -123,22 +166,32 @@ export class CallService {
      */
     async rejectCall(callId: string, currentUserId: string) {
         const objectCallId = toObjectId(callId, 'call id');
-        const call = await this.callModel.findById(objectCallId);
+        const call = await this.callModel.findOneAndUpdate(
+            {
+                _id: objectCallId,
+                status: CallStatusEnum.CALLING,
+                calleeId: toObjectId(currentUserId, 'current user id'),
+            },
+            {
+                $set: {
+                    status: CallStatusEnum.REJECTED,
+                    endedAt: new Date(),
+                    duration: 0,
+                    endReason: CallEndReasonEnum.CALLEE_REJECT,
+                },
+            },
+            { returnDocument: 'after' },
+        );
         if (!call) {
-            throw new NotFoundException(CALL_MESSAGES.CALL_NOT_FOUND);
-        }
-        if (call.status !== CallStatusEnum.CALLING) {
+            const existingCall = await this.callModel.findById(objectCallId);
+            if (!existingCall) {
+                throw new NotFoundException(CALL_MESSAGES.CALL_NOT_FOUND);
+            }
+            if (existingCall.calleeId.toString() !== currentUserId) {
+                throw new BadRequestException(CALL_MESSAGES.CALL_FORBIDDEN);
+            }
             throw new BadRequestException(CALL_MESSAGES.ALREADY_ENDED);
         }
-        if (call.calleeId.toString() !== currentUserId) {
-            throw new BadRequestException(CALL_MESSAGES.CALL_FORBIDDEN);
-        }
-
-        call.status = CallStatusEnum.REJECTED;
-        call.endedAt = new Date();
-        call.duration = 0;
-        call.endReason = CallEndReasonEnum.CALLEE_REJECT;
-        await call.save();
         return call;
     }
 
@@ -151,33 +204,55 @@ export class CallService {
         endReason: CallEndReasonEnum,
     ) {
         const objectCallId = toObjectId(callId, 'call id');
-        const call = await this.callModel.findById(objectCallId);
-        if (!call) {
+        const existingCall = await this.callModel.findById(objectCallId);
+        if (!existingCall) {
             throw new NotFoundException(CALL_MESSAGES.CALL_NOT_FOUND);
         }
         if (
-            call.callerId.toString() !== currentUserId &&
-            call.calleeId.toString() !== currentUserId
+            existingCall.callerId.toString() !== currentUserId &&
+            existingCall.calleeId.toString() !== currentUserId
         ) {
             throw new BadRequestException(CALL_MESSAGES.CALL_FORBIDDEN);
         }
-        if (call.status === CallStatusEnum.ENDED) {
-            return call;
+        if (existingCall.status === CallStatusEnum.ENDED) {
+            return existingCall;
         }
 
         const endedAt = new Date();
-        call.endedAt = endedAt;
-        call.duration = call.startedAt
+        const duration = existingCall.startedAt
             ? Math.max(
                   0,
                   Math.floor(
-                      (endedAt.getTime() - call.startedAt.getTime()) / 1000,
+                      (endedAt.getTime() - existingCall.startedAt.getTime()) /
+                          1000,
                   ),
               )
             : 0;
-        call.status = CallStatusEnum.ENDED;
-        call.endReason = endReason;
-        await call.save();
+
+        const call = await this.callModel.findOneAndUpdate(
+            {
+                _id: objectCallId,
+                status: {
+                    $in: [CallStatusEnum.CALLING, CallStatusEnum.ACCEPTED],
+                },
+                $or: [
+                    { callerId: toObjectId(currentUserId, 'current user id') },
+                    { calleeId: toObjectId(currentUserId, 'current user id') },
+                ],
+            },
+            {
+                $set: {
+                    endedAt,
+                    duration,
+                    status: CallStatusEnum.ENDED,
+                    endReason,
+                },
+            },
+            { returnDocument: 'after' },
+        );
+        if (!call) {
+            throw new BadRequestException(CALL_MESSAGES.ALREADY_ENDED);
+        }
         return call;
     }
 
@@ -185,18 +260,24 @@ export class CallService {
      * Đánh dấu cuộc gọi là nhỡ nếu người nhận không phản hồi trong thời gian chờ.
      */
     async markMissed(callId: string) {
-        const call = await this.callModel.findById(callId);
+        const call = await this.callModel.findOneAndUpdate(
+            {
+                _id: toObjectId(callId, 'call id'),
+                status: CallStatusEnum.CALLING,
+            },
+            {
+                $set: {
+                    status: CallStatusEnum.MISSED,
+                    endedAt: new Date(),
+                    duration: 0,
+                    endReason: CallEndReasonEnum.TIMEOUT,
+                },
+            },
+            { returnDocument: 'after' },
+        );
         if (!call) {
-            throw new NotFoundException(CALL_MESSAGES.CALL_NOT_FOUND);
+            return await this.callModel.findById(callId);
         }
-        if (call.status !== CallStatusEnum.CALLING) {
-            return call;
-        }
-        call.status = CallStatusEnum.MISSED;
-        call.endedAt = new Date();
-        call.duration = 0;
-        call.endReason = CallEndReasonEnum.TIMEOUT;
-        await call.save();
         return call;
     }
 

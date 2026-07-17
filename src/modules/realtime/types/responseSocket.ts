@@ -50,6 +50,10 @@ export type SignalAckResult = {
     forwarded: boolean;
 };
 
+export type CallHeartbeatResult = {
+    refreshed: boolean;
+};
+
 // --- BROADCAST EVENT PAYLOADS ---
 export type CallTokenPayload = {
     callId: string;

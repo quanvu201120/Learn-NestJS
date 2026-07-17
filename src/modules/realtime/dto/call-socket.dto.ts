@@ -28,6 +28,8 @@ export class CallIdSocketDto {
     callId: string;
 }
 
+export class CallHeartbeatSocketDto extends CallIdSocketDto {}
+
 export class EndCallSocketDto extends CallIdSocketDto {
     /** Lý do kết thúc cuộc gọi. */
     @IsEnum(CallEndReasonEnum)

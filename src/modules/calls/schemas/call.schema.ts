@@ -44,4 +44,7 @@ export class Call {
 }
 
 export const CallSchema = SchemaFactory.createForClass(Call);
+CallSchema.index({ status: 1, callerId: 1 });
+CallSchema.index({ status: 1, calleeId: 1 });
+CallSchema.index({ status: 1, createdAt: -1 });
 CallSchema.index({ conversationId: 1, createdAt: -1 });
