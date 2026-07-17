@@ -32,7 +32,6 @@ import {
 } from './dto/password-auth.dto';
 import { SessionService } from '@/modules/session/session.service';
 import { CreateSessionDto } from '@/modules/session/dto/create-session.dto';
-import { SessionDeviceResponse } from '@/modules/session/types/session';
 import { StatsService } from '@/modules/stats/stats.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -42,6 +41,8 @@ import {
 import { UserResponse, UserRole } from '@/modules/users/types/user';
 import { USER_MESSAGES } from '@/modules/users/constants/user.constant';
 import { Types } from 'mongoose';
+import { NotificationTypeEnum } from '@/modules/notifications/types/notification.type';
+import { NOTIFICATION_TITLES } from '@/modules/notifications/constants/notification.constant';
 
 type LoginUser = UserResponse & {
     _id: string | Types.ObjectId;
@@ -97,17 +98,27 @@ export class AuthService {
      * Nếu user đang bị ban, method không cấp access token mà trả về context
      * kháng cáo cho án ban hiện tại để FE điều hướng sang màn hình appeal.
      */
-    async login(user: LoginUser, userAgent?: string, deviceName?: string) {
+    async login(
+        user: LoginUser,
+        userAgent?: string,
+        deviceName?: string,
+        deviceId?: string,
+    ) {
         if (user.banUntil && user.banUntil > new Date()) {
             return await this.buildBannedLoginResponse(user);
         }
 
+        const deviceContext = await this.sessionService.resolveDeviceContext(
+            user._id.toString(),
+            deviceId,
+        );
         let sessionId = '';
         try {
             const createSessionDto: CreateSessionDto = {
                 userId: user._id.toString(),
                 userAgent,
                 deviceName,
+                deviceId: deviceContext.deviceId,
             };
             const session = await this.sessionService.create(createSessionDto);
             sessionId = session._id.toString();
@@ -133,12 +144,25 @@ export class AuthService {
                 expireDate,
             );
 
+            if (deviceContext.isNewDevice) {
+                this.eventEmitter.emit('notification.create', {
+                    userId: user._id.toString(),
+                    type: NotificationTypeEnum.LOGIN,
+                    metadata: {
+                        deviceName,
+                        deviceId: deviceContext.deviceId,
+                    },
+                    title: NOTIFICATION_TITLES.LOGIN,
+                });
+            }
+
             this.statsService.incrementLogin();
 
             return {
                 accessToken,
                 refreshToken,
                 user,
+                deviceId: deviceContext.deviceId,
             };
         } catch (error) {
             if (sessionId) {
@@ -196,7 +220,12 @@ export class AuthService {
     /**
      * Đăng nhập bằng Google code, tự tìm hoặc tạo account theo email đã verify.
      */
-    async googleLogin(code: string, userAgent?: string, deviceName?: string) {
+    async googleLogin(
+        code: string,
+        userAgent?: string,
+        deviceName?: string,
+        deviceId?: string,
+    ) {
         const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
         const clientSecret = this.configService.get<string>(
             'GOOGLE_CLIENT_SECRET',
@@ -289,41 +318,15 @@ export class AuthService {
             return await this.buildBannedLoginResponse(user);
         }
 
-        return await this.login(user, userAgent, deviceName);
+        return await this.login(user, userAgent, deviceName, deviceId);
     }
 
-    async getSessions(userId: string): Promise<SessionDeviceResponse[]> {
-        return await this.sessionService.findSessionsByUserId(userId);
+    async getDevices(userId: string) {
+        return await this.sessionService.getDevices(userId);
     }
 
-    async logoutDevice(
-        userId: string,
-        sessionId: string,
-        refreshToken?: string,
-    ) {
-        let isCurrentSession = false;
-
-        if (refreshToken) {
-            try {
-                const payload: PayloadJWT = await this.jwtService.verifyAsync(
-                    refreshToken,
-                    {
-                        secret: this.configService.get<string>(
-                            'JWT_REFRESH_SECRET',
-                        ),
-                    },
-                );
-
-                isCurrentSession =
-                    payload._id === userId && payload.sessionId === sessionId;
-            } catch {
-                isCurrentSession = false;
-            }
-        }
-
-        await this.sessionService.revokeWithCleanup(sessionId, userId);
-
-        return { isCurrentSession };
+    async removeDevice(userId: string, deviceId: string) {
+        return await this.sessionService.removeDevice(userId, deviceId);
     }
 
     /**

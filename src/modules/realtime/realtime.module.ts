@@ -10,6 +10,8 @@ import { RelationshipsModule } from '../relationships/relationships.module';
 import { RealtimeAuthService } from './realtime-auth.service';
 import { RealtimeChatCommandService } from './realtime-chat-command.service';
 import { RealtimeEventBridgeService } from './realtime-event-bridge.service';
+import { CallsModule } from '../calls/calls.module';
+import { RealtimeCallService } from './realtime-call.service';
 @Module({
     imports: [
         AuthModule,
@@ -19,6 +21,7 @@ import { RealtimeEventBridgeService } from './realtime-event-bridge.service';
         UsersModule,
         SessionModule,
         RelationshipsModule,
+        CallsModule,
     ],
     exports: [ChatGateway],
     providers: [
@@ -26,6 +29,7 @@ import { RealtimeEventBridgeService } from './realtime-event-bridge.service';
         RealtimeAuthService,
         RealtimeChatCommandService,
         RealtimeEventBridgeService,
+        RealtimeCallService,
     ],
 })
 export class RealtimeModule {}

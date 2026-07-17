@@ -14,6 +14,8 @@ import {
     CleanupJobEntityEnum,
     CleanupJobResourceEnum,
 } from '../cleanup-jobs/types/cleanup-job';
+import { SessionDeviceResponse } from './types/session';
+import { SessionDeviceService } from './session-device.service';
 
 @Injectable()
 export class SessionService {
@@ -21,6 +23,7 @@ export class SessionService {
         @InjectModel(Session.name) public sessionModel: Model<Session>,
         @Inject(forwardRef(() => CleanupJobsService))
         private readonly cleanupJobsService: CleanupJobsService,
+        private readonly sessionDeviceService: SessionDeviceService,
     ) {}
 
     /**
@@ -52,7 +55,7 @@ export class SessionService {
             .find({ userId: objectId, isRevoked: false })
             .sort({ lastUsedAt: -1, createdAt: -1 })
             .select(
-                '_id deviceName userAgent expiresAt lastUsedAt createdAt updatedAt',
+                '_id deviceId deviceName userAgent expiresAt lastUsedAt createdAt updatedAt',
             );
 
         return sessions.map((session) => {
@@ -60,6 +63,7 @@ export class SessionService {
 
             return {
                 _id: currentSession._id.toString(),
+                deviceId: currentSession.deviceId,
                 deviceName: currentSession.deviceName,
                 userAgent: currentSession.userAgent,
                 expiresAt: currentSession.expiresAt,
@@ -68,6 +72,30 @@ export class SessionService {
                 updatedAt: currentSession.updatedAt,
             };
         });
+    }
+
+    /**
+     * Facade cho việc lấy danh sách thiết bị đã được gom theo `deviceId`.
+     */
+    async getDevices(userId: string): Promise<SessionDeviceResponse[]> {
+        return await this.sessionDeviceService.findDevicesByUserId(userId);
+    }
+
+    /**
+     * Facade cho thao tác xóa một thiết bị, xóa toàn bộ session cùng `deviceId`.
+     */
+    async removeDevice(userId: string, deviceId: string) {
+        return await this.sessionDeviceService.removeDevice(userId, deviceId);
+    }
+
+    /**
+     * Facade cho việc xác định device hiện tại có phải device mới hay không.
+     */
+    async resolveDeviceContext(userId: string, deviceId?: string) {
+        return await this.sessionDeviceService.resolveDeviceContext(
+            userId,
+            deviceId,
+        );
     }
 
     /**

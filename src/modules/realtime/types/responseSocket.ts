@@ -39,7 +39,25 @@ export type UpdateMessageResult = {
     updated: boolean;
     messageId: string;
 };
+
+export type CallAckResult = {
+    callId: string;
+    conversationId: string;
+    callToken?: string;
+};
+
+export type SignalAckResult = {
+    forwarded: boolean;
+};
+
 // --- BROADCAST EVENT PAYLOADS ---
+export type CallTokenPayload = {
+    callId: string;
+    conversationId: string;
+    callerId: string;
+    calleeId: string;
+};
+
 export type TypingEventPayload = {
     conversationId: string;
     userId: string;

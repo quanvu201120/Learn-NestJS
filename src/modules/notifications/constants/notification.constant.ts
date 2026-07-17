@@ -6,4 +6,5 @@ export const NOTIFICATION_TITLES = {
     [NotificationTypeEnum.REPORT_APPEAL_REJECTED]: 'Kháng cáo bị từ chối',
     [NotificationTypeEnum.REPORT_APPEAL_SUCCESS]: 'Kháng cáo thành công',
     [NotificationTypeEnum.SYSTEM]: 'Thông báo hệ thống',
+    [NotificationTypeEnum.LOGIN]: 'Đăng nhập thiết bị mới',
 } as const;

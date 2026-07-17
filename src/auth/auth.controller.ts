@@ -74,10 +74,22 @@ export class AuthController {
         };
     }
 
+    private getDeviceCookieOptions() {
+        const isProduction =
+            this.configService.get<string>('NODE_ENV') === 'production';
+
+        return {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? ('none' as const) : ('lax' as const),
+        };
+    }
+
     private async handleAuthResponse(
         data: {
             accessToken?: string;
             refreshToken?: string;
+            deviceId?: string;
             user?: unknown;
             isBanned?: boolean;
             banUntil?: Date;
@@ -96,6 +108,14 @@ export class AuthController {
                         ) as StringValue,
                     ),
                 ),
+            );
+        }
+
+        if (data.deviceId) {
+            response.cookie(
+                'deviceId',
+                data.deviceId,
+                this.getDeviceCookieOptions(),
             );
         }
 
@@ -121,6 +141,7 @@ export class AuthController {
     @ApiBody({ type: GoogleOAuthDto })
     async handleGoogleLogin(
         @Body() googleOAuthDto: GoogleOAuthDto,
+        @Cookies('deviceId') deviceId: string,
         @Request() req,
         @Res({ passthrough: true }) response: express.Response,
     ) {
@@ -131,6 +152,7 @@ export class AuthController {
             googleOAuthDto.code,
             userAgent,
             deviceName,
+            deviceId,
         );
         return await this.handleAuthResponse(data, response);
     }
@@ -148,6 +170,7 @@ export class AuthController {
     @ApiOperation({ summary: 'Đăng nhập tài khoản' })
     @ApiBody({ type: LoginDto })
     async handleLogin(
+        @Cookies('deviceId') deviceId: string,
         @Request() req,
         @Res({ passthrough: true }) response: express.Response,
     ) {
@@ -157,38 +180,35 @@ export class AuthController {
             req.user,
             userAgent,
             deviceName,
+            deviceId,
         );
         return await this.handleAuthResponse(data, response);
     }
-
-    @Get('sessions')
+    @Get('devices')
     @ApiOperation({ summary: 'Danh sách thiết bị đăng nhập' })
     @ApiBearerAuth('JWT-auth')
-    async getSessions(@Request() req) {
-        return await this.authService.getSessions(req.user._id);
+    async getDevices(@Request() req) {
+        return await this.authService.getDevices(req.user._id);
     }
 
-    @Delete('sessions/:sessionId')
+    @Delete('devices/:deviceId')
     @HttpCode(HttpStatus.OK)
-    @ApiOperation({ summary: 'Đăng xuất thiết bị được chọn' })
+    @ApiOperation({ summary: 'Xóa thiết bị đăng nhập' })
     @ApiBearerAuth('JWT-auth')
-    async logoutDevice(
-        @Param('sessionId') sessionId: string,
-        @Cookies('refreshToken') refreshToken: string,
+    async removeDevice(
+        @Param('deviceId') deviceId: string,
+        @Cookies('deviceId') currentDeviceId: string,
         @Res({ passthrough: true }) response: express.Response,
         @Request() req,
     ) {
-        const result = await this.authService.logoutDevice(
-            req.user._id,
-            sessionId,
-            refreshToken,
-        );
+        await this.authService.removeDevice(req.user._id, deviceId);
 
-        if (result.isCurrentSession) {
+        if (currentDeviceId === deviceId) {
             response.clearCookie(
                 'refreshToken',
                 this.getRefreshCookieOptions(0),
             );
+            response.clearCookie('deviceId', this.getDeviceCookieOptions());
         }
 
         return AUTH_MESSAGES.LOGOUT_SUCCESS;

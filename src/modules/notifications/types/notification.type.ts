@@ -4,9 +4,21 @@ export enum NotificationTypeEnum {
     REPORT_APPEAL_REJECTED = 'REPORT_APPEAL_REJECTED',
     REPORT_APPEAL_SUCCESS = 'REPORT_APPEAL_SUCCESS',
     SYSTEM = 'SYSTEM',
+    LOGIN = 'LOGIN',
 }
 
 export type NotificationPenaltyType = 'warning' | 'mute' | 'ban';
+
+export interface NotificationMetadata {
+    reportStatus?: string;
+    reason?: string;
+    penaltyApplied?: string;
+    penaltyType?: NotificationPenaltyType;
+    appealDeadline?: string | Date;
+    appealReviewDeadline?: string | Date;
+    deviceName?: string;
+    deviceId?: string;
+}
 
 export interface CreateNotificationPayload {
     userId: string;
@@ -19,12 +31,7 @@ export interface CreateNotificationPayload {
         bio?: string;
         role?: string;
     };
-    reportStatus?: string;
-    reason?: string;
-    penaltyApplied?: string;
-    penaltyType?: NotificationPenaltyType;
-    appealDeadline?: string | Date;
-    appealReviewDeadline?: string | Date;
+    metadata?: NotificationMetadata;
 }
 
 export interface NotificationResponse {
@@ -39,13 +46,8 @@ export interface NotificationResponse {
         bio?: string;
         role?: string;
     };
-    reportStatus?: string;
+    metadata?: NotificationMetadata;
     hasAppealed?: boolean;
-    reason?: string;
-    penaltyApplied?: string;
-    penaltyType?: NotificationPenaltyType;
-    appealDeadline?: string | Date;
-    appealReviewDeadline?: string | Date;
     isRead: boolean;
     readAt?: string | Date;
     createdAt?: string | Date;

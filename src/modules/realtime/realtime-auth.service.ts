@@ -56,6 +56,12 @@ export class RealtimeAuthService {
             client.disconnect();
             throw new UnauthorizedException(USER_MESSAGES.USER_NOT_FOUND);
         }
+
+        if (!user.isActive) {
+            client.disconnect();
+            throw new UnauthorizedException(USER_MESSAGES.USER_NOT_ACTIVE);
+        }
+
         if (user.isDisabled) {
             client.disconnect();
             throw new UnauthorizedException(AUTH_MESSAGES.USER_DISABLED);

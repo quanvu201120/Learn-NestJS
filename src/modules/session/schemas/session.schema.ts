@@ -20,6 +20,9 @@ export class Session {
     @Prop()
     deviceName?: string;
 
+    @Prop({ required: true, index: true })
+    deviceId: string;
+
     @Prop({ type: Date, default: Date.now })
     lastUsedAt?: Date;
 
@@ -32,3 +35,4 @@ export class Session {
 
 export const SessionSchema = SchemaFactory.createForClass(Session);
 SessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+SessionSchema.index({ userId: 1, deviceId: 1, isRevoked: 1 });

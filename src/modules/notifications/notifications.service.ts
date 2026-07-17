@@ -37,12 +37,7 @@ export class NotificationsService {
                 ? new Types.ObjectId(payload.refId)
                 : undefined,
             snapshot: payload.snapshot,
-            reportStatus: payload.reportStatus,
-            reason: payload.reason,
-            penaltyApplied: payload.penaltyApplied,
-            penaltyType: payload.penaltyType,
-            appealDeadline: payload.appealDeadline,
-            appealReviewDeadline: payload.appealReviewDeadline,
+            metadata: payload.metadata,
             isRead: false,
         });
 
@@ -56,6 +51,7 @@ export class NotificationsService {
 
     private serializeNotification(notification: any): NotificationResponse {
         const { _id, userId, refId, snapshot, ...rest } = notification;
+        const metadata = rest.metadata || {};
 
         const resolvedRef =
             refId && typeof refId === 'object' && '_id' in refId
@@ -63,10 +59,7 @@ export class NotificationsService {
                 : refId
                   ? refId.toString()
                   : null;
-        const currentReportStatus =
-            refId && typeof refId === 'object' && 'status' in refId
-                ? refId.status
-                : rest.reportStatus;
+        const currentReportStatus = metadata.reportStatus;
         const hasAppealed =
             currentReportStatus === 'resolved'
                 ? false
@@ -83,7 +76,7 @@ export class NotificationsService {
             _id: _id ? _id.toString() : undefined,
             userId: userId ? userId.toString() : undefined,
             refId: resolvedRef,
-            reportStatus: currentReportStatus,
+            metadata,
             hasAppealed,
             snapshot: snapshot
                 ? {

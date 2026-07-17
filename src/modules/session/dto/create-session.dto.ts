@@ -19,4 +19,8 @@ export class CreateSessionDto {
     @IsOptional()
     @IsString()
     deviceName?: string;
+
+    @IsNotEmpty()
+    @IsString()
+    deviceId: string;
 }

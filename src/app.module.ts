@@ -16,6 +16,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
 import { PresenceModule } from './modules/presence/presence.module';
 import { MediaModule } from './modules/media/media.module';
 import { RelationshipsModule } from './modules/relationships/relationships.module';
+import { CallsModule } from './modules/calls/calls.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { StatsModule } from './modules/stats/stats.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
@@ -40,6 +41,7 @@ import { ThrottlerUserIpGuard } from './common/throttler-user-ip.guard';
         AuditLogModule,
         ReportsModule,
         NotificationsModule,
+        CallsModule,
         ThrottlerModule.forRoot({
             throttlers: [
                 {
@@ -70,7 +72,7 @@ import { ThrottlerUserIpGuard } from './common/throttler-user-ip.guard';
         }),
         ServeStaticModule.forRoot({
             rootPath: join(__dirname, '..', 'client'),
-            exclude: ['/api/(.*)'],
+            exclude: ['/api/{*path}'],
         }),
         ScheduleModule.forRoot(),
         BullModule.forRootAsync({

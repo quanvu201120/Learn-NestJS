@@ -39,6 +39,15 @@ import {
 import { RealtimeChatCommandService } from './realtime-chat-command.service';
 import { RealtimeEventBridgeService } from './realtime-event-bridge.service';
 import { SocketResponse, UserOnlinePayload } from './types/responseSocket';
+import { RealtimeCallService } from './realtime-call.service';
+import {
+    CallAnswerSocketDto,
+    CallIdSocketDto,
+    CallIceCandidateSocketDto,
+    CallOfferSocketDto,
+    EndCallSocketDto,
+    StartCallSocketDto,
+} from './dto/call-socket.dto';
 
 const socketCorsOrigins = (process.env.CORS_ORIGINS || '')
     .split(',')
@@ -63,6 +72,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         private readonly sessionService: SessionService,
         private readonly realtimeChatCommandService: RealtimeChatCommandService,
         private readonly realtimeEventBridgeService: RealtimeEventBridgeService,
+        private readonly realtimeCallService: RealtimeCallService,
     ) {}
 
     /**
@@ -363,6 +373,160 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             ack?.(res);
         } catch (error) {
             console.log('Error updating message:', error);
+            ack?.(this.toErrorResponse(error));
+        }
+    }
+
+    /**
+     * Nhận yêu cầu bắt đầu cuộc gọi từ client và chuyển xuống realtime call service.
+     */
+    @SubscribeMessage('call:start')
+    async handleCallStart(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() body: StartCallSocketDto,
+        @Ack() ack: (response: any) => void,
+    ) {
+        try {
+            const res = await this.realtimeCallService.startCall(
+                this.server,
+                client,
+                body,
+            );
+            ack?.(res);
+        } catch (error) {
+            console.log('Error starting call:', error);
+            ack?.(this.toErrorResponse(error));
+        }
+    }
+
+    /**
+     * Nhận tín hiệu chấp nhận cuộc gọi từ client.
+     */
+    @SubscribeMessage('call:accept')
+    async handleCallAccept(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() body: CallIdSocketDto,
+        @Ack() ack: (response: any) => void,
+    ) {
+        try {
+            const res = await this.realtimeCallService.acceptCall(
+                this.server,
+                client,
+                body,
+            );
+            ack?.(res);
+        } catch (error) {
+            console.log('Error accepting call:', error);
+            ack?.(this.toErrorResponse(error));
+        }
+    }
+
+    /**
+     * Nhận tín hiệu từ chối cuộc gọi từ client.
+     */
+    @SubscribeMessage('call:reject')
+    async handleCallReject(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() body: CallIdSocketDto,
+        @Ack() ack: (response: any) => void,
+    ) {
+        try {
+            const res = await this.realtimeCallService.rejectCall(
+                this.server,
+                client,
+                body,
+            );
+            ack?.(res);
+        } catch (error) {
+            console.log('Error rejecting call:', error);
+            ack?.(this.toErrorResponse(error));
+        }
+    }
+
+    /**
+     * Nhận tín hiệu kết thúc cuộc gọi từ client.
+     */
+    @SubscribeMessage('call:end')
+    async handleCallEnd(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() body: EndCallSocketDto,
+        @Ack() ack: (response: any) => void,
+    ) {
+        try {
+            const res = await this.realtimeCallService.endCall(
+                this.server,
+                client,
+                body,
+            );
+            ack?.(res);
+        } catch (error) {
+            console.log('Error ending call:', error);
+            ack?.(this.toErrorResponse(error));
+        }
+    }
+
+    /**
+     * Chuyển SDP offer giữa hai đầu cuộc gọi.
+     */
+    @SubscribeMessage('call:offer')
+    async handleCallOffer(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() body: CallOfferSocketDto,
+        @Ack() ack: (response: any) => void,
+    ) {
+        try {
+            const res = await this.realtimeCallService.forwardOffer(
+                this.server,
+                client,
+                body,
+            );
+            ack?.(res);
+        } catch (error) {
+            console.log('Error forwarding call offer:', error);
+            ack?.(this.toErrorResponse(error));
+        }
+    }
+
+    /**
+     * Chuyển SDP answer giữa hai đầu cuộc gọi.
+     */
+    @SubscribeMessage('call:answer')
+    async handleCallAnswer(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() body: CallAnswerSocketDto,
+        @Ack() ack: (response: any) => void,
+    ) {
+        try {
+            const res = await this.realtimeCallService.forwardAnswer(
+                this.server,
+                client,
+                body,
+            );
+            ack?.(res);
+        } catch (error) {
+            console.log('Error forwarding call answer:', error);
+            ack?.(this.toErrorResponse(error));
+        }
+    }
+
+    /**
+     * Chuyển ICE candidate giữa hai đầu cuộc gọi.
+     */
+    @SubscribeMessage('call:ice-candidate')
+    async handleCallIceCandidate(
+        @ConnectedSocket() client: Socket,
+        @MessageBody() body: CallIceCandidateSocketDto,
+        @Ack() ack: (response: any) => void,
+    ) {
+        try {
+            const res = await this.realtimeCallService.forwardIceCandidate(
+                this.server,
+                client,
+                body,
+            );
+            ack?.(res);
+        } catch (error) {
+            console.log('Error forwarding ICE candidate:', error);
             ack?.(this.toErrorResponse(error));
         }
     }

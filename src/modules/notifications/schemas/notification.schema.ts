@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, Types } from 'mongoose';
+import { HydratedDocument, Schema as MongooseSchema, Types } from 'mongoose';
 import { NotificationTypeEnum } from '../types/notification.type';
 
 export type NotificationDocument = HydratedDocument<Notification>;
@@ -41,23 +41,8 @@ export class Notification {
     @Prop({ type: NotificationSnapshot })
     snapshot?: NotificationSnapshot;
 
-    @Prop()
-    reportStatus?: string;
-
-    @Prop()
-    reason?: string;
-
-    @Prop()
-    penaltyApplied?: string;
-
-    @Prop()
-    penaltyType?: string;
-
-    @Prop()
-    appealDeadline?: Date;
-
-    @Prop()
-    appealReviewDeadline?: Date;
+    @Prop({ type: MongooseSchema.Types.Mixed })
+    metadata?: Record<string, any>;
 
     @Prop({ default: false, index: true })
     isRead: boolean;

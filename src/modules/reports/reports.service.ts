@@ -488,12 +488,14 @@ export class ReportsService {
                     bio: report.snapshot?.bio,
                     role: report.snapshot?.role,
                 },
-                reportStatus: finalReport.status,
-                reason: report.reason,
-                penaltyApplied: finalReport.penaltyApplied,
-                penaltyType: finalReport.penaltyType,
-                appealDeadline: finalReport.appealDeadline,
-                appealReviewDeadline: finalReport.appealReviewDeadline,
+                metadata: {
+                    reportStatus: finalReport.status,
+                    reason: report.reason,
+                    penaltyApplied: finalReport.penaltyApplied,
+                    penaltyType: finalReport.penaltyType,
+                    appealDeadline: finalReport.appealDeadline,
+                    appealReviewDeadline: finalReport.appealReviewDeadline,
+                },
             });
         }
 

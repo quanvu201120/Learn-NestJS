@@ -1,330 +1,197 @@
-# Kế hoạch refactor service theo chuyên môn
-
-Mục tiêu của plan này là giảm tình trạng service phình to, nhưng vẫn giữ thay đổi nhỏ, an toàn, không làm đổi API, DTO, endpoint, response shape hay status code hiện có.
-
-## Nguyên tắc refactor
-
-- Chỉ tách nhỏ theo trách nhiệm trong nội bộ từng module.
-- Giữ controller mỏng, không chuyển business logic lên controller.
-- Giữ nguyên contract public hiện tại của module nếu chưa thật sự cần đổi.
-- Ưu tiên tạo các service nội bộ theo use case thay vì tạo helper chung quá sớm. nhưng nếu các helper đó được dùng ở nhiều service thì hãy tách ra
-- Mỗi lần chỉ refactor một module lớn để giảm rủi ro.
-- Không refactor chéo nhiều module trong cùng một đợt nếu chưa cần.
-
-## Cách làm được chọn
-
-Hướng triển khai phù hợp nhất cho codebase hiện tại:
-
-- dùng `facade + service con theo use case`
-- service con trong cùng module được phép inject `Model` trực tiếp
-- chỉ tạo `repository` hoặc `data-access service` khi query bắt đầu lặp đáng kể
-- Các hàm helper kiểm tra kĩ trước khi phân tách vì các service con có thể sử dụng chung hoặc service ngoài module cũng sử dụng
-  Mô hình khuyến nghị:
-
-- controller vẫn gọi service public hiện tại của module
-- service public hiện tại đóng vai trò facade mỏng
-- facade chỉ điều phối và delegate sang các service con
-- mỗi service con xử lý một nhóm nghiệp vụ rõ ràng
-- service con nào cần đọc/ghi MongoDB thì inject cùng `Mongoose Model` ngay trong module đó
-
-Ví dụ với `reports`:
-
-- `ReportsService` vẫn là service controller đang dùng
-- `ReportsService` gọi sang `ReportQueryService`, `ReportCommandService`, `ReportAppealService`, `ReportCleanupService`
-- các service con này có thể cùng inject `@InjectModel(Report.name)` nếu cần
-
-Lý do chọn cách này:
-
-- hợp với style NestJS + Mongoose hiện tại của repo
-- giảm nhanh kích thước các god service mà không đại tu kiến trúc
-- không tạo thêm tầng gọi vòng vo không cần thiết
-- dễ refactor từng bước, dễ rollback nếu có lỗi
-- vẫn mở đường để tách repository về sau nếu thật sự cần
-
-## Khi nào service con được gọi model trực tiếp
-
-Cho phép service con gọi model trực tiếp trong các trường hợp:
-
-- query chỉ phục vụ riêng cho service đó
-- logic DB nằm trọn trong cùng module nghiệp vụ
-- chưa có dấu hiệu lặp query ở nhiều nơi
-- service đó chỉ inject model của chính module nó
-
-Quy tắc boundary giữa các module:
-
-- service của module nào thì chỉ nên inject model của module đó
-- nếu cần dữ liệu hoặc nghiệp vụ của module khác thì gọi service của module kia
-- không nên inject model của nhiều module khác nhau vào cùng một service nghiệp vụ
-
-Ví dụ:
-
-- `ReportQueryService` inject `ReportModel`
-- `ReportPenaltyService` cần khóa user thì gọi `UsersService`
-- `ReportPenaltyService` cần revoke session thì gọi `SessionService`
-- `ReportMediaService` cần upload hoặc xóa media thì gọi `MediaService`
-
-Không nên ép mọi service con phải đi qua service cha mới được đụng DB, vì:
-
-- không giảm coupling thật sự
-- service cha dễ tiếp tục phình to
-- thêm một tầng gọi nhưng không thêm giá trị rõ ràng
-
-## Khi nào mới nên tạo repository
-
-Chỉ cân nhắc tạo `repository` hoặc `data-access service` khi có một trong các dấu hiệu sau:
-
-- nhiều service con lặp lại cùng một query phức tạp
-- cùng một `populate`, `aggregate pipeline`, `filter builder` xuất hiện ở nhiều nơi
-- cần gom logic truy cập dữ liệu để phục vụ transaction hoặc tối ưu query rõ ràng hơn
-
-Nếu chưa có các dấu hiệu trên, ưu tiên giữ cấu trúc đơn giản:
-
-- service con theo use case
-- inject model trực tiếp
-- chỉ tách repository khi thật sự mang lại lợi ích rõ ràng
-
-Tóm tắt rule:
-
-- model của module mình thì inject trực tiếp được
-- logic hoặc dữ liệu của module khác thì đi qua service của module đó
-
-## JSDoc khi tách service
-
-Khi di chuyển method sang service con:
-
-- Nếu method được chuyển nguyên logic từ service cũ sang service mới, copy lại JSDoc cũ sang service mới.
-- Không xóa JSDoc ở facade nếu facade vẫn giữ method public để controller/module khác gọi.
-- Nếu method mới được tách từ một phần nhỏ của method cũ, tự thêm JSDoc mới mô tả đúng trách nhiệm mới.
-- JSDoc mới nên mô tả nghiệp vụ hoặc side effect chính, không chỉ nhắc lại tên method.
-
-Ví dụ:
-
-- `generateAppealToken` chuyển nguyên sang `ReportAppealService` thì copy doc cũ.
-- `uploadEvidenceImages` được tách từ flow create/appeal thì thêm doc mới về upload evidence và rollback.
-- `rollbackEvidenceImages` là method mới sau refactor thì phải có doc mới.
-
-## forwardRef khi tách service
-
-Khi module đang có quan hệ vòng qua `forwardRef`, service con mới tách cũng phải inject dependency vòng bằng `@Inject(forwardRef(() => ServiceName))`.
-
-Ví dụ trong `reports`:
-
-- `ReportsModule` import `forwardRef(() => UsersModule)`
-- `UsersModule` import `forwardRef(() => ReportsModule)`
-- service con trong `reports` nếu inject `UsersService` thì dùng:
-
-```ts
-@Inject(forwardRef(() => UsersService))
-private readonly usersService: UsersService
-```
-
-Áp dụng rule này cho mọi service con mới tách, không chỉ service public ban đầu.
-
-Lý do:
-
-- TypeScript build có thể vẫn pass dù DI runtime bị undefined.
-- Lỗi thường chỉ xuất hiện khi Nest khởi động provider.
-- Sau khi tách service mới, cần chạy `npm run start` hoặc một smoke test bootstrap ngắn nếu service đó inject dependency từ module đang dùng `forwardRef`.
-
-## Đánh giá hiện trạng
-
-Các service đang lớn nhất:
-
-- `src/modules/reports/reports.service.ts`: khoảng 1515 dòng
-- `src/modules/conversations/conversations.service.ts`: khoảng 1476 dòng
-- `src/modules/users/users.service.ts`: khoảng 1313 dòng
-- `src/modules/messages/messages.service.ts`: khoảng 915 dòng
-- `src/modules/cleanup-jobs/cleanup-jobs.service.ts`: khoảng 630 dòng
-- `src/modules/relationships/relationships.service.ts`: khoảng 584 dòng
-- `src/modules/stats/stats.service.ts`: khoảng 570 dòng
-- `src/modules/media/media.service.ts`: khoảng 537 dòng
-
-Nhận xét:
-
-- `reports.service.ts` là điểm nghẽn lớn nhất vì đang ôm nhiều nhóm nghiệp vụ khác nhau.
-- `conversations.service.ts` và `users.service.ts` có khả năng cũng đang giữ quá nhiều trách nhiệm trong cùng một file.
-- `messages.service.ts` chưa lớn bằng 3 file trên nhưng đã trộn transaction, media, realtime và business rule.
-- `session.service.ts` hiện chưa quá lớn, chưa cần ưu tiên refactor mạnh.
-
-## Ưu tiên refactor
-
-### 1. Reports module
-
-Ưu tiên cao nhất vì đang gom quá nhiều trách nhiệm:
-
-- tạo report
-- query report
-- appeal token
-- appeal flow
-- resolve report
-- áp dụng penalty
-- admin action
-- cleanup media/report cũ
-
-Đề xuất tách:
-
-- `report-command.service.ts`
-    - `create`
-    - `appeal`
-    - `resolve`
-- `report-query.service.ts`
-    - `findAll`
-    - `findOne`
-    - `findByIdForApi`
-    - `findCurrentAppealContextByUserId`
-- `report-appeal.service.ts`
-    - `generateAppealToken`
-    - `verifyAppealToken`
-    - `getAppealAccess`
-- `report-penalty.service.ts`
-    - logic xác định hình phạt
-    - apply ban/mute/strike
-    - revoke session nếu cần
-    - reset avatar/bio/name nếu có
-- `report-admin-action.service.ts`
-    - `quickPenalty`
-    - `manualBan`
-    - `unban`
-    - `unmute`
-    - `clearStrike`
-- `report-media.service.ts`
-    - upload evidence
-    - rollback media khi create/appeal fail
-- `report-cleanup.service.ts`
-    - `deleteMediasAndReportDismissed`
-    - logic xác định media/report orphan
-
-Gợi ý triển khai:
-
-- Giữ `ReportsService` làm facade mỏng ở giai đoạn đầu.
-- Controller vẫn inject `ReportsService` để tránh đổi wiring quá nhiều.
-- Bên trong `ReportsService` chỉ delegate sang các service nhỏ hơn.
-
-### 2. Conversations module
-
-Ưu tiên thứ hai vì thường là nơi dễ dính nhiều rule:
-
-- tạo direct/group conversation
-- quản lý member
-- quản lý admin group
-- hidden history
-- pin/last message
-- dissolve group
-
-Đề xuất tách:
-
-- `conversation-query.service.ts`
-- `conversation-member.service.ts`
-- `conversation-group-admin.service.ts`
-- `conversation-state.service.ts`
-
-### 3. Users module
-
-Ưu tiên thứ ba vì service thường thành nơi gom nhiều nghiệp vụ không cùng lớp trách nhiệm.
-
-Đề xuất tách:
-
-- `user-query.service.ts`
-- `user-profile.service.ts`
-- `user-status.service.ts`
-- `user-auth-profile.service.ts`
-
-Lưu ý:
-
-- Chỉ tách khi thật sự có nhóm method rõ ràng.
-- Tránh tạo abstraction chung quá sớm giữa `users`, `reports`, `auth`.
-
-### 4. Messages module
-
-Ưu tiên thứ tư vì đang trộn nhiều concern:
-
-- create message
-- upload media
-- reaction
-- pin/unpin
-- soft delete
-- unseen/realtime
-- transaction với conversation và media
-
-Đề xuất tách:
-
-- `message-command.service.ts`
-- `message-query.service.ts`
-- `message-reaction.service.ts`
-- `message-media.service.ts`
-- `message-realtime.service.ts`
-
-Lưu ý:
-
-- Đây là module nhạy cảm vì có transaction và side effect.
-- Nên refactor sau `reports` để rút kinh nghiệm pattern trước.
-
-### 5. Cleanup-jobs, Stats, Media
-
-Nhóm này có thể refactor sau khi xử lý các service nghiệp vụ chính:
-
-- `cleanup-jobs.service.ts`
-    - có thể tách `cleanup-job-command.service.ts`
-    - có thể tách `cleanup-job-query.service.ts`
-    - có thể tách `cleanup-job-dispatcher.service.ts`
-- `stats.service.ts`
-    - có thể tách `stats-write.service.ts`
-    - có thể tách `stats-read.service.ts`
-- `media.service.ts`
-    - có thể tách theo upload, persistence, cleanup, provider orchestration
-
-## Đánh giá riêng cho Session module
-
-`src/modules/session/session.service.ts` hiện khoảng 185 dòng, chưa phải service quá lớn.
-
-Nhận xét:
-
-- Phần query session khá gọn.
-- Phần revoke session đang bắt đầu dính cleanup job.
-- Chưa cần chia mạnh như `reports` hay `messages`.
-
-Nếu muốn chỉnh nhỏ và an toàn:
-
-- có thể tách `session-query.service.ts`
-- có thể tách `session-revoke.service.ts`
-- hoặc chỉ tách phần enqueue cleanup job sang `session-cleanup.service.ts`
-
-Kết luận:
-
-- `session.service.ts` chưa phải ưu tiên refactor lúc này.
-- Chỉ nên đụng khi đang làm flow liên quan session hoặc cleanup job.
-
-## Chiến lược triển khai an toàn
-
-Thứ tự khuyến nghị:
-
-1. Refactor `reports`
-2. Refactor `conversations`
-3. Refactor `users`
-4. Refactor `messages`
-5. Sau đó mới xét `cleanup-jobs`, `stats`, `media`
-
-Quy tắc triển khai:
-
-1. Tách file trước, chưa đổi API.
-2. Giữ service cũ làm facade trong giai đoạn chuyển tiếp.
-3. Di chuyển method theo từng nhóm use case, không di chuyển toàn bộ một lần.
-4. Sau mỗi đợt, test lại đúng module vừa thay đổi.
-5. Chỉ khi ổn định mới cân nhắc bỏ facade hoặc tinh gọn lại dependency.
-
-## Rủi ro cần tránh
-
-- Tách quá sớm các phần shared dùng chung giữa nhiều module.
-- Refactor đồng thời nhiều service lớn khiến khó trace bug.
-- Chuyển business logic xuống util/helper thuần khiến mất ngữ nghĩa NestJS module.
-- Tạo vòng phụ thuộc mới giữa các service nhỏ sau khi tách.
-- Sửa luôn endpoint/DTO/response trong lúc chỉ định refactor cấu trúc.
-
-## Đề xuất bắt đầu thực tế
-
-Nếu bắt đầu làm ngay, nên chọn `reports.service.ts` và đi theo 2 bước:
-
-1. Tách `report-query.service.ts` và `report-media.service.ts` trước vì ít ảnh hưởng hơn.
-2. Sau đó tách tiếp `report-appeal.service.ts`, `report-admin-action.service.ts`, `report-cleanup.service.ts`.
-
-Riêng `report-penalty.service.ts` nên tách sau cùng trong module `reports`, vì phần này thường dính nhiều dependency nhất.
+## Kế hoạch: MVP gọi thoại và video 1-1
+
+### Mục tiêu
+Làm `gọi thoại 1-1` trước, rồi mở rộng cùng flow đó sang `video 1-1`, trong khi vẫn giữ nguyên logic chặn/thành viên hiện có.
+
+### Phạm vi
+- Chỉ làm `1-1`.
+- Không làm gọi nhóm.
+- Chưa dùng SFU/media server.
+- Ban đầu chưa cần TURN.
+- NestJS chỉ dùng để signaling.
+- WebRTC trên client sẽ truyền media.
+
+### Bước 1: Rà lại và tận dụng realtime hiện có
+- Tận dụng socket gateway đang có trong `src/modules/realtime/chat.gateway.ts`.
+- Tận dụng luôn luồng xác thực auth/session ở phần kết nối socket.
+- Tận dụng các kiểm tra block quan hệ và membership cuộc trò chuyện hiện tại.
+
+### Bước 2: Thêm model miền dữ liệu cho cuộc gọi
+- Tạo `Call` model/schema riêng, không trộn dữ liệu cuộc gọi vào `messages`.
+- Lưu các dữ liệu riêng cho cuộc gọi như người gọi, người nhận, conversation, loại cuộc gọi, trạng thái, thời điểm, và thời lượng.
+- Giữ nguyên dữ liệu message như cũ.
+
+### Bước 3: Thêm lớp service cho call
+- Tạo service/module riêng để tạo call và cập nhật trạng thái.
+- Gom toàn bộ rule vào một chỗ:
+  - user tồn tại
+  - user đã được xác thực
+  - user không bị ban/disable
+  - hai user không chặn nhau
+  - user được phép tham gia conversation
+
+### Bước 4: Thêm các event signaling qua WebSocket
+- Thêm các socket event:
+  - `call:start`
+  - `call:accept`
+  - `call:reject`
+  - `call:end`
+  - `call:offer`
+  - `call:answer`
+  - `call:ice-candidate`
+- Giữ NestJS chỉ làm cầu nối signaling.
+- Không truyền audio/video qua NestJS.
+
+### Bước 5: Triển khai gọi thoại 1-1
+- Trên client, chỉ xin quyền microphone.
+- Dùng `RTCPeerConnection` với STUN.
+- Đảm bảo gọi thoại có thể kết nối giữa 2 thiết bị/mạng khác nhau trong mức có thể.
+
+### Bước 6: Mở rộng cùng flow đó sang gọi video 1-1
+- Tái sử dụng cùng luồng signaling và lưu call.
+- Đổi media constraints ở client để thêm camera.
+- Giữ `callType` là `audio | video`.
+
+### Bước 7: Hiển thị lịch sử cuộc gọi trong màn hình chat
+- Lưu message và call riêng biệt.
+- Khi mở chat detail thì load cả hai nguồn.
+- Gộp theo `createdAt` ở client hoặc qua endpoint timeline.
+- Render các dòng call như item trong timeline chat.
+
+### Bước 8: Thêm xử lý vòng đời cơ bản
+- Xử lý missed call.
+- Xử lý timeout.
+- Xử lý ended call.
+- Lưu duration và status cuối cùng.
+
+### Bước 9: Test theo mức độ thực tế tăng dần
+- Localhost.
+- Hai thiết bị cùng Wi-Fi.
+- Hai mạng khác nhau.
+- Mobile data so với Wi-Fi.
+
+### Bước 10: Chỉ thêm TURN khi thật sự cần
+- Bắt đầu với STUN בלבד.
+- Thêm TURN sau nếu có mạng không kết nối ổn định.
+- Để giá trị STUN/TURN trong env để đổi config mà không phải sửa code nhiều.
+
+### Thứ tự triển khai đề xuất
+1. Thêm call schema/model.
+2. Thêm call service.
+3. Nối signaling socket vào realtime.
+4. Lưu và cập nhật trạng thái call.
+5. Làm flow audio 1-1 ở client.
+6. Tái sử dụng cùng flow đó cho video.
+7. Render lịch sử cuộc gọi trong màn hình chat.
+
+## Kế hoạch chi tiết: Tạo `call module`
+
+### Mục tiêu của module
+- Gom toàn bộ logic liên quan đến cuộc gọi vào một chỗ.
+- Giữ `messages` chỉ cho chat text/media.
+- Cho phép lưu lịch sử call rõ ràng, dễ đọc, dễ mở rộng.
+- Làm nền cho `1-1 audio` và `1-1 video` sau này.
+
+### Những phần sẽ có trong module
+1. `call.module.ts`
+   - Đăng ký module.
+   - Import các module cần dùng như `UsersModule`, `ConversationsModule`, `RelationshipsModule`, `RealtimeModule` nếu cần.
+
+2. `call.schema.ts`
+   - Lưu dữ liệu cuộc gọi.
+   - Các field chính:
+     - `callerId`
+     - `calleeId`
+     - `conversationId`
+     - `callType`
+     - `status`
+     - `startedAt`
+     - `endedAt`
+     - `duration`
+     - `createdAt`
+     - `updatedAt`
+
+3. `call.service.ts`
+   - Xử lý logic chính của call.
+   - Tạo call record.
+   - Update trạng thái call.
+   - Chốt duration.
+   - Kiểm tra quyền gọi.
+
+4. `call-query.service.ts`
+   - Đọc lịch sử call.
+   - Lấy call theo conversation.
+   - Phân trang nếu cần.
+
+5. `dto/`
+   - Chuẩn hoá input cho các thao tác call.
+   - Ví dụ:
+     - `start-call.dto.ts`
+     - `accept-call.dto.ts`
+     - `reject-call.dto.ts`
+     - `end-call.dto.ts`
+
+6. `types/`
+   - Định nghĩa kiểu dữ liệu rõ ràng.
+   - Ví dụ:
+     - `call-type.ts`
+     - `call-status.ts`
+
+7. `constants/`
+   - Chứa status, type, message cố định.
+   - Giúp code đồng nhất và dễ bảo trì.
+
+8. `call.controller.ts` nếu cần HTTP
+   - Chỉ dùng cho việc đọc lịch sử call.
+   - Không dùng cho signaling realtime.
+
+### Trách nhiệm của module
+- Không truyền audio/video.
+- Không xử lý WebRTC media.
+- Chỉ quản lý:
+  - create call
+  - accept/reject
+  - end call
+  - lưu trạng thái
+  - trả lịch sử call
+
+### Các trạng thái nên có
+- `calling`
+- `accepted`
+- `rejected`
+- `ended`
+- `missed`
+- `failed`
+
+### Các rule phải check trong module
+- User có tồn tại không.
+- User có bị disabled không.
+- User có bị ban không.
+- Hai user có block nhau không.
+- User có được phép gọi trong conversation đó không.
+
+### Luồng xử lý chính
+1. User bấm nút call trên client.
+2. Client phát socket `call:start`.
+3. Gateway nhận event và gọi `CallService`.
+4. `CallService` kiểm tra quyền và tạo record.
+5. Server báo sang người nhận qua socket.
+6. Người nhận accept hoặc reject.
+7. Server cập nhật trạng thái call.
+8. Hai client trao đổi `offer/answer/ice-candidate` qua socket.
+9. Khi kết thúc, server chốt `endedAt` và `duration`.
+
+### Thứ tự code trong module
+1. Tạo schema trước.
+2. Tạo service xử lý create/update.
+3. Tạo query service nếu cần đọc lịch sử.
+4. Nối module vào `realtime`.
+5. Thêm socket events.
+6. Thêm API đọc lịch sử nếu cần.
+
+### Những gì chưa làm ở giai đoạn đầu
+- Không làm group call.
+- Không làm SFU.
+- Không làm TURN ngay từ đầu.
+- Không đụng vào logic message hiện tại.
+- Không gộp call vào message.

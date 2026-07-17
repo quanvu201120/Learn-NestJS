@@ -100,6 +100,22 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
 
     /**
+     * Tăng giá trị số nguyên của một key, nếu key chưa có thì tạo mới với TTL.
+            [
+                [null, 3],   // phần tử số 0 = kết quả của INCR, trả về số sau khi tăng 
+                [null, 1],   // phần tử số 1 = kết quả của EXPIRE
+            ]
+    */
+
+    async incrWithTTL(key: string, ttlSeconds: number) {
+        const pipeline = this.redis.pipeline();
+        pipeline.incr(key);
+        pipeline.expire(key, ttlSeconds);
+        const result = await pipeline.exec();
+        return Number(result?.[0]?.[1] ?? 0);
+    }
+
+    /**
      * Lấy thời gian sống còn lại (TTL) của một Key (tính bằng giây).
      */
     async ttl(key: string) {
