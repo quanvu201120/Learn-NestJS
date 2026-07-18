@@ -26,7 +26,7 @@ export class UserCodeService {
     }
 
     /**
-     * HÃ m helper: Kiá»ƒm tra mÃ£ OTP gá»­i lÃªn so vá»›i mÃ£ OTP Ä‘Ã£ hash lÆ°u trong Redis.
+     * Hàm helper: Kiểm tra mã OTP gửi lên so với mã OTP đã hash lưu trong Redis.
      */
     async verifyCodeWithRedis(keyRedis: string, code: string) {
         const redisCodeActive = await this.redisService.get(keyRedis);

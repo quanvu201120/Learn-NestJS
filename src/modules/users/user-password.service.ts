@@ -28,7 +28,7 @@ export class UserPasswordService {
     ) {}
 
     /**
-     * Äá»•i máº­t kháº©u (cÃ³ kiá»ƒm tra máº­t kháº©u cÅ©).
+     * Đổi mật khẩu (có kiểm tra mật khẩu cũ).
      */
     async updatePassword(
         id: string,
@@ -55,7 +55,7 @@ export class UserPasswordService {
     }
 
     /**
-     * Táº¡o máº­t kháº©u láº§n Ä‘áº§u (cho tÃ i khoáº£n google).
+     * Tạo mật khẩu lần đầu (cho tài khoản google).
      */
     async createPassword(
         id: string,
@@ -78,7 +78,7 @@ export class UserPasswordService {
     }
 
     /**
-     * Gá»­i mail cáº¥p mÃ£ OTP khÃ´i phá»¥c máº­t kháº©u.
+     * Gửi mail cấp mã OTP khôi phục mật khẩu.
      */
     async sendMailForgotPassword(email: string) {
         const user = await this.userModel
@@ -131,7 +131,7 @@ export class UserPasswordService {
     }
 
     /**
-     * Äáº·t láº¡i máº­t kháº©u má»›i thÃ´ng qua mÃ£ OTP tá»« mail.
+     * Đặt lại mật khẩu mới thông qua mã OTP từ mail.
      */
     async resetPassword(email: string, code: string, password: string) {
         const user = await this.userModel
@@ -160,7 +160,7 @@ export class UserPasswordService {
     }
 
     /**
-     * XÃ¡c nháº­n máº­t kháº©u
+     * Xác nhận mật khẩu
      */
     async confirmPassword(userId: string, password: string) {
         const { existingUser } = await this.userQueryService.checkUser(userId);

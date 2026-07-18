@@ -5,7 +5,7 @@ import { serializeAdminUser, serializeUser } from './utils/user.serializer';
 @Injectable()
 export class UserSerializerService {
     /**
-     * Chuáº©n hÃ³a dá»¯ liá»‡u avatar lá»“ng bÃªn trong trÆ°á»›c khi tráº£ object user vá» cho client.
+     * Chuẩn hóa dữ liệu avatar lồng bên trong trước khi trả object user về cho client.
      */
     serializeUserResponse(
         user: UserResponse | null,

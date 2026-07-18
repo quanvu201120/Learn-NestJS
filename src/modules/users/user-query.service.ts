@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
@@ -27,8 +28,12 @@ export class UserQueryService {
         private readonly userSerializerService: UserSerializerService,
     ) {}
 
+    private escapeRegex(value: string) {
+        return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
     /**
-     * Láº¥y danh sÃ¡ch user cÃ³ há»— trá»£ phÃ¢n trang vÃ  filter.
+     * Lấy danh sách user có hỗ trợ phân trang và filter.
      */
     async findAll(
         query: any,
@@ -41,15 +46,16 @@ export class UserQueryService {
         const filter: any = {};
         const andConditions: any[] = [];
 
-        // Láº¥y keyword tá»« query
+        // Lấy keyword từ query
         const keyword = query.query || '';
 
         if (keyword) {
+            const safeKeyword = this.escapeRegex(keyword.trim());
             andConditions.push({
                 $or: [
-                    { name: { $regex: keyword, $options: 'i' } },
-                    { email: { $regex: keyword, $options: 'i' } },
-                    { phone: { $regex: keyword, $options: 'i' } },
+                    { name: { $regex: safeKeyword, $options: 'i' } },
+                    { email: { $regex: safeKeyword, $options: 'i' } },
+                    { phone: { $regex: safeKeyword, $options: 'i' } },
                 ],
             });
         }
@@ -109,7 +115,7 @@ export class UserQueryService {
     }
 
     /**
-     * Láº¥y thÃ´ng tin user an toÃ n (khÃ´ng chá»©a password), tráº£ vá» plain object (lean) Ä‘á»ƒ API response.
+     * Lấy thông tin user an toàn (không chứa password), trả về plain object (lean) để API response.
      */
     async findOneForApi(id: string, forAdmin = false) {
         validateObjectId(id, 'user id');
@@ -123,7 +129,7 @@ export class UserQueryService {
     }
 
     /**
-     * Láº¥y Mongoose Document cá»§a user theo ID (dÃ¹ng cho logic ná»™i bá»™ cáº§n gá»i .save()).
+     * Lấy Mongoose Document của user theo ID (dùng cho logic nội bộ cần gọi .save()).
      */
     async findOne(id: string) {
         validateObjectId(id, 'user id');
@@ -131,7 +137,7 @@ export class UserQueryService {
     }
 
     /**
-     * TÃ¬m kiáº¿m user báº±ng email hoáº·c sá»‘ Ä‘iá»‡n thoáº¡i
+     * Tìm kiếm user bằng email hoặc số điện thoại
      */
     async findOneByEmailOrPhone(
         userId: string,
@@ -195,7 +201,7 @@ export class UserQueryService {
     }
 
     /**
-     * TÃ¬m user báº±ng email hoáº·c sá»‘ Ä‘iá»‡n thoáº¡i (thÆ°á»ng dÃ¹ng trong xÃ¡c thá»±c Login).
+     * Tìm user bằng email hoặc số điện thoại (thường dùng trong xác thực Login).
      */
     async findByEmailOrPhoneForLogin(identifier: string) {
         const isEmail = identifier.includes('@');
@@ -204,7 +210,7 @@ export class UserQueryService {
     }
 
     /**
-     * TÃ¬m user theo email Ä‘á»ƒ dÃ¹ng trong luá»“ng Google login.
+     * Tìm user theo email để dùng trong luồng Google login.
      */
     async findByEmailForLogin(email: string) {
         return await this.userModel.findOne({
@@ -213,7 +219,7 @@ export class UserQueryService {
     }
 
     /**
-     * Äáº¿m sá»‘ lÆ°á»£ng user ID thá»±c sá»± tá»“n táº¡i trong DB, dÃ¹ng khi táº¡o group chat kiá»ƒm tra máº£ng ID truyá»n vÃ o cÃ³ há»£p lá»‡ khÃ´ng.
+     * Đếm số lượng user ID thực sự tồn tại trong DB, dùng khi tạo group chat kiểm tra mảng ID truyền vào có hợp lệ không.
      */
     async countUserIdsExist(objectUserIds: Types.ObjectId[]) {
         return await this.userModel.countDocuments({
@@ -223,7 +229,7 @@ export class UserQueryService {
     }
 
     /**
-     * Kiá»ƒm tra user
+     * Kiểm tra user
      */
     async checkUser(
         userId: string,

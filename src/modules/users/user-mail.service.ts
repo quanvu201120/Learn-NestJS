@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { formatExpireTime } from '@/utils/utils';
@@ -10,7 +12,7 @@ export class UserMailService {
     constructor(private readonly configService: ConfigService) {}
 
     /**
-     * Gá»­i email chá»©a mÃ£ OTP Ä‘á»ƒ kÃ­ch hoáº¡t tÃ i khoáº£n.
+     * Gửi email chứa mã OTP để kích hoạt tài khoản.
      */
     async sendEmailActive(email: string, code: string) {
         const rawExpire = this.configService.get<string>(
@@ -32,7 +34,7 @@ export class UserMailService {
     }
 
     /**
-     * HÃ m helper: Render template HTML (Handlebars) vÃ  gá»­i email qua Resend HTTP API.
+     * Hàm helper: Render template HTML (Handlebars) và gửi email qua Resend HTTP API.
      */
     async sendEmailViaResend(
         to: string,
@@ -75,7 +77,7 @@ export class UserMailService {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                console.error('âŒ Resend API Error Details:', errorData);
+                console.error(' Resend API Error Details:', errorData);
                 throw new Error(
                     `Resend API failed with status ${response.status}`,
                 );
@@ -83,7 +85,7 @@ export class UserMailService {
 
             return await response.json();
         } catch (error) {
-            console.error('âŒ Failed to send email via Resend:', error);
+            console.error(' Failed to send email via Resend:', error);
             throw error;
         }
     }

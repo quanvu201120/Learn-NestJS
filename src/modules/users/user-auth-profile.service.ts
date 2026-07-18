@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import {
     BadRequestException,
     ForbiddenException,
@@ -63,17 +64,17 @@ export class UserAuthProfileService {
     }
 
     /**
-     * Táº¡o tÃ i khoáº£n má»›i, sinh mÃ£ OTP lÆ°u vÃ o Redis vÃ  gá»­i email kÃ­ch hoáº¡t.
-     * Máº·c Ä‘á»‹nh tÃ i khoáº£n táº¡o ra sáº½ á»Ÿ tráº¡ng thÃ¡i isActive = false.
+     * Tạo tài khoản mới, sinh mã OTP lưu vào Redis và gửi email kích hoạt.
+     * Mặc định tài khoản tạo ra sẽ ở trạng thái isActive = false.
      */
     async create(createUserDto: CreateUserDto, creatorRole?: string) {
-        // Cháº·n táº¡o SUPER_ADMIN á»Ÿ má»i trÆ°á»ng há»£p (ká»ƒ cáº£ gá»i qua service)
+        // Chặn tạo SUPER_ADMIN ở mọi trường hợp (kể cả gọi qua service)
         if (createUserDto.role === UserRole.SUPER_ADMIN) {
             throw new ForbiddenException(USER_MESSAGES.MISSING_PERMISSION);
         }
 
-        // Cháº·n táº¡o ADMIN náº¿u ngÆ°á»i táº¡o khÃ´ng pháº£i lÃ  SUPER_ADMIN
-        // (creatorRole undefined tá»« register() cÅ©ng sáº½ bá»‹ cháº·n)
+        // Chặn tạo ADMIN nếu người tạo không phải là SUPER_ADMIN
+        // (creatorRole undefined từ register() cũng sẽ bị chặn)
         if (
             createUserDto.role === UserRole.ADMIN &&
             creatorRole !== UserRole.SUPER_ADMIN
@@ -134,7 +135,7 @@ export class UserAuthProfileService {
     }
 
     /**
-     * Helper Ä‘Äƒng kÃ½ nhanh chá»‰ vá»›i email vÃ  password.
+     * Helper đăng ký nhanh chỉ với email và password.
      */
     async register(email: string, pass: string) {
         return this.create({
@@ -147,7 +148,7 @@ export class UserAuthProfileService {
     }
 
     /**
-     * Táº¡o account local tá»« Google login khi email chÆ°a tá»“n táº¡i.
+     * Tạo account local từ Google login khi email chưa tồn tại.
      */
     async createGoogleAccount(email: string, name?: string) {
         const passwordHash = await hashPassword(
@@ -169,14 +170,14 @@ export class UserAuthProfileService {
     }
 
     /**
-     * Gá»­i email chá»©a mÃ£ OTP Ä‘á»ƒ kÃ­ch hoáº¡t tÃ i khoáº£n.
+     * Gửi email chứa mã OTP để kích hoạt tài khoản.
      */
     async sendEmailActive(email: string, code: string) {
         return await this.userMailService.sendEmailActive(email, code);
     }
 
     /**
-     * KÃ­ch hoáº¡t tÃ i khoáº£n báº±ng mÃ£ OTP do ngÆ°á»i dÃ¹ng nháº­p vÃ o.
+     * Kích hoạt tài khoản bằng mã OTP do người dùng nhập vào.
      */
     async activateUser(email: string, code: string) {
         const user = await this.userModel
@@ -203,7 +204,7 @@ export class UserAuthProfileService {
     }
 
     /**
-     * Gá»­i láº¡i mÃ£ OTP kÃ­ch hoáº¡t tÃ i khoáº£n, cÃ³ check chá»‘ng spam (cooldown).
+     * Gửi lại mã OTP kích hoạt tài khoản, có check chống spam (cooldown).
      */
     async reSendCodeActive(email: string) {
         const user = await this.userModel
@@ -228,14 +229,14 @@ export class UserAuthProfileService {
 
         const codeActive = uuidv4();
 
-        // LÆ°u Redis Äá»’NG Bá»˜ trÆ°á»›c
+        // Lưu Redis ĐỒNG BỘ trước
         await this.userCodeService.saveCodeRedis(
             user._id.toString(),
             codeActive,
             'RESEND',
         );
 
-        // Gá»­i mail báº¥t Ä‘á»“ng bá»™ (fire-and-forget)
+        // Gửi mail bất đồng bộ (fire-and-forget)
         this.userMailService
             .sendEmailActive(user.email, codeActive)
             .catch((error) => {
