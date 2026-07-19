@@ -23,7 +23,7 @@ import { MessageLookupService } from './message-lookup.service';
 import { MessageMediaService } from './message-media.service';
 import { MessageRealtimeService } from './message-realtime.service';
 import { Message, MessageDocument } from './schemas/message.schema';
-import { MessageEnumType } from './types/message';
+import { MessageCreatedEvents, MessageEnumType } from './types/message';
 import { serializeMessage } from './utils/message.serializer';
 
 @Injectable()
@@ -53,6 +53,8 @@ export class MessageCommandService {
      * Sau khi lưu message thành công, hàm cập nhật `lastMessageId`, mở lại conversation
      * cho các thành viên đang bị ẩn (`hiddenHistory.isHidden = true`), rồi phát sự kiện
      * realtime để những client đó refresh sidebar khi tin nhắn đầu tiên xuất hiện.
+     * nếu là create tự tạo session thì phát sự kiện socket ngay,
+     * còn nếu là ở nơi khác gọi, có truyền session vào thì để nơi gọi phát socket sau khi commit transition hoàn tất
      */
     async createMessage(
         senderId: string,
@@ -139,6 +141,11 @@ export class MessageCommandService {
             if (replyMessage.isDeleted) {
                 throw new BadRequestException(MESSAGE_MESSAGES.REPLY_DELETED);
             }
+            if (replyMessage.callId) {
+                throw new BadRequestException(
+                    MESSAGE_MESSAGES.CALL_MESSAGE_ACTION_NOT_ALLOWED,
+                );
+            }
             objectReplyTo = replyMessage._id;
         }
         let uploadedFile: Media | null = null;
@@ -154,6 +161,8 @@ export class MessageCommandService {
                 objectConversationId,
                 file,
             );
+
+            //Định nghĩa hàm create message để sử dụng trong transaction
             const executeMessageCreation = async () => {
                 let createMedia: MediaDocument | null = null;
                 if (uploadedFile) {
@@ -185,25 +194,28 @@ export class MessageCommandService {
                 );
             };
 
+            //Gọi hàm create message tùy thuộc vào việc có session bên ngoài truyền vào không
             if (isExternalSession) {
                 await executeMessageCreation();
             } else {
                 await session.withTransaction(executeMessageCreation);
             }
+
             if (!newMessage) {
                 throw new InternalServerErrorException(
                     MESSAGE_MESSAGES.MESSAGE_NOT_CREATED,
                 );
             }
+            const events: MessageCreatedEvents = {};
             const userHiddenHistory = conversation.hiddenHistory
                 ?.filter((user) => user.isHidden)
                 ?.map((user) => user.userId.toString());
 
             if (userHiddenHistory && userHiddenHistory.length > 0) {
-                this.messageEventService.restoredConversation$.next({
+                events.restoredConversation = {
                     conversationId: conversation._id.toString(),
                     members: userHiddenHistory,
-                });
+                };
             }
             const userIdsNeedNotify =
                 await this.messageRealtimeService.getUnseenMessageUserIds(
@@ -212,10 +224,10 @@ export class MessageCommandService {
                     conversationId,
                 );
             if (userIdsNeedNotify.length > 0) {
-                this.messageEventService.unseenMessage$.next({
+                events.unseenMessage = {
                     conversationId,
                     userIds: userIdsNeedNotify,
-                });
+                };
             }
 
             const newMessageId = (newMessage as MessageDocument)._id.toString();
@@ -223,7 +235,25 @@ export class MessageCommandService {
                 newMessageId,
                 session,
             );
-            this.messageEventService.createdMessage$.next(message);
+            events.createdMessage = message;
+
+            if (!isExternalSession) {
+                if (events.restoredConversation) {
+                    this.messageEventService.restoredConversation$.next(
+                        events.restoredConversation,
+                    );
+                }
+                if (events.unseenMessage) {
+                    this.messageEventService.unseenMessage$.next(
+                        events.unseenMessage,
+                    );
+                }
+                if (events.createdMessage) {
+                    this.messageEventService.createdMessage$.next(
+                        events.createdMessage,
+                    );
+                }
+            }
 
             this.statsService.incrementMessage(type);
             if (file) {
@@ -234,7 +264,7 @@ export class MessageCommandService {
                 this.statsService.incrementUploadBytes(provider, file.size);
             }
 
-            return { message, conversation };
+            return { message, conversation, events };
         } catch (error) {
             await this.messageMediaService.rollbackUploadedMessageMedia(
                 uploadedFile,
@@ -286,6 +316,11 @@ export class MessageCommandService {
         }
         if (checkMessage.isDeleted) {
             throw new BadRequestException(MESSAGE_MESSAGES.ALREADY_DELETED);
+        }
+        if (checkMessage.callId) {
+            throw new BadRequestException(
+                MESSAGE_MESSAGES.CALL_MESSAGE_ACTION_NOT_ALLOWED,
+            );
         }
         const objectMessageId = toObjectId(messageId, 'message id');
         const shouldClearPin =
@@ -382,7 +417,6 @@ export class MessageCommandService {
                 conversationId: objectConversationId,
                 senderId: objectUserId,
                 isDeleted: false,
-                type: MessageEnumType.TEXT,
             })
             .populate({
                 path: 'senderId',
@@ -391,10 +425,16 @@ export class MessageCommandService {
             })
             .populate('replyTo', '-__v')
             .populate('mediaId', '-__v')
+            .populate('callId', '-__v')
             .lean();
 
         if (!message) {
             throw new BadRequestException(MESSAGE_MESSAGES.MESSAGE_NOT_FOUND);
+        }
+        if (message.type !== MessageEnumType.TEXT) {
+            throw new BadRequestException(
+                MESSAGE_MESSAGES.MESSAGE_ACTION_NOT_ALLOWED,
+            );
         }
         const serializedMessage = serializeMessage(message);
 
@@ -422,6 +462,7 @@ export class MessageCommandService {
             })
             .populate('replyTo', '-__v')
             .populate('mediaId', '-__v')
+            .populate('callId', '-__v')
             .lean();
         if (!updatedMessage) {
             throw new BadRequestException(MESSAGE_MESSAGES.MESSAGE_NOT_UPDATED);

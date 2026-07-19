@@ -58,6 +58,11 @@ export class MessagePinService {
         if (message.isDeleted) {
             throw new BadRequestException(MESSAGE_MESSAGES.ALREADY_DELETED);
         }
+        if (message.callId) {
+            throw new BadRequestException(
+                MESSAGE_MESSAGES.CALL_MESSAGE_ACTION_NOT_ALLOWED,
+            );
+        }
 
         const pin = await this.conversationService.pinMessage(
             conversationId,

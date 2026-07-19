@@ -27,6 +27,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { ThrottlerModule } from '@nestjs/throttler';
 import { THROTTLE_LIMITS } from './auth/constants/auth.constant';
 import { ThrottlerUserIpGuard } from './common/throttler-user-ip.guard';
+import { PushSubscriptionsModule } from './modules/push-subscriptions/push-subscriptions.module';
 
 @Module({
     imports: [
@@ -41,6 +42,7 @@ import { ThrottlerUserIpGuard } from './common/throttler-user-ip.guard';
         AuditLogModule,
         ReportsModule,
         NotificationsModule,
+        PushSubscriptionsModule,
         CallsModule,
         ThrottlerModule.forRoot({
             throttlers: [

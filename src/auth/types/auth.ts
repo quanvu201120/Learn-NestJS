@@ -1,6 +1,7 @@
 import { UserResponse } from '@/modules/users/types/user';
 import {
     PenaltyTypeEnum,
+    ReportReasonEnum,
     ReportStatusEnum,
 } from '@/modules/reports/types/report.type';
 
@@ -11,6 +12,7 @@ export type LoginResponse = {
     banUntil?: string | Date;
     appeal?: {
         reportId: string;
+        reason: ReportReasonEnum;
         status: ReportStatusEnum;
         appealDeadline?: string | Date;
         appealReviewDeadline?: string | Date;

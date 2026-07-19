@@ -3,6 +3,7 @@ import { ClientSession } from 'mongoose';
 import { Subject } from 'rxjs';
 import {
     MessageEnumType,
+    MessageCreatedEvents,
     MessageReactionEnumType,
     MessageResponse,
 } from './types/message';
@@ -96,6 +97,18 @@ export class MessagesService {
             file,
             externalSession,
         );
+    }
+
+    emitCreatedMessageEvents(events?: MessageCreatedEvents) {
+        if (events?.restoredConversation) {
+            this.restoredConversation$.next(events.restoredConversation);
+        }
+        if (events?.unseenMessage) {
+            this.unseenMessage$.next(events.unseenMessage);
+        }
+        if (events?.createdMessage) {
+            this.createdMessage$.next(events.createdMessage);
+        }
     }
 
     async getLatestMessageOfConversation(

@@ -9,7 +9,6 @@ export enum CallStatusEnum {
     REJECTED = 'rejected',
     ENDED = 'ended',
     MISSED = 'missed',
-    FAILED = 'failed',
 }
 
 export enum CallEndReasonEnum {

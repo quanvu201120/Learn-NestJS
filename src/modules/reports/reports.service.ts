@@ -45,6 +45,7 @@ import { ReportCleanupService } from './report-cleanup.service';
 import { ReportMediaService } from './report-media.service';
 import { ReportPenaltyService } from './report-penalty.service';
 import { ReportQueryService } from './report-query.service';
+import { ReportSystemActionService } from './report-system-action.service';
 
 @Injectable()
 export class ReportsService {
@@ -61,6 +62,7 @@ export class ReportsService {
         private readonly reportMediaService: ReportMediaService,
         private readonly reportPenaltyService: ReportPenaltyService,
         private readonly reportQueryService: ReportQueryService,
+        private readonly reportSystemActionService: ReportSystemActionService,
         private readonly eventEmitter: EventEmitter2,
     ) {}
 
@@ -222,6 +224,44 @@ export class ReportsService {
         );
     }
 
+    /**
+     * Facade đếm số lần user đã bị throttler chặn trong Redis và
+     * kích hoạt flow auto ban spam hệ thống.
+     */
+    async recordRateLimitViolation(userId: string, req: any) {
+        return await this.reportSystemActionService.recordRateLimitViolation(
+            userId,
+            req,
+            this.createAndResolveSystemReport.bind(this),
+        );
+    }
+
+    /**
+     * Private wrapper resolveReport core
+     * phục vụ cho luồng auto ban spam system
+     * Tạo report mới và resolve trong cùng transaction
+     */
+    private async createAndResolveSystemReport(
+        report: ReportDocument,
+        resolveDto: ResolveReportDto,
+        adminId: string,
+        adminRole: UserRole,
+        req: any,
+    ) {
+        return await this.resolveReport(
+            report,
+            resolveDto,
+            adminId,
+            adminRole,
+            req,
+            true,
+        );
+    }
+
+    /**
+     * Wrapper resolveReport core
+     * Xử lý trả kết quả report truyền thống (không phải luồng auto ban spam system)
+     */
     async resolve(
         id: string,
         resolveDto: ResolveReportDto,
@@ -236,6 +276,28 @@ export class ReportsService {
             throw new BadRequestException(REPORT_MESSAGES.REPORT_NOT_FOUND);
         }
 
+        return await this.resolveReport(
+            report,
+            resolveDto,
+            adminId,
+            adminRole,
+            req,
+        );
+    }
+
+    /**
+     * Private core logic, không dùng trực tiếp
+     * Xử lý trả kết quả report và áp dụng hình phạt trong transaction dùng chung.
+     * Các side effect như revoke session, notification và audit chỉ chạy sau commit transition.
+     */
+    private async resolveReport(
+        report: ReportDocument,
+        resolveDto: ResolveReportDto,
+        adminId: string,
+        adminRole: UserRole,
+        req: any,
+        isNewReport = false,
+    ) {
         if (report.status === ReportStatusEnum.RESOLVING) {
             throw new BadRequestException(
                 REPORT_MESSAGES.REPORT_IS_BEING_PROCESSED,
@@ -286,49 +348,69 @@ export class ReportsService {
                 : adminNote;
 
         const originalStatus = report.status;
-        const claimedReport = await this.reportModel.findOneAndUpdate(
-            { _id: report._id, status: report.status },
-            {
-                $set: {
-                    status: ReportStatusEnum.RESOLVING,
-                },
-            },
-            { returnDocument: 'after' },
+        const reportObject = report.toObject();
+        const objectReportId = toObjectId(report._id.toString(), 'reportId');
+        const objectReporterId = toObjectId(
+            report.reporterId.toString(),
+            'reporterId',
         );
-
-        if (!claimedReport) {
-            throw new BadRequestException(
-                REPORT_MESSAGES.REPORT_ALREADY_RESOLVED,
-            );
-        }
-
+        const objectTargetUserId = toObjectId(
+            report.targetUserId.toString(),
+            'targetUserId',
+        );
+        const objectAvatarMediaId = report.snapshot?.avatarMediaId
+            ? toObjectId(
+                  report.snapshot.avatarMediaId.toString(),
+                  'avatarMediaId',
+              )
+            : undefined;
         const session = await this.reportModel.db.startSession();
-        let finalReport = claimedReport;
+        let finalReport = report;
         let banUntil: Date | undefined;
         let muteUntil: Date | undefined;
 
         try {
             await session.withTransaction(async () => {
-                const claimedInTx = await this.reportModel.findOneAndUpdate(
-                    { _id: report._id, status: ReportStatusEnum.RESOLVING },
-                    {
-                        $set: {
-                            status: resolveDto.status,
-                            adminNote: normalizedAdminNote,
-                            resolvedBy: new Types.ObjectId(adminId),
-                            resolvedAt: new Date(),
-                        },
-                    },
-                    { returnDocument: 'after', session },
-                );
+                //dựa vừa isNewReport để quyết định tạo mới hay update
+                const resolvedAt = new Date();
+                const resolvedBy = new Types.ObjectId(adminId);
+                const resolvedReport = isNewReport
+                    ? await new this.reportModel({
+                          ...reportObject,
+                          _id: objectReportId,
+                          reporterId: objectReporterId,
+                          targetUserId: objectTargetUserId,
+                          snapshot: report.snapshot
+                              ? {
+                                    ...reportObject.snapshot,
+                                    avatarMediaId: objectAvatarMediaId,
+                                }
+                              : undefined,
+                          status: resolveDto.status,
+                          adminNote: normalizedAdminNote,
+                          resolvedBy,
+                          resolvedAt,
+                      }).save({ session })
+                    : await this.reportModel.findOneAndUpdate(
+                          { _id: report._id, status: originalStatus },
+                          {
+                              $set: {
+                                  status: resolveDto.status,
+                                  adminNote: normalizedAdminNote,
+                                  resolvedBy,
+                                  resolvedAt,
+                              },
+                          },
+                          { returnDocument: 'after', session },
+                      );
 
-                if (!claimedInTx) {
+                if (!resolvedReport) {
                     throw new BadRequestException(
                         REPORT_MESSAGES.REPORT_ALREADY_RESOLVED,
                     );
                 }
 
-                finalReport = claimedInTx;
+                finalReport = resolvedReport;
 
                 if (resolveDto.status === ReportStatusEnum.RESOLVED) {
                     const penaltyResult =
@@ -415,25 +497,9 @@ export class ReportsService {
                     );
                 }
             });
-        } catch (error) {
-            await this.reportModel.updateOne(
-                { _id: report._id, status: ReportStatusEnum.RESOLVING },
-                {
-                    $set: { status: originalStatus },
-                    $unset: {
-                        resolvedBy: '',
-                        resolvedAt: '',
-                        penaltyApplied: '',
-                        penaltyType: '',
-                        appealDeadline: '',
-                    },
-                },
-            );
+        } finally {
             await session.endSession();
-            throw error;
         }
-
-        await session.endSession();
 
         if (
             resolveDto.status === ReportStatusEnum.RESOLVED &&

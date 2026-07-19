@@ -6,6 +6,7 @@ import {
     DeleteObjectsCommand,
     PutObjectCommand,
     HeadBucketCommand,
+    HeadObjectCommand,
     S3Client,
 } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
@@ -128,6 +129,34 @@ export class R2Service {
                 Key: objectKey,
             }),
         );
+    }
+
+    /**
+     * Kiểm tra object có tồn tại trên R2 hay không.
+     */
+    async objectExists(objectKey: string) {
+        try {
+            await this.client.send(
+                new HeadObjectCommand({
+                    Bucket: this.bucketName,
+                    Key: objectKey,
+                }),
+            );
+            return true;
+        } catch (error) {
+            const storageError = error as {
+                name?: string;
+                $metadata?: { httpStatusCode?: number };
+            };
+            if (
+                storageError.name === 'NotFound' ||
+                storageError.name === 'NoSuchKey' ||
+                storageError.$metadata?.httpStatusCode === 404
+            ) {
+                return false;
+            }
+            throw error;
+        }
     }
 
     /**

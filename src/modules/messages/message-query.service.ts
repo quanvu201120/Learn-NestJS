@@ -55,6 +55,7 @@ export class MessageQueryService {
             })
             .populate('replyTo', '-__v')
             .populate('mediaId', '-__v')
+            .populate('callId', '-__v')
             .lean();
         if (!lastMessage) {
             throw new BadRequestException(MESSAGE_MESSAGES.MESSAGE_NOT_FOUND);
@@ -128,6 +129,7 @@ export class MessageQueryService {
             })
             .populate('replyTo', '-__v')
             .populate('mediaId', '-__v')
+            .populate('callId', '-__v')
             .sort({ createdAt: -1 })
             .limit(GLOBAL_CONSTANTS.LIMIT_MESSAGES_DEFAULT)
             .lean();

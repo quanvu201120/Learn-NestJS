@@ -11,6 +11,7 @@ import { JwtStrategy } from './passport/jwt.strategy';
 import { SessionModule } from '@/modules/session/session.module';
 import { StatsModule } from '@/modules/stats/stats.module';
 import { ReportsModule } from '@/modules/reports/reports.module';
+import { PushSubscriptionsModule } from '@/modules/push-subscriptions/push-subscriptions.module';
 
 @Module({
     imports: [
@@ -18,6 +19,7 @@ import { ReportsModule } from '@/modules/reports/reports.module';
         SessionModule,
         StatsModule,
         ReportsModule,
+        PushSubscriptionsModule,
         PassportModule,
         JwtModule.registerAsync({
             global: true,

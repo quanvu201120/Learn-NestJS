@@ -3,9 +3,14 @@ import { PenaltyActionEnum } from '../types/report.type';
 export const MUTE_1_DAY = 1;
 export const MUTE_7_DAYS = 7;
 export const MUTE_30_DAYS = 30;
+export const BAN_1_DAY = 1;
 export const BAN_7_DAYS = 7;
 export const BAN_30_DAYS = 30;
 export const BAN_PERMANENT_DAYS = 36500;
+export const RATE_LIMIT_VIOLATION_TTL_SECONDS = 5 * 60;
+export const RATE_LIMIT_BAN_LOCK_TTL_SECONDS = 60;
+export const RATE_LIMIT_BAN_THRESHOLD = 3;
+export const RATE_LIMIT_BAN_DAYS = BAN_1_DAY;
 
 export const PENALTY_RULES = {
     spam_harassment: [
@@ -55,5 +60,6 @@ export const PENALTY_RULES = {
             durationDays: BAN_PERMANENT_DAYS,
         },
     ],
+    system_spam: [],
     other: [],
 };

@@ -18,3 +18,8 @@ export const CALL_HEARTBEAT_CONSTANT = {
     ACCEPT_HEARTBEAT_TTL_SECONDS: 60,
     ACCEPT_HEARTBEAT_INTERVAL_SECONDS: 25,
 } as const;
+
+export const CALL_PUSH_CONSTANT = {
+    INCOMING_CALL_TITLE: 'Cuộc gọi đến',
+    INCOMING_CALL_BODY: 'Bạn có một cuộc gọi mới trên HaloChat.',
+} as const;

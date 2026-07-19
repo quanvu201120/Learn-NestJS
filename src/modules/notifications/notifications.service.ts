@@ -59,7 +59,10 @@ export class NotificationsService {
                 : refId
                   ? refId.toString()
                   : null;
-        const currentReportStatus = metadata.reportStatus;
+        const currentReportStatus =
+            refId && typeof refId === 'object' && 'status' in refId
+                ? refId.status
+                : metadata.reportStatus;
         const hasAppealed =
             currentReportStatus === 'resolved'
                 ? false

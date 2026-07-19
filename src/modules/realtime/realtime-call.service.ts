@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
@@ -25,6 +26,7 @@ import {
     CallHeartbeatResult,
     CallAckResult,
     CallTokenPayload,
+    CallSyncResult,
     SignalAckResult,
     SocketResponse,
 } from './types/responseSocket';
@@ -33,7 +35,9 @@ import {
     CALL_HEARTBEAT_CONSTANT,
     CALL_MESSAGES,
     CALL_RATE_LIMIT_CONSTANT,
+    CALL_PUSH_CONSTANT,
 } from '../calls/constants/call.constant';
+import { PushSubscriptionsService } from '../push-subscriptions/push-subscriptions.service';
 
 @Injectable()
 export class RealtimeCallService {
@@ -48,6 +52,7 @@ export class RealtimeCallService {
         private readonly redisService: RedisService,
         private readonly configService: ConfigService,
         private readonly jwtService: JwtService,
+        private readonly pushSubscriptionsService: PushSubscriptionsService,
     ) {}
 
     /**
@@ -262,6 +267,46 @@ export class RealtimeCallService {
         );
     }
 
+    async syncActiveCall(
+        client: Socket,
+    ): Promise<SocketResponse<CallSyncResult>> {
+        const payload =
+            await this.realtimeAuthService.validateActiveSession(client);
+        const staleBefore = new Date(
+            Date.now() - REALTIME_CONSTANT.CALL_RING_TIMEOUT_MS,
+        );
+        const call = await this.callService.findActiveCallingCallByUserId(
+            payload._id,
+            staleBefore,
+        );
+
+        if (!call) {
+            return {
+                ok: true,
+                data: {
+                    hasActiveCall: false,
+                },
+            };
+        }
+
+        this.setSocketActiveCall(client, call._id.toString());
+        const callToken = await this.createCallToken(call);
+
+        return {
+            ok: true,
+            data: {
+                hasActiveCall: true,
+                callId: call._id.toString(),
+                callerId: call.callerId.toString(),
+                calleeId: call.calleeId.toString(),
+                conversationId: call.conversationId.toString(),
+                callType: call.callType,
+                callToken,
+                createdAt: (call as { createdAt?: Date }).createdAt,
+            },
+        };
+    }
+
     /**
      * Xác thực JWT call token trước khi cho phép forward signaling WebRTC.
      */
@@ -377,6 +422,15 @@ export class RealtimeCallService {
                 conversationId: body.conversationId,
                 callType: body.callType,
                 callToken,
+            });
+            await this.pushSubscriptionsService.sendToUser(body.calleeId, {
+                type: 'call:incoming',
+                title: CALL_PUSH_CONSTANT.INCOMING_CALL_TITLE,
+                body: CALL_PUSH_CONSTANT.INCOMING_CALL_BODY,
+                callId: call._id.toString(),
+                conversationId: body.conversationId,
+                url: `/chat/${body.conversationId}`,
+                tag: `call:${call._id.toString()}`,
             });
             this.scheduleCallTimeout(
                 server,

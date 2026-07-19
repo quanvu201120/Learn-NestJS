@@ -44,7 +44,10 @@ export class ConversationCommandService {
     ) {}
 
     /**
-     * Tạo conversation mới hoặc khôi phục conversation 1-1 đã tồn tại.
+     * Tạo conversation mới
+     * hoặc khôi phục conversation 1-1 đã tồn tại.
+     * hoặc user tạo group thành công nhưng có sự cố hiển thị tạo thất bại,
+     * trong vòng 1p tạo lại group với yêu cầu cũ thì trả về group vừa tạo
      */
     async createConversation(
         createConversationDto: CreateConversationDto,
@@ -213,6 +216,35 @@ export class ConversationCommandService {
 
             for (const friendId of friendIds) {
                 acceptedBy.push(toObjectId(friendId, 'user id'));
+            }
+        }
+
+        if (isGroup) {
+            const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
+            const existingRecentGroup = await this.conversationModel
+                .findOne({
+                    isGroup: true,
+                    name,
+                    adminGroupId: objectCurrentUserId,
+                    users: {
+                        $all: listMember,
+                        $size: listMember.length,
+                    },
+                    createdAt: { $gte: oneMinuteAgo },
+                })
+                .select('-__v')
+                .populate({
+                    path: 'users',
+                    select: '-password -email -phone -__v',
+                    populate: { path: 'avatar', select: '-__v' },
+                })
+                .populate('lastMessageId', '-__v')
+                .lean();
+
+            if (existingRecentGroup) {
+                return await this.conversationSerializerService.serializeConversation(
+                    existingRecentGroup,
+                );
             }
         }
 

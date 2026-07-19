@@ -43,6 +43,7 @@ export const REPORT_MESSAGES = {
     SUPER_ADMIN_DISMISS_NOTE: 'Bỏ qua báo cáo SUPER_ADMIN',
     MERGED_REPORT_NOTE: (reportId: string) =>
         `Đã xử lý gộp chung với báo cáo #${reportId}`,
+    SYSTEM_BAN_SPAM_DESCRIPTION: 'Auto ban: Spam hệ thống',
 } as const;
 
 export const REPORT_CONSTANTS = {

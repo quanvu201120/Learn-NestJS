@@ -14,6 +14,7 @@ import { ReportCleanupService } from './report-cleanup.service';
 import { ReportMediaService } from './report-media.service';
 import { ReportPenaltyService } from './report-penalty.service';
 import { ReportQueryService } from './report-query.service';
+import { ReportSystemActionService } from './report-system-action.service';
 
 @Module({
     imports: [
@@ -34,6 +35,7 @@ import { ReportQueryService } from './report-query.service';
         ReportQueryService,
         ReportMediaService,
         ReportPenaltyService,
+        ReportSystemActionService,
         ReportsCron,
     ],
     exports: [ReportsService],

@@ -36,6 +36,23 @@ export class CloudinaryService {
     }
 
     /**
+     * Kiểm tra resource có tồn tại trên Cloudinary hay không.
+     */
+    async resourceExists(publicId: string) {
+        try {
+            await cloudinary.api.resource(publicId, {
+                resource_type: 'image',
+            });
+            return true;
+        } catch (error) {
+            if ((error as { http_code?: number }).http_code === 404) {
+                return false;
+            }
+            throw error;
+        }
+    }
+
+    /**
      * Stream buffer ảnh lên Cloudinary và map kết quả trả về
      * thành shape media mà ứng dụng đang dùng.
      */

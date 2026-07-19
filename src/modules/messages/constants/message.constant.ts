@@ -16,4 +16,7 @@ export const MESSAGE_MESSAGES = {
     CANNOT_SEND_MESSAGE_TO_BLOCKED_USER:
         'Không thể gửi tin nhắn cho người đã chặn bạn',
     USER_MUTED: (time: string) => `Bạn đã bị cấm chat đến ${time}`,
+    CALL_MESSAGE_ACTION_NOT_ALLOWED:
+        'Tin nhắn cuộc gọi không hỗ trợ thao tác này',
+    MESSAGE_ACTION_NOT_ALLOWED: 'Tin nhắn này không hỗ trợ thao tác này',
 } as const;

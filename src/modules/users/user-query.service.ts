@@ -230,6 +230,7 @@ export class UserQueryService {
 
     /**
      * Kiểm tra user
+     * return { existingUser, objectUserId };
      */
     async checkUser(
         userId: string,

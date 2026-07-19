@@ -12,6 +12,7 @@ import { RealtimeChatCommandService } from './realtime-chat-command.service';
 import { RealtimeEventBridgeService } from './realtime-event-bridge.service';
 import { CallsModule } from '../calls/calls.module';
 import { RealtimeCallService } from './realtime-call.service';
+import { PushSubscriptionsModule } from '../push-subscriptions/push-subscriptions.module';
 @Module({
     imports: [
         AuthModule,
@@ -22,6 +23,7 @@ import { RealtimeCallService } from './realtime-call.service';
         SessionModule,
         RelationshipsModule,
         CallsModule,
+        PushSubscriptionsModule,
     ],
     exports: [ChatGateway],
     providers: [

@@ -4,7 +4,7 @@
 import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Session } from './schemas/session.schema';
-import { Model } from 'mongoose';
+import { ClientSession, Model } from 'mongoose';
 import { toObjectId } from '@/utils/utils';
 import { randomUUID } from 'crypto';
 import { SessionDeviceResponse } from './types/session';
@@ -94,13 +94,19 @@ export class SessionDeviceService {
     /**
      * Xóa toàn bộ session của user theo `deviceId`.
      */
-    async removeDevice(userId: string, deviceId: string) {
+    async removeDevice(
+        userId: string,
+        deviceId: string,
+        session?: ClientSession,
+    ) {
         const objectId = toObjectId(userId, 'user id');
 
-        const result = await this.sessionModel.deleteMany({
-            userId: objectId,
-            deviceId,
-        });
+        const result = await this.sessionModel
+            .deleteMany({
+                userId: objectId,
+                deviceId,
+            })
+            .session(session || null);
 
         return {
             deletedCount: result.deletedCount,

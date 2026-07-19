@@ -26,7 +26,8 @@ export class MessageLookupService {
                 populate: { path: 'avatar', select: '-__v' },
             })
             .populate('replyTo', '-__v')
-            .populate('mediaId', '-__v');
+            .populate('mediaId', '-__v')
+            .populate('callId', '-__v');
 
         if (session) {
             query = query.session(session);

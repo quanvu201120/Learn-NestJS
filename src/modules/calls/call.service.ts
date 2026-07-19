@@ -4,20 +4,26 @@ import {
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { Connection, Model, Types } from 'mongoose';
 import { Call, CallDocument } from './schemas/call.schema';
 import { CallEndReasonEnum, CallStatusEnum, CallTypeEnum } from './types/call';
 import { UsersService } from '../users/users.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { RelationshipsService } from '../relationships/relationships.service';
 import { toObjectId } from '@/utils/utils';
+import { Message, MessageDocument } from '../messages/schemas/message.schema';
+import { MessageEnumType } from '../messages/types/message';
 
 @Injectable()
 export class CallService {
     constructor(
         @InjectModel(Call.name)
         private readonly callModel: Model<CallDocument>,
+        @InjectModel(Message.name)
+        private readonly messageModel: Model<MessageDocument>,
+        @InjectConnection()
+        private readonly connection: Connection,
         private readonly usersService: UsersService,
         private readonly conversationsService: ConversationsService,
         private readonly relationshipsService: RelationshipsService,
@@ -43,6 +49,21 @@ export class CallService {
                 },
                 $or: [{ callerId: objectUserId }, { calleeId: objectUserId }],
             })
+            .lean();
+    }
+
+    /**
+     * Tìm cuộc gọi `calling` còn hiệu lực của user để sync lại sau khi reconnect socket.
+     */
+    async findActiveCallingCallByUserId(userId: string, beforeDate: Date) {
+        const objectUserId = toObjectId(userId, 'userId');
+        return this.callModel
+            .findOne({
+                status: CallStatusEnum.CALLING,
+                createdAt: { $gte: beforeDate },
+                calleeId: objectUserId,
+            })
+            .sort({ createdAt: -1 })
             .lean();
     }
 
@@ -101,6 +122,14 @@ export class CallService {
             calleeId,
         );
         if (blocked) {
+            throw new BadRequestException(CALL_MESSAGES.CALL_FORBIDDEN);
+        }
+
+        const isFriend = await this.relationshipsService.checkIsFriend(
+            callerId,
+            calleeId,
+        );
+        if (!isFriend) {
             throw new BadRequestException(CALL_MESSAGES.CALL_FORBIDDEN);
         }
 
@@ -192,6 +221,7 @@ export class CallService {
             }
             throw new BadRequestException(CALL_MESSAGES.ALREADY_ENDED);
         }
+        await this.createCallMessage(call);
         return call;
     }
 
@@ -215,6 +245,7 @@ export class CallService {
             throw new BadRequestException(CALL_MESSAGES.CALL_FORBIDDEN);
         }
         if (existingCall.status === CallStatusEnum.ENDED) {
+            await this.createCallMessage(existingCall);
             return existingCall;
         }
 
@@ -253,6 +284,7 @@ export class CallService {
         if (!call) {
             throw new BadRequestException(CALL_MESSAGES.ALREADY_ENDED);
         }
+        await this.createCallMessage(call);
         return call;
     }
 
@@ -276,9 +308,85 @@ export class CallService {
             { returnDocument: 'after' },
         );
         if (!call) {
-            return await this.callModel.findById(callId);
+            const existingCall = await this.callModel.findById(callId);
+            if (existingCall?.status === CallStatusEnum.MISSED) {
+                await this.createCallMessage(existingCall);
+            }
+            return existingCall;
         }
+        await this.createCallMessage(call);
         return call;
+    }
+
+    /**
+     * Tạo một tin nhắn mô tả trạng thái cuộc gọi
+     */
+    async createMissingCallMessages() {
+        const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+        const calls = await this.callModel
+            .find({
+                status: {
+                    $in: [
+                        CallStatusEnum.ENDED,
+                        CallStatusEnum.MISSED,
+                        CallStatusEnum.REJECTED,
+                    ],
+                },
+                endedAt: { $gte: twoDaysAgo, $lte: new Date() },
+            })
+            .sort({ endedAt: 1 });
+
+        for (let i = 0; i < calls.length; i += 10) {
+            const batch = calls.slice(i, i + 10);
+
+            await Promise.all(
+                batch.map(async (call) => {
+                    const message = await this.messageModel
+                        .exists({ callId: call._id })
+                        .lean();
+
+                    if (!message) {
+                        await this.createCallMessage(call);
+                    }
+                }),
+            );
+        }
+    }
+
+    private async createCallMessage(call: CallDocument) {
+        const session = await this.connection.startSession();
+        try {
+            await session.withTransaction(async () => {
+                const messages = await this.messageModel.create(
+                    [
+                        {
+                            conversationId: call.conversationId,
+                            senderId: call.callerId,
+                            type:
+                                call.callType === CallTypeEnum.AUDIO
+                                    ? MessageEnumType.CALL_AUDIO
+                                    : MessageEnumType.CALL_VIDEO,
+                            callId: call._id,
+                        },
+                    ],
+                    { session },
+                );
+
+                await this.conversationsService.updateLastMessageAndRestoreConversation(
+                    call.conversationId.toString(),
+                    messages[0]._id.toString(),
+                    call.callerId.toString(),
+                    session,
+                );
+            });
+        } catch (error) {
+            if ((error as { code?: number }).code === 11000) {
+                return;
+            }
+            throw error;
+        } finally {
+            await session.endSession();
+        }
     }
 
     /**

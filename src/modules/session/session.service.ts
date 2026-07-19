@@ -4,7 +4,7 @@
 import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Session } from './schemas/session.schema';
-import { Model, Types } from 'mongoose';
+import { ClientSession, Model, Types } from 'mongoose';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { toObjectId, validateObjectId } from '@/utils/utils';
 import { CleanupJobsService } from '../cleanup-jobs/cleanup-jobs.service';
@@ -84,8 +84,16 @@ export class SessionService {
     /**
      * Facade cho thao tác xóa một thiết bị, xóa toàn bộ session cùng `deviceId`.
      */
-    async removeDevice(userId: string, deviceId: string) {
-        return await this.sessionDeviceService.removeDevice(userId, deviceId);
+    async removeDevice(
+        userId: string,
+        deviceId: string,
+        session?: ClientSession,
+    ) {
+        return await this.sessionDeviceService.removeDevice(
+            userId,
+            deviceId,
+            session,
+        );
     }
 
     /**

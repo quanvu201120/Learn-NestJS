@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable } from '@nestjs/common';
 import { Types } from 'mongoose';
 import {
@@ -26,30 +27,60 @@ export class ReportMediaService {
             return [];
         }
 
-        const uploadedMedias: MediaDocument[] = [];
         const objectReporterId = new Types.ObjectId(reporterId);
 
-        try {
-            for (const file of files) {
-                const uploadedMedia =
-                    await this.mediaService.uploadImageToCloudinary(
-                        objectReporterId,
-                        OwnerTypeEnum.USER,
-                        objectReporterId,
-                        file,
-                        MEDIA_CONSTANTS.REPORT_EVIDENCE_FOLDER,
-                    );
+        const results = await Promise.all(
+            files.map(async (file) => {
+                let publicId = '';
 
-                const createdMedia =
-                    await this.mediaService.createMedia(uploadedMedia);
-                uploadedMedias.push(createdMedia);
-            }
+                try {
+                    const uploadedMedia =
+                        await this.mediaService.uploadImageToCloudinary(
+                            objectReporterId,
+                            OwnerTypeEnum.USER,
+                            objectReporterId,
+                            file,
+                            MEDIA_CONSTANTS.REPORT_EVIDENCE_FOLDER,
+                        );
+                    publicId = uploadedMedia.publicId!;
+                    const createdMedia =
+                        await this.mediaService.createMedia(uploadedMedia);
 
+                    return { createdMedia, publicId, error: null };
+                } catch (error) {
+                    return {
+                        createdMedia: null,
+                        publicId,
+                        error,
+                    };
+                }
+            }),
+        );
+
+        const failedResult = results.find((result) => result.error);
+        const uploadedMedias = results
+            .filter((result) => result.createdMedia)
+            .map((result) => result.createdMedia as MediaDocument);
+
+        if (!failedResult) {
             return uploadedMedias;
-        } catch (error) {
-            await this.rollbackEvidenceImages(uploadedMedias);
-            throw error;
         }
+
+        const orphanPublicIds = results
+            .filter((result) => result.publicId && !result.createdMedia)
+            .map((result) => result.publicId);
+
+        if (orphanPublicIds.length > 0) {
+            await this.mediaService
+                .deleteImagesFromCloudinaryWithCleanup(orphanPublicIds, {
+                    entityType: CleanupJobEntityEnum.REPORT,
+                    resourceType: CleanupJobResourceEnum.REPORT_MEDIA,
+                })
+                .catch(() => false);
+        }
+
+        await this.rollbackEvidenceImages(uploadedMedias);
+        throw failedResult.error;
     }
 
     /**

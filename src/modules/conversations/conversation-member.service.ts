@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
@@ -6,12 +7,15 @@ import {
     Injectable,
     forwardRef,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { Connection, Model, Types } from 'mongoose';
 import { toObjectId } from '@/utils/utils';
 import { RedisService } from '@/redis/redis.service';
 import { MessagesService } from '../messages/messages.service';
-import { MessageEnumType } from '../messages/types/message';
+import {
+    MessageCreatedEvents,
+    MessageEnumType,
+} from '../messages/types/message';
 import { RelationshipsService } from '../relationships/relationships.service';
 import { UsersService } from '../users/users.service';
 import {
@@ -31,6 +35,8 @@ export class ConversationMemberService {
     constructor(
         @InjectModel(Conversation.name)
         private readonly conversationModel: Model<ConversationDocument>,
+        @InjectConnection()
+        private readonly connection: Connection,
 
         @Inject(forwardRef(() => MessagesService))
         private readonly messageService: MessagesService,
@@ -127,53 +133,75 @@ export class ConversationMemberService {
             );
         }
 
-        const result = await this.conversationModel
-            .findByIdAndUpdate(
-                objectConversationId,
-                {
-                    $addToSet: {
-                        users: {
-                            $each: validMemberIds,
+        const session = await this.connection.startSession();
+        let result: any = null;
+        let messageEvents: MessageCreatedEvents | undefined;
+
+        try {
+            await session.withTransaction(async () => {
+                result = await this.conversationModel
+                    .findByIdAndUpdate(
+                        objectConversationId,
+                        {
+                            $addToSet: {
+                                users: {
+                                    $each: validMemberIds,
+                                },
+                            },
+                            $push: {
+                                hiddenHistory: {
+                                    $each: validMemberIds.map((memberId) => ({
+                                        userId: memberId,
+                                        isHidden: false,
+                                        hiddenAt: new Date(),
+                                    })),
+                                },
+                            },
                         },
-                    },
-                    $push: {
-                        hiddenHistory: {
-                            $each: validMemberIds.map((memberId) => ({
-                                userId: memberId,
-                                isHidden: false,
-                                hiddenAt: new Date(),
-                            })),
-                        },
-                    },
-                },
-                { returnDocument: 'after' },
-            )
-            .select('-__v')
-            .populate({
-                path: 'users',
-                select: '-password -email -phone -__v',
-                populate: { path: 'avatar', select: '-__v' },
-            })
-            .populate('lastMessageId', '-__v')
-            .populate('avatar', '-__v')
-            .lean();
+                        { returnDocument: 'after', session },
+                    )
+                    .select('-__v')
+                    .populate({
+                        path: 'users',
+                        select: '-password -email -phone -__v',
+                        populate: { path: 'avatar', select: '-__v' },
+                    })
+                    .populate('lastMessageId', '-__v')
+                    .populate('avatar', '-__v')
+                    .lean();
+
+                if (result) {
+                    const addedUsers = result.users as any[];
+                    const addedNames = addedUsers
+                        .filter((u) =>
+                            validMemberIds.some((memberId) =>
+                                memberId.equals(u._id),
+                            ),
+                        )
+                        .map((u) => u.name)
+                        .join(', ');
+
+                    const createdMessage =
+                        await this.messageService.createMessage(
+                            currentUserId,
+                            id,
+                            MessageEnumType.SYSTEM,
+                            CONVERSATION_MESSAGES.SYSTEM_ADDED_MEMBERS(
+                                addedNames,
+                            ),
+                            undefined,
+                            undefined,
+                            session,
+                        );
+                    messageEvents = createdMessage.events;
+                }
+            });
+        } finally {
+            await session.endSession();
+        }
 
         if (result) {
-            const addedUsers = result.users as any[];
-            const addedNames = addedUsers
-                .filter((u) =>
-                    validMemberIds.some((memberId) => memberId.equals(u._id)),
-                )
-                .map((u) => u.name)
-                .join(', ');
-
-            await this.messageService.createMessage(
-                currentUserId,
-                id,
-                MessageEnumType.SYSTEM,
-                CONVERSATION_MESSAGES.SYSTEM_ADDED_MEMBERS(addedNames),
-            );
-
+            this.messageService.emitCreatedMessageEvents(messageEvents);
             this.conversationEventService.memberAdded$.next({
                 conversationId: id,
                 addedMemberIds: validMemberIds.map((memberId) =>
@@ -222,37 +250,6 @@ export class ConversationMemberService {
                 conversation,
                 memberId,
             );
-
-        const result = await this.conversationModel
-            .findByIdAndUpdate(
-                objectConversationId,
-                {
-                    $pull: {
-                        users: objectMemberId,
-                        hiddenHistory: { userId: objectMemberId },
-                        acceptedBy: objectMemberId,
-                    },
-                    $unset: {
-                        [`readReceipts.${memberId}`]: 1,
-                    },
-                },
-                { returnDocument: 'after' },
-            )
-            .select('-__v')
-            .populate({
-                path: 'users',
-                select: '-password -email -phone -__v',
-                populate: { path: 'avatar', select: '-__v' },
-            })
-            .populate('lastMessageId', '-__v')
-            .populate('avatar', '-__v')
-            .lean();
-
-        if (!result) {
-            throw new BadRequestException(
-                CONVERSATION_MESSAGES.CONVERSATION_NOT_FOUND,
-            );
-        }
         const removedUser = await this.userService.findOne(memberId);
         const removedName = removedUser?.name || memberId;
 
@@ -260,14 +257,59 @@ export class ConversationMemberService {
             currentUserId === memberId
                 ? CONVERSATION_MESSAGES.SYSTEM_LEFT_GROUP(removedName)
                 : CONVERSATION_MESSAGES.SYSTEM_REMOVED_FROM_GROUP(removedName);
+        const session = await this.connection.startSession();
+        let result: any = null;
+        let messageEvents: MessageCreatedEvents | undefined;
 
-        await this.messageService.createMessage(
-            currentUserId,
-            id,
-            MessageEnumType.SYSTEM,
-            messageContent,
-        );
+        try {
+            await session.withTransaction(async () => {
+                result = await this.conversationModel
+                    .findByIdAndUpdate(
+                        objectConversationId,
+                        {
+                            $pull: {
+                                users: objectMemberId,
+                                hiddenHistory: { userId: objectMemberId },
+                                acceptedBy: objectMemberId,
+                            },
+                            $unset: {
+                                [`readReceipts.${memberId}`]: 1,
+                            },
+                        },
+                        { returnDocument: 'after', session },
+                    )
+                    .select('-__v')
+                    .populate({
+                        path: 'users',
+                        select: '-password -email -phone -__v',
+                        populate: { path: 'avatar', select: '-__v' },
+                    })
+                    .populate('lastMessageId', '-__v')
+                    .populate('avatar', '-__v')
+                    .lean();
 
+                if (!result) {
+                    throw new BadRequestException(
+                        CONVERSATION_MESSAGES.CONVERSATION_NOT_FOUND,
+                    );
+                }
+
+                const createdMessage = await this.messageService.createMessage(
+                    currentUserId,
+                    id,
+                    MessageEnumType.SYSTEM,
+                    messageContent,
+                    undefined,
+                    undefined,
+                    session,
+                );
+                messageEvents = createdMessage.events;
+            });
+        } finally {
+            await session.endSession();
+        }
+
+        this.messageService.emitCreatedMessageEvents(messageEvents);
         await this.redisService.removeUnseenConversationWithCleanup(
             memberId,
             id,

@@ -1,197 +1,117 @@
-## Kế hoạch: MVP gọi thoại và video 1-1
+# Plan: Auto ban khi user hit rate limit nhiều lần
 
-### Mục tiêu
-Làm `gọi thoại 1-1` trước, rồi mở rộng cùng flow đó sang `video 1-1`, trong khi vẫn giữ nguyên logic chặn/thành viên hiện có.
+## Ý kiến nhanh
 
-### Phạm vi
-- Chỉ làm `1-1`.
-- Không làm gọi nhóm.
-- Chưa dùng SFU/media server.
-- Ban đầu chưa cần TURN.
-- NestJS chỉ dùng để signaling.
-- WebRTC trên client sẽ truyền media.
+Ý tưởng dùng Redis để đếm số lần user bị rate limit trong cửa sổ 5 phút là hợp lý với repo hiện tại. Project đã có `ThrottlerUserIpGuard`, `RedisService.incrWithTTL()`, flow ban qua `ReportsService.resolve()`, revoke session, emit `user.banned`, notification và audit log. Vì vậy nên hook logic ngay tại guard khi request bị throttler chặn, sau đó gọi một service nhỏ để tạo report hệ thống và resolve bằng flow hiện tại.
 
-### Bước 1: Rà lại và tận dụng realtime hiện có
-- Tận dụng socket gateway đang có trong `src/modules/realtime/chat.gateway.ts`.
-- Tận dụng luôn luồng xác thực auth/session ở phần kết nối socket.
-- Tận dụng các kiểm tra block quan hệ và membership cuộc trò chuyện hiện tại.
+Không nên xử lý ở từng controller vì sẽ bỏ sót endpoint và làm controller dày. Cũng không nên chỉ set thẳng `user.banUntil` vì sẽ lệch audit/report/appeal/session cleanup hiện tại.
 
-### Bước 2: Thêm model miền dữ liệu cho cuộc gọi
-- Tạo `Call` model/schema riêng, không trộn dữ liệu cuộc gọi vào `messages`.
-- Lưu các dữ liệu riêng cho cuộc gọi như người gọi, người nhận, conversation, loại cuộc gọi, trạng thái, thời điểm, và thời lượng.
-- Giữ nguyên dữ liệu message như cũ.
+## Rule đề xuất
 
-### Bước 3: Thêm lớp service cho call
-- Tạo service/module riêng để tạo call và cập nhật trạng thái.
-- Gom toàn bộ rule vào một chỗ:
-  - user tồn tại
-  - user đã được xác thực
-  - user không bị ban/disable
-  - hai user không chặn nhau
-  - user được phép tham gia conversation
+- Ngưỡng request hiện tại vẫn dùng config throttler: `GLOBAL_LIMIT = 500 req / 1 phút` nếu đang cấu hình như vậy.
+- Khi một user đã đăng nhập bị throttler chặn 1 lần, tăng counter Redis:
+  - key: `rate-limit:violations:user:{userId}`
+  - TTL: `300` giây
+  - value: số lần hit throttler trong 5 phút
+- Nếu counter đạt `3` trong TTL 5 phút:
+  - tạo report hệ thống với reason mới `SYSTEM_SPAM`
+  - resolve report bằng penalty override `BAN` trong `1` ngày
+  - dùng chung flow report hiện tại để có audit log, revoke session, event `user.banned`, notification và appeal context
+  - xoá counter để tránh trigger lặp sau khi ban
+- Chỉ auto-ban user đã xác thực. Request anonymous chỉ trả 429 như hiện tại, hoặc nếu muốn thì chỉ đếm IP để quan sát, chưa ban được user.
 
-### Bước 4: Thêm các event signaling qua WebSocket
-- Thêm các socket event:
-  - `call:start`
-  - `call:accept`
-  - `call:reject`
-  - `call:end`
-  - `call:offer`
-  - `call:answer`
-  - `call:ice-candidate`
-- Giữ NestJS chỉ làm cầu nối signaling.
-- Không truyền audio/video qua NestJS.
+## Thay đổi tối thiểu nên làm
 
-### Bước 5: Triển khai gọi thoại 1-1
-- Trên client, chỉ xin quyền microphone.
-- Dùng `RTCPeerConnection` với STUN.
-- Đảm bảo gọi thoại có thể kết nối giữa 2 thiết bị/mạng khác nhau trong mức có thể.
+1. Thêm reason mới
+   - File: `src/modules/reports/types/report.type.ts`
+   - Thêm `SYSTEM_SPAM = 'system_spam'` vào `ReportReasonEnum`.
+   - File: `src/modules/reports/constants/penalty.constant.ts`
+   - Có thể thêm rule rỗng cho `system_spam`, vì auto-ban sẽ dùng override `BAN 1 ngày` để không ảnh hưởng strike rule thường.
 
-### Bước 6: Mở rộng cùng flow đó sang gọi video 1-1
-- Tái sử dụng cùng luồng signaling và lưu call.
-- Đổi media constraints ở client để thêm camera.
-- Giữ `callType` là `audio | video`.
+2. Thêm service xử lý auto-ban trong reports module
+   - Gợi ý file: `src/modules/reports/report-system-action.service.ts`
+   - Nhiệm vụ:
+     - nhận `targetUserId`, metadata rate limit, và `req`
+     - kiểm tra user tồn tại, không ban `SUPER_ADMIN`, không giảm án ban nếu user đang bị ban lâu hơn
+     - tạo report với:
+       - `reporterId`: system actor
+       - `targetUserId`: user bị chặn
+       - `reason`: `ReportReasonEnum.SYSTEM_SPAM`
+       - `status`: `PENDING`
+       - `description`: ví dụ `Auto ban: hit rate limit 3 lần trong 5 phút`
+       - `snapshot`: avatar/name/bio/role hiện tại
+     - gọi `ReportsService.resolve()` với:
+       - `status: RESOLVED`
+       - `adminNote`: mô tả rule
+       - `overridePenaltyAction: PenaltyActionEnum.BAN`
+       - `overridePenaltyDurationDays: 1`
+   - Cần chốt system actor:
+     - tốt nhất thêm env `SYSTEM_ADMIN_ID` trỏ tới một admin/super admin thật trong DB để audit log có `actorId` hợp lệ
+     - nếu chưa có, có thể dùng chính user bị ban làm `reporterId` nhưng audit sẽ kém rõ ràng, không nên
 
-### Bước 7: Hiển thị lịch sử cuộc gọi trong màn hình chat
-- Lưu message và call riêng biệt.
-- Khi mở chat detail thì load cả hai nguồn.
-- Gộp theo `createdAt` ở client hoặc qua endpoint timeline.
-- Render các dòng call như item trong timeline chat.
+3. Hook vào throttler guard
+   - File: `src/common/throttler-user-ip.guard.ts`
+   - Override method xử lý khi throttler throw 429 hoặc bọc `super.canActivate()` để bắt `ThrottlerException`.
+   - Khi catch 429:
+     - nếu `req.user?._id` tồn tại, gọi service đếm violation
+     - vẫn throw lại exception 429 để giữ response shape/status hiện tại
+   - Guard đang là global `APP_GUARD`, nên logic này sẽ áp dụng toàn API sau auth guard.
 
-### Bước 8: Thêm xử lý vòng đời cơ bản
-- Xử lý missed call.
-- Xử lý timeout.
-- Xử lý ended call.
-- Lưu duration và status cuối cùng.
+4. Thêm service đếm Redis
+   - Có thể đặt trong `src/common` nếu guard dùng trực tiếp, hoặc trong `reports` nếu muốn gần nghiệp vụ ban.
+   - Dùng `RedisService.incrWithTTL(key, 300)`.
+   - Nếu count `< 3`: không làm gì thêm.
+   - Nếu count `>= 3`:
+     - dùng lock Redis chống nhiều request cùng trigger:
+       - key: `rate-limit:ban-lock:user:{userId}`
+       - TTL: `60` giây
+       - `setIfNotExistsWithTTL()`
+     - nếu lock lấy được thì gọi auto-ban service
+     - xoá counter sau khi ban thành công
 
-### Bước 9: Test theo mức độ thực tế tăng dần
-- Localhost.
-- Hai thiết bị cùng Wi-Fi.
-- Hai mạng khác nhau.
-- Mobile data so với Wi-Fi.
+5. Import module đúng chiều
+   - Vì `ThrottlerUserIpGuard` hiện ở `common` và provider global trong `AppModule`, cần inject được `RedisService` và auto-ban service.
+   - Cách ít xáo trộn:
+     - export service auto-ban từ `ReportsModule`
+     - `AppModule` đã import `RedisModule` và `ReportsModule`, nên guard global có thể inject các provider exported.
+   - Nếu phát sinh circular dependency với `ReportsService`, dùng `forwardRef` theo pattern hiện có.
 
-### Bước 10: Chỉ thêm TURN khi thật sự cần
-- Bắt đầu với STUN בלבד.
-- Thêm TURN sau nếu có mạng không kết nối ổn định.
-- Để giá trị STUN/TURN trong env để đổi config mà không phải sửa code nhiều.
+## Luồng chi tiết
 
-### Thứ tự triển khai đề xuất
-1. Thêm call schema/model.
-2. Thêm call service.
-3. Nối signaling socket vào realtime.
-4. Lưu và cập nhật trạng thái call.
-5. Làm flow audio 1-1 ở client.
-6. Tái sử dụng cùng flow đó cho video.
-7. Render lịch sử cuộc gọi trong màn hình chat.
+1. User gọi API vượt `500 req / phút`.
+2. `ThrottlerUserIpGuard` phát hiện request bị throttled.
+3. Guard lấy `userId` từ `req.user._id`.
+4. Tăng Redis counter `rate-limit:violations:user:{userId}` TTL 5 phút.
+5. Lần 1 và 2: trả 429 như hiện tại.
+6. Lần 3 trong cùng cửa sổ 5 phút:
+   - acquire lock `rate-limit:ban-lock:user:{userId}`
+   - tạo report `SYSTEM_SPAM`
+   - resolve report bằng `BAN 1 ngày`
+   - revoke session và emit realtime qua flow hiện tại
+   - audit log ghi `RESOLVE_REPORT` với metadata có reason `system_spam`
+7. Các request sau đó bị chặn bởi JWT/user ban check hiện có.
 
-## Kế hoạch chi tiết: Tạo `call module`
+## Rủi ro cần tránh
 
-### Mục tiêu của module
-- Gom toàn bộ logic liên quan đến cuộc gọi vào một chỗ.
-- Giữ `messages` chỉ cho chat text/media.
-- Cho phép lưu lịch sử call rõ ràng, dễ đọc, dễ mở rộng.
-- Làm nền cho `1-1 audio` và `1-1 video` sau này.
+- Không dùng IP làm tiêu chí ban chính, vì NAT/proxy có thể làm nhiều user chung IP.
+- Không auto-ban admin/super admin nếu chưa có rule rõ.
+- Không tạo nhiều report khi user spam song song nhiều request, phải có Redis lock.
+- Không thay response 429 hiện tại nếu FE đang dựa vào message/status.
+- Không tính request anonymous vào án ban user vì chưa xác định được target user.
+- Nếu `SYSTEM_ADMIN_ID` sai hoặc user system bị xoá, auto-ban nên fail mềm: vẫn trả 429, không làm crash request.
 
-### Những phần sẽ có trong module
-1. `call.module.ts`
-   - Đăng ký module.
-   - Import các module cần dùng như `UsersModule`, `ConversationsModule`, `RelationshipsModule`, `RealtimeModule` nếu cần.
+## Verification khi implement
 
-2. `call.schema.ts`
-   - Lưu dữ liệu cuộc gọi.
-   - Các field chính:
-     - `callerId`
-     - `calleeId`
-     - `conversationId`
-     - `callType`
-     - `status`
-     - `startedAt`
-     - `endedAt`
-     - `duration`
-     - `createdAt`
-     - `updatedAt`
-
-3. `call.service.ts`
-   - Xử lý logic chính của call.
-   - Tạo call record.
-   - Update trạng thái call.
-   - Chốt duration.
-   - Kiểm tra quyền gọi.
-
-4. `call-query.service.ts`
-   - Đọc lịch sử call.
-   - Lấy call theo conversation.
-   - Phân trang nếu cần.
-
-5. `dto/`
-   - Chuẩn hoá input cho các thao tác call.
-   - Ví dụ:
-     - `start-call.dto.ts`
-     - `accept-call.dto.ts`
-     - `reject-call.dto.ts`
-     - `end-call.dto.ts`
-
-6. `types/`
-   - Định nghĩa kiểu dữ liệu rõ ràng.
-   - Ví dụ:
-     - `call-type.ts`
-     - `call-status.ts`
-
-7. `constants/`
-   - Chứa status, type, message cố định.
-   - Giúp code đồng nhất và dễ bảo trì.
-
-8. `call.controller.ts` nếu cần HTTP
-   - Chỉ dùng cho việc đọc lịch sử call.
-   - Không dùng cho signaling realtime.
-
-### Trách nhiệm của module
-- Không truyền audio/video.
-- Không xử lý WebRTC media.
-- Chỉ quản lý:
-  - create call
-  - accept/reject
-  - end call
-  - lưu trạng thái
-  - trả lịch sử call
-
-### Các trạng thái nên có
-- `calling`
-- `accepted`
-- `rejected`
-- `ended`
-- `missed`
-- `failed`
-
-### Các rule phải check trong module
-- User có tồn tại không.
-- User có bị disabled không.
-- User có bị ban không.
-- Hai user có block nhau không.
-- User có được phép gọi trong conversation đó không.
-
-### Luồng xử lý chính
-1. User bấm nút call trên client.
-2. Client phát socket `call:start`.
-3. Gateway nhận event và gọi `CallService`.
-4. `CallService` kiểm tra quyền và tạo record.
-5. Server báo sang người nhận qua socket.
-6. Người nhận accept hoặc reject.
-7. Server cập nhật trạng thái call.
-8. Hai client trao đổi `offer/answer/ice-candidate` qua socket.
-9. Khi kết thúc, server chốt `endedAt` và `duration`.
-
-### Thứ tự code trong module
-1. Tạo schema trước.
-2. Tạo service xử lý create/update.
-3. Tạo query service nếu cần đọc lịch sử.
-4. Nối module vào `realtime`.
-5. Thêm socket events.
-6. Thêm API đọc lịch sử nếu cần.
-
-### Những gì chưa làm ở giai đoạn đầu
-- Không làm group call.
-- Không làm SFU.
-- Không làm TURN ngay từ đầu.
-- Không đụng vào logic message hiện tại.
-- Không gộp call vào message.
+- Test thủ công hoặc unit cho Redis counter:
+  - lần 1 và 2 trong 5 phút không ban
+  - lần 3 trigger ban 1 ngày
+  - hết TTL thì counter reset
+  - concurrent requests chỉ tạo 1 report
+- Chạy lint/build.
+- Kiểm tra DB:
+  - user có `banUntil` khoảng 24h
+  - report reason `system_spam`, status `resolved`, penalty type `ban`
+  - audit log có action `RESOLVE_REPORT`
+- Kiểm tra realtime/session:
+  - session bị revoke
+  - client nhận `user:banned` như flow ban hiện tại

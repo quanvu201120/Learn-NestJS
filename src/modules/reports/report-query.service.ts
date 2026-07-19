@@ -4,7 +4,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
-import { validateObjectId } from '@/utils/utils';
+import { toObjectId, validateObjectId } from '@/utils/utils';
 import { REPORT_MESSAGES } from './constants/report.constant';
 import { GetReportsDto } from './dto/get-reports.dto';
 import { Report, ReportDocument } from './schemas/report.schema';
@@ -23,9 +23,10 @@ export class ReportQueryService {
      * Method này chỉ phục vụ flow login bị ban, nên chỉ xét report đang áp dụng hình phạt khóa tài khoản.
      */
     async findCurrentAppealContextByUserId(userId: string) {
+        const objectUserId = toObjectId(userId, 'userId');
         const report = await this.reportModel
             .findOne({
-                targetUserId: userId,
+                targetUserId: objectUserId,
                 penaltyType: PenaltyTypeEnum.BAN,
                 status: {
                     $in: [
@@ -37,7 +38,7 @@ export class ReportQueryService {
             })
             .sort({ updatedAt: -1, resolvedAt: -1, createdAt: -1 })
             .select(
-                '_id status appealDeadline appealReviewDeadline penaltyApplied penaltyType',
+                '_id reason status appealDeadline appealReviewDeadline penaltyApplied penaltyType',
             )
             .lean();
 
@@ -47,6 +48,7 @@ export class ReportQueryService {
 
         return {
             reportId: report._id.toString(),
+            reason: report.reason,
             status: report.status,
             appealDeadline: report.appealDeadline,
             appealReviewDeadline: report.appealReviewDeadline,

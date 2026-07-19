@@ -113,11 +113,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
     /**
      * Tăng giá trị số nguyên của một key, nếu key chưa có thì tạo mới với TTL.
-            [
-                [null, 3],   // phần tử số 0 = kết quả của INCR, trả về số sau khi tăng 
-                [null, 1],   // phần tử số 1 = kết quả của EXPIRE
-            ]
-    */
+     */
 
     async incrWithTTL(key: string, ttlSeconds: number) {
         const pipeline = this.redis.pipeline();
@@ -125,6 +121,12 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         pipeline.expire(key, ttlSeconds, 'NX');
         const result = await pipeline.exec();
         return Number(result?.[0]?.[1] ?? 0);
+        /*
+            [               // Kết quả của pipeline.exec() là một Array 2 chiều
+                [null, 3],   // phần tử số 0 = kết quả của INCR -> 3 (số sau khi tăng)
+                [null, 1],   // phần tử số 1 = kết quả của EXPIRE -> 1 (thành công)
+            ]
+        */
     }
 
     /**

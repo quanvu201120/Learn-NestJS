@@ -54,6 +54,17 @@ export type CallHeartbeatResult = {
     refreshed: boolean;
 };
 
+export type CallSyncResult = {
+    hasActiveCall: boolean;
+    callId?: string;
+    callerId?: string;
+    calleeId?: string;
+    conversationId?: string;
+    callType?: string;
+    callToken?: string;
+    createdAt?: Date;
+};
+
 // --- BROADCAST EVENT PAYLOADS ---
 export type CallTokenPayload = {
     callId: string;

@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
@@ -16,7 +19,10 @@ import {
 } from '../cleanup-jobs/types/cleanup-job';
 import { MediaService } from '../media/media.service';
 import { MessagesService } from '../messages/messages.service';
-import { MessageEnumType } from '../messages/types/message';
+import {
+    MessageCreatedEvents,
+    MessageEnumType,
+} from '../messages/types/message';
 import { RelationshipsService } from '../relationships/relationships.service';
 import { UsersService } from '../users/users.service';
 import { CONVERSATION_MESSAGES } from './constants/conversation.constant';
@@ -100,6 +106,7 @@ export class ConversationGroupAdminService {
                     { session },
                 );
             });
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (error) {
             throw new InternalServerErrorException(
                 CONVERSATION_MESSAGES.DELETE_FAILED,
@@ -193,6 +200,7 @@ export class ConversationGroupAdminService {
         const objectNewAdminId = toObjectId(newAdminId, 'new admin id');
         const session = await this.connection.startSession();
         let result: any = null;
+        let messageEvents: MessageCreatedEvents | undefined;
         try {
             await session.withTransaction(async () => {
                 result = await this.conversationModel
@@ -223,7 +231,7 @@ export class ConversationGroupAdminService {
                     (newAdminObj as any)?.name ||
                     CONVERSATION_MESSAGES.MEMBER_LABEL;
 
-                await this.messageService.createMessage(
+                const createdMessage = await this.messageService.createMessage(
                     currentUserId,
                     conversationId,
                     MessageEnumType.SYSTEM,
@@ -235,11 +243,13 @@ export class ConversationGroupAdminService {
                     undefined,
                     session,
                 );
+                messageEvents = createdMessage.events;
             });
         } finally {
             await session.endSession();
         }
 
+        this.messageService.emitCreatedMessageEvents(messageEvents);
         const userIds = result.users.map((u: any) => u._id.toString());
         const membersOnline =
             await this.redisService.getUserOnlineInListIds(userIds);

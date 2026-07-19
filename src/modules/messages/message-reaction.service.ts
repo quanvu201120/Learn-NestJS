@@ -49,6 +49,11 @@ export class MessageReactionService {
         if (message.isDeleted) {
             throw new BadRequestException(MESSAGE_MESSAGES.ALREADY_DELETED);
         }
+        if (message.callId) {
+            throw new BadRequestException(
+                MESSAGE_MESSAGES.CALL_MESSAGE_ACTION_NOT_ALLOWED,
+            );
+        }
 
         const hasReacted = message.reactions?.some((reaction) =>
             reaction.user.equals(objectUserId),
@@ -69,6 +74,7 @@ export class MessageReactionService {
                   })
                   .populate('replyTo', '-__v')
                   .populate('mediaId', '-__v')
+                  .populate('callId', '-__v')
                   .lean()
             : await this.messageModel
                   .findOneAndUpdate(
@@ -89,6 +95,7 @@ export class MessageReactionService {
                   })
                   .populate('replyTo', '-__v')
                   .populate('mediaId', '-__v')
+                  .populate('callId', '-__v')
                   .lean();
         if (!updatedMessage) {
             throw new BadRequestException(MESSAGE_MESSAGES.MESSAGE_NOT_UPDATED);
@@ -121,6 +128,11 @@ export class MessageReactionService {
         if (message.isDeleted) {
             throw new BadRequestException(MESSAGE_MESSAGES.ALREADY_DELETED);
         }
+        if (message.callId) {
+            throw new BadRequestException(
+                MESSAGE_MESSAGES.CALL_MESSAGE_ACTION_NOT_ALLOWED,
+            );
+        }
 
         const updatedMessage = await this.messageModel
             .findOneAndUpdate(
@@ -137,6 +149,7 @@ export class MessageReactionService {
             })
             .populate('replyTo', '-__v')
             .populate('mediaId', '-__v')
+            .populate('callId', '-__v')
             .lean();
 
         if (!updatedMessage) {

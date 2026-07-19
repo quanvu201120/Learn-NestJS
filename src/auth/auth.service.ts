@@ -23,6 +23,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { InjectConnection } from '@nestjs/mongoose';
 import bcrypt from 'bcrypt';
 import { RegisterAuthDto } from './dto/register-auth.dto';
 import {
@@ -40,9 +41,10 @@ import {
 } from '@/modules/audit-log/types/audit-log.type';
 import { UserResponse, UserRole } from '@/modules/users/types/user';
 import { USER_MESSAGES } from '@/modules/users/constants/user.constant';
-import { Types } from 'mongoose';
+import { Connection, Types } from 'mongoose';
 import { NotificationTypeEnum } from '@/modules/notifications/types/notification.type';
 import { NOTIFICATION_TITLES } from '@/modules/notifications/constants/notification.constant';
+import { PushSubscriptionsService } from '@/modules/push-subscriptions/push-subscriptions.service';
 
 type LoginUser = UserResponse & {
     _id: string | Types.ObjectId;
@@ -59,10 +61,13 @@ export class AuthService {
         private readonly usersService: UsersService,
         private jwtService: JwtService,
         private configService: ConfigService,
+        @InjectConnection()
+        private readonly connection: Connection,
         private readonly sessionService: SessionService,
         private readonly statsService: StatsService,
         private readonly eventEmitter: EventEmitter2,
         private readonly reportsService: ReportsService,
+        private readonly pushSubscriptionsService: PushSubscriptionsService,
     ) {}
 
     /**
@@ -198,6 +203,7 @@ export class AuthService {
             appeal: appealContext
                 ? {
                       reportId: appealContext.reportId,
+                      reason: appealContext.reason,
                       status: appealContext.status,
                       appealDeadline: appealContext.appealDeadline,
                       appealReviewDeadline: appealContext.appealReviewDeadline,
@@ -326,7 +332,27 @@ export class AuthService {
     }
 
     async removeDevice(userId: string, deviceId: string) {
-        return await this.sessionService.removeDevice(userId, deviceId);
+        const session = await this.connection.startSession();
+        try {
+            let result: { deletedCount: number } = { deletedCount: 0 };
+
+            await session.withTransaction(async () => {
+                result = await this.sessionService.removeDevice(
+                    userId,
+                    deviceId,
+                    session,
+                );
+                await this.pushSubscriptionsService.removeByDeviceId(
+                    userId,
+                    deviceId,
+                    session,
+                );
+            });
+
+            return result;
+        } finally {
+            await session.endSession();
+        }
     }
 
     /**

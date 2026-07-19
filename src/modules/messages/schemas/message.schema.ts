@@ -30,6 +30,9 @@ export class Message {
     @Prop({ type: Types.ObjectId, ref: 'Media' })
     mediaId?: Types.ObjectId;
 
+    @Prop({ type: Types.ObjectId, ref: 'Call', unique: true, sparse: true })
+    callId?: Types.ObjectId;
+
     @Prop({ type: Types.ObjectId, ref: 'Message' })
     replyTo?: Types.ObjectId;
 

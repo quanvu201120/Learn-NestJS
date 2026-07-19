@@ -1,7 +1,28 @@
+import type { ResolveReportDto } from '../dto/resolve-report.dto';
+import type { UserRole } from '../../users/types/user';
+import type { ReportDocument } from '../schemas/report.schema';
+
+export type ResolveReportFunc = (
+    id: string,
+    resolveDto: ResolveReportDto,
+    adminId: string,
+    adminRole: UserRole,
+    req: any,
+) => Promise<any>;
+
+export type CreateAndResolveReportFunc = (
+    report: ReportDocument,
+    resolveDto: ResolveReportDto,
+    adminId: string,
+    adminRole: UserRole,
+    req: any,
+) => Promise<any>;
+
 export enum ReportReasonEnum {
     SPAM_HARASSMENT = 'spam_harassment',
     INAPPROPRIATE_CONTENT = 'inappropriate_content',
     IMPERSONATION = 'impersonation',
+    SYSTEM_SPAM = 'system_spam',
     OTHER = 'other',
 }
 

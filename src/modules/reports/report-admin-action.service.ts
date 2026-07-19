@@ -24,21 +24,13 @@ import { UserRole } from '../users/types/user';
 import { REPORT_MESSAGES } from './constants/report.constant';
 import { ManualBanDto } from './dto/manual-ban.dto';
 import { QuickPenaltyDto } from './dto/quick-penalty.dto';
-import { ResolveReportDto } from './dto/resolve-report.dto';
 import { Report, ReportDocument } from './schemas/report.schema';
 import {
     PenaltyActionEnum,
     ReportReasonEnum,
     ReportStatusEnum,
 } from './types/report.type';
-
-type ResolveReportHandler = (
-    id: string,
-    resolveDto: ResolveReportDto,
-    adminId: string,
-    adminRole: UserRole,
-    req: any,
-) => Promise<any>;
+import type { ResolveReportFunc } from './types/report.type';
 
 @Injectable()
 export class ReportAdminActionService {
@@ -81,7 +73,7 @@ export class ReportAdminActionService {
         adminRole: UserRole,
         dto: QuickPenaltyDto,
         req: any,
-        resolveReport: ResolveReportHandler,
+        resolveReport: ResolveReportFunc,
     ) {
         await this.verifyAdminPassword(adminId, adminRole, dto.password);
         const objectAdminId = toObjectId(adminId, 'adminId');
@@ -147,7 +139,7 @@ export class ReportAdminActionService {
         adminRole: UserRole,
         dto: ManualBanDto,
         req: any,
-        resolveReport: ResolveReportHandler,
+        resolveReport: ResolveReportFunc,
     ) {
         await this.verifyAdminPassword(adminId, adminRole, dto.password);
         const objectAdminId = toObjectId(adminId, 'adminId');

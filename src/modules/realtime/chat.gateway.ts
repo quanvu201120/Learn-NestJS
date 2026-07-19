@@ -508,6 +508,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             ack?.(this.toErrorResponse(error));
         }
     }
+    /**
+     * Sync cuộc gọi `calling` còn hiệu lực sau khi reconnect socket.
+     */
+    @SubscribeMessage('call:sync')
+    async handleCallSync(
+        @ConnectedSocket() client: Socket,
+        @Ack() ack: (response: any) => void,
+    ) {
+        try {
+            const res = await this.realtimeCallService.syncActiveCall(client);
+            ack?.(res);
+        } catch (error) {
+            console.log('Error syncing call:', error);
+            ack?.(this.toErrorResponse(error));
+        }
+    }
 
     /**
      * Chuyển SDP offer giữa hai đầu cuộc gọi.

@@ -16,6 +16,7 @@ import { MediaPersistenceService } from './media-persistence.service';
 import { MediaCleanupService } from './media-cleanup.service';
 import { MediaQueryService } from './media-query.service';
 import { MediaDownloadService } from './media-download.service';
+import { MediaOrphanCron } from './cron/media-orphan.cron';
 
 @Module({
     imports: [
@@ -36,6 +37,7 @@ import { MediaDownloadService } from './media-download.service';
         MediaDownloadService,
         CloudinaryService,
         R2Service,
+        MediaOrphanCron,
     ],
     exports: [MediaService, CloudinaryService, R2Service],
 })
