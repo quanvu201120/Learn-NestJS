@@ -15,7 +15,7 @@ import { User } from './schemas/user.schema';
 import { UserCodeService } from './user-code.service';
 import { UserMailService } from './user-mail.service';
 import { UserQueryService } from './user-query.service';
-import { UserAccountType } from './types/user';
+import { SessionService } from '@/modules/session/session.service';
 
 @Injectable()
 export class UserPasswordService {
@@ -25,6 +25,7 @@ export class UserPasswordService {
         private readonly userCodeService: UserCodeService,
         private readonly userMailService: UserMailService,
         private readonly userQueryService: UserQueryService,
+        private readonly sessionService: SessionService,
     ) {}
 
     /**
@@ -33,6 +34,7 @@ export class UserPasswordService {
     async updatePassword(
         id: string,
         changePasswordAuthDto: ChangePasswordAuthDto,
+        currentSessionId: string,
     ) {
         const { existingUser } = await this.userQueryService.checkUser(id);
         if (existingUser.hasPassword === false) {
@@ -51,6 +53,10 @@ export class UserPasswordService {
 
         existingUser.password = passwordNewHash;
         await existingUser.save();
+        await this.sessionService.revokeAllByUserIdExceptSessionWithCleanup(
+            id,
+            currentSessionId,
+        );
         return USER_MESSAGES.CHANGE_PASSWORD_SUCCESS;
     }
 
@@ -62,10 +68,7 @@ export class UserPasswordService {
         createPasswordAuthDto: CreatePasswordAuthDto,
     ) {
         const { existingUser } = await this.userQueryService.checkUser(id);
-        if (
-            existingUser.hasPassword !== false &&
-            existingUser.accountType === UserAccountType.GOOGLE
-        ) {
+        if (existingUser.hasPassword !== false) {
             throw new BadRequestException(USER_MESSAGES.PASSWORD_ALREADY_SET);
         }
 
@@ -85,15 +88,8 @@ export class UserPasswordService {
             .findOne({ email })
             .select('_id isDisabled hasPassword')
             .lean();
-        if (!user) {
-            throw new BadRequestException(USER_MESSAGES.EMAIL_NOT_FOUND);
-        }
-        if (user.isDisabled) {
-            throw new BadRequestException(USER_MESSAGES.USER_DISABLED);
-        }
-
-        if (user.hasPassword === false) {
-            throw new BadRequestException(USER_MESSAGES.PASSWORD_NOT_SET);
+        if (!user || user.isDisabled || user.hasPassword === false) {
+            return 'OK';
         }
 
         await this.userCodeService.checkMailCooldownRedis(
@@ -136,15 +132,9 @@ export class UserPasswordService {
     async resetPassword(email: string, code: string, password: string) {
         const user = await this.userModel
             .findOne({ email })
-            .select('_id password isDisabled hasPassword');
-        if (!user) {
-            throw new BadRequestException(USER_MESSAGES.EMAIL_NOT_FOUND);
-        }
-        if (user.isDisabled) {
-            throw new BadRequestException(USER_MESSAGES.USER_DISABLED);
-        }
-        if (user.hasPassword === false) {
-            throw new BadRequestException(USER_MESSAGES.PASSWORD_NOT_SET);
+            .select('_id password isDisabled hasPassword tokenVersion');
+        if (!user || user.isDisabled || user.hasPassword === false) {
+            throw new BadRequestException(USER_MESSAGES.INVALID_CODE);
         }
 
         await this.userCodeService.verifyCodeWithRedis(
@@ -154,8 +144,12 @@ export class UserPasswordService {
 
         const passwordHash = await hashPassword(password);
         user.password = passwordHash;
+        user.tokenVersion += 1;
 
         await user.save();
+        await this.sessionService.revokeAllByUserIdWithCleanup(
+            user._id.toString(),
+        );
         return USER_MESSAGES.RESET_PASSWORD_SUCCESS;
     }
 

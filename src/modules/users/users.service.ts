@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-unsafe-enum-comparison */
-
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
@@ -13,16 +12,15 @@ import {
     Injectable,
 } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
-import { UserAccountType, UserRole } from './types/user';
 import { User } from './schemas/user.schema';
 import { Connection, Model, Types } from 'mongoose';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import {
-    hashPassword,
     formatExpireTime,
     hashCodeVerifyEmail,
     validateObjectId,
     toObjectId,
+    safeCompare,
 } from '@/utils/utils';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ConfigService } from '@nestjs/config';
@@ -35,11 +33,7 @@ import {
 } from '@/auth/dto/password-auth.dto';
 import { RedisService } from '@/redis/redis.service';
 import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
-import {
-    UserDisableStateResponse,
-    UserResponse,
-    UserResponseWithPagination,
-} from './types/user';
+import { UserDisableStateResponse, UserResponse, UserRole } from './types/user';
 import { MediaService } from '../media/media.service';
 import {
     MEDIA_CONSTANTS,
@@ -55,7 +49,6 @@ import {
 } from '../cleanup-jobs/types/cleanup-job';
 import { RelationshipsService } from '../relationships/relationships.service';
 import { ReportsService } from '../reports/reports.service';
-import { StatsService } from '../stats/stats.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
     AuditLogActionEnum,
@@ -79,10 +72,8 @@ export class UsersService {
         private readonly mediaService: MediaService,
         private readonly sessionService: SessionService,
         @Inject(forwardRef(() => RelationshipsService))
-        private readonly relationshipsService: RelationshipsService,
         @Inject(forwardRef(() => ReportsService))
         private readonly reportsService: ReportsService,
-        private readonly statsService: StatsService,
         private readonly eventEmitter: EventEmitter2,
         private readonly userQueryService: UserQueryService,
         private readonly userCodeService: UserCodeService,
@@ -436,10 +427,12 @@ export class UsersService {
     async updatePassword(
         id: string,
         changePasswordAuthDto: ChangePasswordAuthDto,
+        currentSessionId: string,
     ) {
         return await this.userPasswordService.updatePassword(
             id,
             changePasswordAuthDto,
+            currentSessionId,
         );
     }
 
@@ -728,6 +721,7 @@ export class UsersService {
         }
         const oldRole = targetUser.role;
         targetUser.role = newRole;
+        targetUser.tokenVersion += 1;
         await targetUser.save();
 
         this.eventEmitter.emit('audit.log.create', {
@@ -771,7 +765,7 @@ export class UsersService {
             );
 
             const codeRedis = await this.redisService.get(redisKey);
-            if (codeRedis !== hashCode) {
+            if (!safeCompare(codeRedis, hashCode)) {
                 throw new BadRequestException(USER_MESSAGES.INVALID_CODE);
             }
 

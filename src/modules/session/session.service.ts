@@ -146,6 +146,10 @@ export class SessionService {
         );
     }
 
+    /**
+     * Thu hồi một session đang hoạt động của user.
+     * Nếu revoke thất bại, đẩy job cleanup để xử lý lại thay vì ném lỗi.
+     */
     async revokeWithCleanup(
         _id: string,
         userId: string,
@@ -180,6 +184,10 @@ export class SessionService {
         );
     }
 
+    /**
+     * Thu hồi toàn bộ session đang hoạt động của một user.
+     * Nếu revoke thất bại, đẩy job cleanup để xử lý lại thay vì ném lỗi.
+     */
     async revokeAllByUserIdWithCleanup(userId: string, messageError?: string) {
         try {
             return await this.revokeAllByUserId(userId);
@@ -192,6 +200,57 @@ export class SessionService {
         }
     }
 
+    /**
+     * Thu hồi toàn bộ session đang hoạt động của một user, trừ một session được chỉ định.
+     */
+    async revokeAllByUserIdExceptSession(
+        userId: string,
+        exceptSessionId: string,
+    ) {
+        validateObjectId(userId, 'user id');
+        validateObjectId(exceptSessionId, 'session id');
+
+        return await this.sessionModel.updateMany(
+            {
+                userId: new Types.ObjectId(userId),
+                _id: { $ne: new Types.ObjectId(exceptSessionId) },
+                isRevoked: false,
+            },
+            {
+                $set: {
+                    isRevoked: true,
+                    revokedAt: new Date(),
+                },
+            },
+        );
+    }
+
+    /**
+     * Thu hồi toàn bộ session đang hoạt động của một user, trừ một session được chỉ định.
+     * Nếu revoke thất bại, đẩy job cleanup để xử lý lại thay vì ném lỗi.
+     */
+    async revokeAllByUserIdExceptSessionWithCleanup(
+        userId: string,
+        exceptSessionId: string,
+        messageError?: string,
+    ) {
+        try {
+            return await this.revokeAllByUserIdExceptSession(
+                userId,
+                exceptSessionId,
+            );
+        } catch (error) {
+            await this.addSessionRevokeAllCleanupJob(
+                userId,
+                messageError ?? (error as Error)?.message,
+            );
+            return null;
+        }
+    }
+
+    /**
+     * Tạo cleanup job để thu hồi lại một session cụ thể khi revoke trực tiếp thất bại.
+     */
     private async addSessionRevokeCleanupJob(
         userId: string,
         sessionId: string,
@@ -215,6 +274,9 @@ export class SessionService {
         }
     }
 
+    /**
+     * Tạo cleanup job để thu hồi lại toàn bộ session của một user khi revoke trực tiếp thất bại.
+     */
     private async addSessionRevokeAllCleanupJob(
         userId: string,
         messageError?: string,

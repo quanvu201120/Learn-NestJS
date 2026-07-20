@@ -30,7 +30,10 @@ import { AppealReportDto } from './dto/appeal-report.dto';
 import { ReportsService } from './reports.service';
 import { REPORT_MESSAGES } from './constants/report.constant';
 import { ReportStatusEnum } from './types/report.type';
-import { MEDIA_MESSAGES } from '../media/constants/media.constant';
+import {
+    MEDIA_CONSTANTS,
+    MEDIA_MESSAGES,
+} from '../media/constants/media.constant';
 
 @Controller('reports')
 export class ReportsController {
@@ -40,7 +43,7 @@ export class ReportsController {
     @UseInterceptors(
         FilesInterceptor('files', 5, {
             limits: {
-                fileSize: 5 * 1024 * 1024,
+                fileSize: MEDIA_CONSTANTS.MAX_IMAGE_FILE_SIZE,
             },
             fileFilter: (_req, file, callback) => {
                 if (!file.mimetype.startsWith('image/')) {
@@ -123,7 +126,7 @@ export class ReportsController {
     @UseInterceptors(
         FilesInterceptor('files', 5, {
             limits: {
-                fileSize: 5 * 1024 * 1024,
+                fileSize: MEDIA_CONSTANTS.MAX_IMAGE_FILE_SIZE,
             },
             fileFilter: (_req, file, callback) => {
                 if (!file.mimetype.startsWith('image/')) {

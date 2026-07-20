@@ -8,7 +8,7 @@ import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { createHash } from 'crypto';
+import { createHash, timingSafeEqual } from 'crypto';
 import { Types } from 'mongoose';
 import ms, { StringValue } from 'ms';
 
@@ -211,4 +211,18 @@ export const getRoomNameUser = (userId: string) => {
     } catch (error) {
         throw error;
     }
+};
+
+/**
+ * So sánh 2 chuỗi bí mật (hash) theo kiểu constant-time để tránh timing attack.
+ */
+export const safeCompare = (
+    a: string | null | undefined,
+    b: string | null | undefined,
+): boolean => {
+    if (typeof a !== 'string' || typeof b !== 'string') return false;
+    const bufA = Buffer.from(a);
+    const bufB = Buffer.from(b);
+    if (bufA.length !== bufB.length) return false;
+    return timingSafeEqual(bufA, bufB);
 };

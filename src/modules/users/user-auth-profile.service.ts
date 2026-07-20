@@ -138,13 +138,24 @@ export class UserAuthProfileService {
      * Helper đăng ký nhanh chỉ với email và password.
      */
     async register(email: string, pass: string) {
-        return this.create({
-            email,
-            password: pass,
-            confirmPassword: pass,
-            role: UserRole.USER,
-            name: email.split('@')[0],
-        });
+        try {
+            return await this.create({
+                email,
+                password: pass,
+                confirmPassword: pass,
+                role: UserRole.USER,
+                name: email.split('@')[0],
+            });
+        } catch (error) {
+            if (
+                error instanceof BadRequestException &&
+                (error.message === USER_MESSAGES.EMAIL_EXISTED ||
+                    error.message === USER_MESSAGES.PHONE_EXISTED)
+            ) {
+                return USER_MESSAGES.REGISTER_CHECK_EMAIL;
+            }
+            throw error;
+        }
     }
 
     /**
@@ -183,14 +194,8 @@ export class UserAuthProfileService {
         const user = await this.userModel
             .findOne({ email })
             .select('_id isActive isDisabled email');
-        if (!user) {
-            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
-        }
-        if (user.isDisabled) {
-            throw new BadRequestException(USER_MESSAGES.USER_DISABLED);
-        }
-        if (user.isActive) {
-            throw new BadRequestException(USER_MESSAGES.USER_ALREADY_ACTIVE);
+        if (!user || user.isDisabled || user.isActive) {
+            throw new BadRequestException(USER_MESSAGES.INVALID_CODE);
         }
 
         await this.userCodeService.verifyCodeWithRedis(
@@ -211,14 +216,8 @@ export class UserAuthProfileService {
             .findOne({ email })
             .select('_id isActive isDisabled email')
             .lean();
-        if (!user) {
-            throw new BadRequestException(USER_MESSAGES.USER_NOT_FOUND);
-        }
-        if (user.isDisabled === true) {
-            throw new BadRequestException(USER_MESSAGES.USER_DISABLED);
-        }
-        if (user.isActive === true) {
-            throw new BadRequestException(USER_MESSAGES.USER_ALREADY_ACTIVE);
+        if (!user || user.isDisabled === true || user.isActive === true) {
+            return 'OK';
         }
 
         await this.userCodeService.checkMailCooldownRedis(

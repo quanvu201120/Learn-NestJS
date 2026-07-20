@@ -30,6 +30,7 @@ import { RedisService } from '@/redis/redis.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { MediaResourceTypeEnum } from '../media/types/media';
 import { MediaService } from '../media/media.service';
+import { MEDIA_CONSTANTS } from '../media/constants/media.constant';
 
 @Controller('conversations')
 export class ConversationsController {
@@ -171,14 +172,20 @@ export class ConversationsController {
     }
 
     @Patch(':id/avatar')
-    @UseInterceptors(FileInterceptor('file'))
+    @UseInterceptors(
+        FileInterceptor('file', {
+            limits: { fileSize: MEDIA_CONSTANTS.MAX_IMAGE_FILE_SIZE },
+        }),
+    )
     uploadAvatar(
         @Param('id') id: string,
         @UploadedFile(
             new ParseFilePipe({
                 validators: [
                     new FileTypeValidator({ fileType: 'image/*' }),
-                    new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
+                    new MaxFileSizeValidator({
+                        maxSize: MEDIA_CONSTANTS.MAX_IMAGE_FILE_SIZE,
+                    }),
                 ],
             }),
         )

@@ -1,4 +1,5 @@
 export const MEDIA_CONSTANTS = {
+    MAX_IMAGE_FILE_SIZE: 10 * 1024 * 1024,
     USER_AVATAR_FOLDER: 'users/avatars',
     CONVERSATION_AVATAR_FOLDER: 'conversations/avatars',
     CONVERSATION_IMAGE_FOLDER: 'conversations/images',

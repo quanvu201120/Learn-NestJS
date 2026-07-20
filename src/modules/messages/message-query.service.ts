@@ -34,12 +34,16 @@ export class MessageQueryService {
      */
     async getLatestMessageOfConversation(
         conversationId: string,
-        currentUserId?: string,
+        currentUserId: string,
     ) {
         const { conversation } =
             await this.conversationService.getConversationOrThrow(
                 conversationId,
             );
+        this.conversationService.ensureMemberInConversation(
+            conversation,
+            currentUserId,
+        );
 
         if (!conversation.lastMessageId) {
             throw new BadRequestException(
@@ -131,17 +135,18 @@ export class MessageQueryService {
             .populate('mediaId', '-__v')
             .populate('callId', '-__v')
             .sort({ createdAt: -1 })
-            .limit(GLOBAL_CONSTANTS.LIMIT_MESSAGES_DEFAULT)
+            .limit(GLOBAL_CONSTANTS.LIMIT_MESSAGES_DEFAULT + 1)
             .lean();
         if (result.length === 0) {
             return { nextCursor: null, messages: [] };
         }
-        const messages = result.map((message) =>
+        const hasNextPage =
+            result.length > GLOBAL_CONSTANTS.LIMIT_MESSAGES_DEFAULT;
+        const trimmedResult = hasNextPage ? result.slice(0, -1) : result;
+        const messages = trimmedResult.map((message) =>
             serializeMessage(message, hiddenUserIds),
         );
 
-        const hasNextPage =
-            messages.length === GLOBAL_CONSTANTS.LIMIT_MESSAGES_DEFAULT;
         const lastMessage = messages[messages.length - 1];
         const nextCursor = hasNextPage
             ? new Date(lastMessage.createdAt!).toISOString()

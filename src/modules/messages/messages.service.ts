@@ -113,7 +113,7 @@ export class MessagesService {
 
     async getLatestMessageOfConversation(
         conversationId: string,
-        currentUserId?: string,
+        currentUserId: string,
     ) {
         return this.messageQueryService.getLatestMessageOfConversation(
             conversationId,

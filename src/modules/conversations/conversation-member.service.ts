@@ -79,6 +79,12 @@ export class ConversationMemberService {
             ).values(),
         ];
 
+        this.conversationAccessService.ensureGroupConversation(conversation);
+        this.conversationAccessService.ensureGroupAdmin(
+            conversation,
+            currentUserId,
+        );
+
         const validMemberIds = (
             await Promise.all(
                 uniqueMemberIds.map(async (memberId) => {
@@ -111,12 +117,6 @@ export class ConversationMemberService {
                 }),
             )
         ).filter((memberId): memberId is Types.ObjectId => memberId !== null);
-
-        this.conversationAccessService.ensureGroupConversation(conversation);
-        this.conversationAccessService.ensureGroupAdmin(
-            conversation,
-            currentUserId,
-        );
 
         if (validMemberIds.length === 0) {
             throw new BadRequestException(

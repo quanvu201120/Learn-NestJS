@@ -24,6 +24,7 @@ import {
 import { RemoveReactionDto, UpsertReactionDto } from './dto/update-message.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { MessageEnumType } from './types/message';
+import { MEDIA_CONSTANTS } from '../media/constants/media.constant';
 
 @Controller()
 export class MessagesController {
@@ -46,14 +47,20 @@ export class MessagesController {
         return message;
     }
     @Post('conversations/:conversationId/message/image')
-    @UseInterceptors(FileInterceptor('file'))
+    @UseInterceptors(
+        FileInterceptor('file', {
+            limits: { fileSize: MEDIA_CONSTANTS.MAX_IMAGE_FILE_SIZE },
+        }),
+    )
     async sendImageMessage(
         @Param('conversationId') conversationId: string,
         @UploadedFile(
             new ParseFilePipe({
                 validators: [
                     new FileTypeValidator({ fileType: 'image/*' }),
-                    new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }),
+                    new MaxFileSizeValidator({
+                        maxSize: MEDIA_CONSTANTS.MAX_IMAGE_FILE_SIZE,
+                    }),
                 ],
             }),
         )
@@ -73,7 +80,9 @@ export class MessagesController {
         return message;
     }
     @Post('conversations/:conversationId/message/video')
-    @UseInterceptors(FileInterceptor('file'))
+    @UseInterceptors(
+        FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }),
+    )
     async sendVideoMessage(
         @Param('conversationId') conversationId: string,
         @UploadedFile(
@@ -102,7 +111,9 @@ export class MessagesController {
         return message;
     }
     @Post('conversations/:conversationId/message/file')
-    @UseInterceptors(FileInterceptor('file'))
+    @UseInterceptors(
+        FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }),
+    )
     async sendFileMessage(
         @Param('conversationId') conversationId: string,
         @UploadedFile(
@@ -134,7 +145,9 @@ export class MessagesController {
     }
 
     @Post('conversations/:conversationId/message/voice')
-    @UseInterceptors(FileInterceptor('file'))
+    @UseInterceptors(
+        FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }),
+    )
     async sendVoiceMessage(
         @Param('conversationId') conversationId: string,
         @UploadedFile(
@@ -168,9 +181,12 @@ export class MessagesController {
     @Get('conversations/:conversationId/latest-message')
     getLatestMessageOfConversation(
         @Param('conversationId') conversationId: string,
+        @Request() req,
     ) {
         return this.messagesService.getLatestMessageOfConversation(
             conversationId,
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+            req.user._id.toString(),
         );
     }
     @Get('conversations/:conversationId/message')

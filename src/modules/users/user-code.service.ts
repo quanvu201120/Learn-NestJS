@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import ms, { StringValue } from 'ms';
 import { RedisService } from '@/redis/redis.service';
 import { ActionRedis } from '@/common/constants/global.constant';
-import { hashCodeVerifyEmail } from '@/utils/utils';
+import { hashCodeVerifyEmail, safeCompare } from '@/utils/utils';
 import { USER_MESSAGES } from './constants/user.constant';
 
 @Injectable()
@@ -40,7 +40,7 @@ export class UserCodeService {
             this.configService.get<string>('CODE_VERIFY_PEPPER')!,
         );
 
-        if (hashCode !== redisCodeActive) {
+        if (!safeCompare(hashCode, redisCodeActive)) {
             throw new BadRequestException(USER_MESSAGES.INVALID_CODE);
         }
 

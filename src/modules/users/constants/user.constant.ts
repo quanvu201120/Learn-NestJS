@@ -13,6 +13,8 @@ export const USER_MESSAGES = {
     PASSWORD_ALREADY_SET: 'Tài khoản đã có mật khẩu',
     USER_ALREADY_ACTIVE: 'Tài khoản đã được kích hoạt',
     ACTIVE_SUCCESS: 'Kích hoạt tài khoản thành công',
+    REGISTER_CHECK_EMAIL:
+        'Vui lòng kiểm tra hộp thư emai để kích hoạt tài khoản',
     BIO_NOT_EXISTED: 'Người dùng không có tiểu sử',
     CODE_EXPIRED: 'Mã đã hết hạn',
     CREATE_PASSWORD_SUCCESS: 'Tạo mật khẩu thành công',

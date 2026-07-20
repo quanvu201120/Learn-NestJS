@@ -3,7 +3,8 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-import { AUTH_MESSAGES } from './constants/auth.constant';
+import { AUTH_MESSAGES, LOGIN_FAIL_POLICY } from './constants/auth.constant';
+import { RedisService } from '@/redis/redis.service';
 import { PayloadJWT } from '@/modules/users/schemas/user.schema';
 import { UsersService } from '@/modules/users/users.service';
 import { ReportsService } from '@/modules/reports/reports.service';
@@ -11,6 +12,7 @@ import {
     formatDateTime,
     generateJWT,
     hashRefreshToken,
+    safeCompare,
     validateObjectId,
 } from '@/utils/utils';
 import {
@@ -68,7 +70,72 @@ export class AuthService {
         private readonly eventEmitter: EventEmitter2,
         private readonly reportsService: ReportsService,
         private readonly pushSubscriptionsService: PushSubscriptionsService,
+        private readonly redisService: RedisService,
     ) {}
+
+    /**
+     * Redis key lưu số lần đăng nhập sai liên tiếp của một user (đếm trong `LOGIN_FAIL_POLICY.WINDOW_SECONDS`).
+     */
+    private getLoginFailKey(userId: string) {
+        return `auth:login-fail:${userId}`;
+    }
+
+    /**
+     * Redis key đánh dấu tài khoản đang bị chặn đăng nhập tạm thời; sự tồn tại + TTL của key quyết định thời gian chặn còn lại.
+     */
+    private getLoginBlockKey(userId: string) {
+        return `auth:login-block:${userId}`;
+    }
+
+    /**
+     * Nếu tài khoản đang bị chặn đăng nhập,  ném lỗi 429 kèm số phút còn lại
+     */
+    private async checkBlockedLoginFail(userId: string) {
+        const ttlSeconds = await this.redisService.ttl(
+            this.getLoginBlockKey(userId),
+        );
+        if (ttlSeconds > 0) {
+            const minutes = Math.ceil(ttlSeconds / 60);
+            throw new HttpException(
+                AUTH_MESSAGES.LOGIN_TOO_MANY_ATTEMPTS(minutes),
+                429,
+            );
+        }
+    }
+
+    /**
+     * Ghi nhận một lần đăng nhập sai. Khi số lần sai tích luỹ chạm mốc trong
+     * chính sách, đặt cờ chặn với thời gian tương ứng (càng sai càng lâu).
+     */
+    private async recordLoginFailure(userId: string) {
+        const failCount = await this.redisService.incrWithTTL(
+            this.getLoginFailKey(userId),
+            LOGIN_FAIL_POLICY.WINDOW_SECONDS,
+        );
+
+        let blockSeconds = 0;
+        for (const step of LOGIN_FAIL_POLICY.STEPS) {
+            if (failCount >= step.threshold) {
+                blockSeconds = step.blockSeconds;
+            }
+        }
+
+        if (blockSeconds > 0) {
+            await this.redisService.setWithTTL(
+                this.getLoginBlockKey(userId),
+                'blocked',
+                blockSeconds,
+            );
+        }
+    }
+
+    /**
+     * Xoá bộ đếm sai và cờ chặn khi đăng nhập thành công.
+     */
+    private async clearLoginFailures(userId: string) {
+        await this.redisService.del(this.getLoginFailKey(userId));
+        await this.redisService.del(this.getLoginBlockKey(userId));
+    }
 
     /**
      * Xác thực thông tin đăng nhập của user (email/sdt và password).
@@ -83,10 +150,17 @@ export class AuthService {
         if (user.hasPassword === false) {
             return null;
         }
+
+        const userId = user._id.toString();
+        await this.checkBlockedLoginFail(userId);
+
         const isPasswordMatched = await bcrypt.compare(pass, user.password);
         if (!isPasswordMatched) {
+            await this.recordLoginFailure(userId);
             return null;
         }
+
+        await this.clearLoginFailures(userId);
 
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password, __v, ...result } = user.toObject();
@@ -432,7 +506,7 @@ export class AuthService {
                 this.configService.get<string>('REFRESH_TOKEN_PEPPER')!,
             );
 
-            if (hashJwt !== session.refreshTokenHash) {
+            if (!safeCompare(hashJwt, session.refreshTokenHash)) {
                 throw new UnauthorizedException(
                     AUTH_MESSAGES.INVALID_REFRESH_TOKEN,
                 );
@@ -600,7 +674,7 @@ export class AuthService {
                 message: AUTH_MESSAGES.LOGOUT_ALL_SUCCESS,
             };
         } catch (error) {
-            if (error instanceof UnauthorizedException) {
+            if (error instanceof HttpException) {
                 throw error;
             }
             throw new InternalServerErrorException(
@@ -629,10 +703,12 @@ export class AuthService {
     async changePassword(
         id: string,
         changePasswordAuthDto: ChangePasswordAuthDto,
+        currentSessionId: string,
     ) {
         return await this.usersService.updatePassword(
             id,
             changePasswordAuthDto,
+            currentSessionId,
         );
     }
 

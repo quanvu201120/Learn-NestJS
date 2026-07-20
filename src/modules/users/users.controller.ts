@@ -35,6 +35,7 @@ import * as express from 'express';
 import { ConfigService } from '@nestjs/config';
 import { UserDisableStateResponse } from './types/user';
 import { VALIDATION_MESSAGES } from '@/common/constants/validation.constant';
+import { MEDIA_CONSTANTS } from '../media/constants/media.constant';
 
 @ApiTags('Users - Quản lý người dùng')
 @ApiBearerAuth('JWT-auth')
@@ -147,14 +148,20 @@ export class UsersController {
     }
 
     @Patch('avatar')
-    @UseInterceptors(FileInterceptor('file'))
+    @UseInterceptors(
+        FileInterceptor('file', {
+            limits: { fileSize: MEDIA_CONSTANTS.MAX_IMAGE_FILE_SIZE },
+        }),
+    )
     @ApiOperation({ summary: 'Cập nhật ảnh đại diện của người dùng' })
     async uploadAvatar(
         @UploadedFile(
             new ParseFilePipe({
                 validators: [
                     new FileTypeValidator({ fileType: 'image/*' }),
-                    new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
+                    new MaxFileSizeValidator({
+                        maxSize: MEDIA_CONSTANTS.MAX_IMAGE_FILE_SIZE,
+                    }),
                 ],
             }),
         )

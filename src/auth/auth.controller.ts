@@ -132,7 +132,7 @@ export class AuthController {
     @Public()
     @Throttle({
         default: {
-            limit: THROTTLE_LIMITS.AUTH_LIMIT,
+            limit: THROTTLE_LIMITS.AUTH_LIMIT_10,
             ttl: THROTTLE_LIMITS.ONE_MINUTE,
         },
     })
@@ -161,7 +161,7 @@ export class AuthController {
     @Public()
     @Throttle({
         default: {
-            limit: THROTTLE_LIMITS.AUTH_LIMIT,
+            limit: THROTTLE_LIMITS.AUTH_LIMIT_10,
             ttl: THROTTLE_LIMITS.ONE_MINUTE,
         },
     })
@@ -218,7 +218,7 @@ export class AuthController {
     @Public()
     @Throttle({
         default: {
-            limit: THROTTLE_LIMITS.AUTH_LIMIT,
+            limit: THROTTLE_LIMITS.AUTH_LIMIT_10,
             ttl: THROTTLE_LIMITS.ONE_MINUTE,
         },
     })
@@ -307,7 +307,7 @@ export class AuthController {
     @Public()
     @Throttle({
         default: {
-            limit: THROTTLE_LIMITS.AUTH_LIMIT,
+            limit: THROTTLE_LIMITS.AUTH_LIMIT_10,
             ttl: THROTTLE_LIMITS.ONE_MINUTE,
         },
     })
@@ -334,6 +334,12 @@ export class AuthController {
     }
 
     @Post('change-password')
+    @Throttle({
+        default: {
+            limit: THROTTLE_LIMITS.AUTH_LIMIT_5,
+            ttl: THROTTLE_LIMITS.ONE_MINUTE,
+        },
+    })
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Thay đổi mật khẩu' })
     @ApiBearerAuth('JWT-auth')
@@ -344,10 +350,17 @@ export class AuthController {
         return await this.authService.changePassword(
             req.user._id,
             changePasswordAuthDto,
+            req.user.sessionId,
         );
     }
 
     @Post('create-password')
+    @Throttle({
+        default: {
+            limit: THROTTLE_LIMITS.AUTH_LIMIT_5,
+            ttl: THROTTLE_LIMITS.ONE_MINUTE,
+        },
+    })
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Tạo mật khẩu với tài khoản google' })
     @ApiBody({ type: CreatePasswordAuthDto })
@@ -386,7 +399,7 @@ export class AuthController {
     @Public()
     @Throttle({
         default: {
-            limit: THROTTLE_LIMITS.AUTH_LIMIT,
+            limit: THROTTLE_LIMITS.AUTH_LIMIT_10,
             ttl: THROTTLE_LIMITS.ONE_MINUTE,
         },
     })
@@ -399,6 +412,12 @@ export class AuthController {
     }
 
     @Patch('confirm-password')
+    @Throttle({
+        default: {
+            limit: THROTTLE_LIMITS.AUTH_LIMIT_5,
+            ttl: THROTTLE_LIMITS.ONE_MINUTE,
+        },
+    })
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Xác nhận mật khẩu' })
     async handleConfirmPassword(
