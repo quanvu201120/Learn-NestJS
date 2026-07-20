@@ -25,6 +25,6 @@ export const AUTH_MESSAGES = {
 export const THROTTLE_LIMITS = {
     ONE_MINUTE: 60 * 1000,
     GLOBAL_LIMIT: 500,
-    AUTH_LIMIT: 5,
+    AUTH_LIMIT: 10,
     MAIL_LIMIT: 1,
 } as const;

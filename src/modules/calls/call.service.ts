@@ -14,6 +14,7 @@ import { RelationshipsService } from '../relationships/relationships.service';
 import { toObjectId } from '@/utils/utils';
 import { Message, MessageDocument } from '../messages/schemas/message.schema';
 import { MessageEnumType } from '../messages/types/message';
+import { MessagesService } from '../messages/messages.service';
 
 @Injectable()
 export class CallService {
@@ -27,6 +28,7 @@ export class CallService {
         private readonly usersService: UsersService,
         private readonly conversationsService: ConversationsService,
         private readonly relationshipsService: RelationshipsService,
+        private readonly messagesService: MessagesService,
     ) {}
 
     /**
@@ -355,6 +357,7 @@ export class CallService {
 
     private async createCallMessage(call: CallDocument) {
         const session = await this.connection.startSession();
+        let messageId: string | undefined;
         try {
             await session.withTransaction(async () => {
                 const messages = await this.messageModel.create(
@@ -378,7 +381,15 @@ export class CallService {
                     call.callerId.toString(),
                     session,
                 );
+                messageId = messages[0]._id.toString();
             });
+            if (messageId) {
+                const message =
+                    await this.messagesService.getMessageById(messageId);
+                this.messagesService.emitCreatedMessageEvents({
+                    createdMessage: message,
+                });
+            }
         } catch (error) {
             if ((error as { code?: number }).code === 11000) {
                 return;
