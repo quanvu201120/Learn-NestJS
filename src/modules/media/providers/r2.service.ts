@@ -68,13 +68,14 @@ export class R2Service {
     async uploadObject(file: Express.Multer.File, folder: string) {
         const fileName = this.sanitizeFileName(file.originalname);
         const objectKey = `${folder}/${randomUUID()}-${fileName}`;
+        const detectedMimeType = await this.detectMimeType(file);
 
         await this.client.send(
             new PutObjectCommand({
                 Bucket: this.bucketName,
                 Key: objectKey,
                 Body: file.buffer,
-                ContentType: file.mimetype,
+                ContentType: detectedMimeType,
                 ContentLength: file.size,
             }),
         );
@@ -82,9 +83,21 @@ export class R2Service {
         return {
             objectKey,
             fileName: file.originalname,
-            mimeType: file.mimetype,
+            mimeType: detectedMimeType,
             size: file.size,
         };
+    }
+
+    /**
+     * Nhận diện mimetype thực từ magic-byte của buffer; nếu không nhận diện được
+     * (ví dụ text/plain, csv không có signature) mới rơi về mimetype client khai báo.
+     * `file-type` là ESM-only nên phải nạp bằng dynamic import, giống cách
+     * `FileTypeValidator` của @nestjs/common xử lý gói này.
+     */
+    private async detectMimeType(file: Express.Multer.File) {
+        const { fileTypeFromBuffer } = await import('file-type');
+        const detected = await fileTypeFromBuffer(file.buffer);
+        return detected?.mime ?? file.mimetype;
     }
 
     /**

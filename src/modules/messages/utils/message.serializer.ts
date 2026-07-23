@@ -69,20 +69,22 @@ export const serializeMessage = (
                     ? mediaId.toString()
                     : undefined,
         call:
-            callId &&
-            typeof callId === 'object' &&
-            !(callId instanceof Types.ObjectId) &&
-            Object.keys(callId).includes('_id')
-                ? {
-                      ...callId,
-                      _id: callId._id.toString(),
-                      callerId: callId.callerId?.toString(),
-                      calleeId: callId.calleeId?.toString(),
-                      conversationId: callId.conversationId?.toString(),
-                  }
-                : callId
-                  ? callId.toString()
-                  : undefined,
+            message.isDeleted || shouldHideSender
+                ? undefined
+                : callId &&
+                    typeof callId === 'object' &&
+                    !(callId instanceof Types.ObjectId) &&
+                    Object.keys(callId).includes('_id')
+                  ? {
+                        ...callId,
+                        _id: callId._id.toString(),
+                        callerId: callId.callerId?.toString(),
+                        calleeId: callId.calleeId?.toString(),
+                        conversationId: callId.conversationId?.toString(),
+                    }
+                  : callId
+                    ? callId.toString()
+                    : undefined,
         replyTo: replyTo
             ? serializeReplyMessage(replyTo, hiddenUserIds)
             : undefined,

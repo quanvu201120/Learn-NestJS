@@ -71,9 +71,7 @@ export class ReportAppealService {
 
         const token = authorization.slice(7).trim();
         const payload = await this.jwtService.verifyAsync(token, {
-            secret:
-                this.configService.get<string>('APPEAL_TOKEN_SECRET') ||
-                this.configService.get<string>('JWT_SECRET'),
+            secret: this.configService.get<string>('APPEAL_TOKEN_SECRET'),
         });
 
         if (

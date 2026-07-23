@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -8,6 +10,7 @@ import {
     CleanupJobResourceEnum,
 } from '../cleanup-jobs/types/cleanup-job';
 import { MediaService } from '../media/media.service';
+import { CloudinaryDeliveryTypeEnum } from '../media/types/media';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/types/user';
 import { Report, ReportDocument } from './schemas/report.schema';
@@ -195,14 +198,45 @@ export class ReportCleanupService {
         }
 
         if (validMedias.length > 0) {
-            const publicIds = validMedias.map((media) => media.publicId);
-            await this.mediaService.deleteImagesFromCloudinaryWithCleanup(
-                publicIds,
-                {
-                    resourceType: CleanupJobResourceEnum.REPORT_MEDIA,
-                    entityType: CleanupJobEntityEnum.REPORT,
-                },
-            );
+            // validMedias trộn evidence (authenticated) và avatar snapshot (upload)
+            // → tách theo deliveryType để xóa đúng type trên Cloudinary.
+            const authenticatedPublicIds: string[] = [];
+            const uploadPublicIds: string[] = [];
+            for (const media of validMedias) {
+                if (!media.publicId) {
+                    continue;
+                }
+                if (
+                    media.deliveryType ===
+                    CloudinaryDeliveryTypeEnum.AUTHENTICATED
+                ) {
+                    authenticatedPublicIds.push(media.publicId);
+                } else {
+                    uploadPublicIds.push(media.publicId);
+                }
+            }
+
+            if (uploadPublicIds.length > 0) {
+                await this.mediaService.deleteFilesFromCloudinaryWithCleanup(
+                    uploadPublicIds,
+                    {
+                        resourceType: CleanupJobResourceEnum.REPORT_MEDIA,
+                        entityType: CleanupJobEntityEnum.REPORT,
+                    },
+                    CloudinaryDeliveryTypeEnum.UPLOAD,
+                );
+            }
+
+            if (authenticatedPublicIds.length > 0) {
+                await this.mediaService.deleteFilesFromCloudinaryWithCleanup(
+                    authenticatedPublicIds,
+                    {
+                        resourceType: CleanupJobResourceEnum.REPORT_MEDIA,
+                        entityType: CleanupJobEntityEnum.REPORT,
+                    },
+                    CloudinaryDeliveryTypeEnum.AUTHENTICATED,
+                );
+            }
         }
     }
 

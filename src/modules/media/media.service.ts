@@ -1,7 +1,12 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Injectable } from '@nestjs/common';
 import { ClientSession, Types } from 'mongoose';
 import { Media } from './schemas/media.schema';
-import { MediaResourceTypeEnum, OwnerTypeEnum } from './types/media';
+import {
+    CloudinaryDeliveryTypeEnum,
+    MediaResourceTypeEnum,
+    OwnerTypeEnum,
+} from './types/media';
 import {
     MediaCleanupContext,
     MediaCleanupService,
@@ -59,6 +64,13 @@ export class MediaService {
     }
 
     /**
+     * Cấp lại URL (đã ký nếu riêng tư) cho media sau khi kiểm tra quyền truy cập.
+     */
+    async getMediaUrl(id: string, userId: string) {
+        return await this.mediaDownloadService.getMediaUrl(id, userId);
+    }
+
+    /**
      * Lấy các khóa định danh storage cần thiết để cleanup media của một conversation.
      */
     async getKeysMediaByConversation(
@@ -94,63 +106,84 @@ export class MediaService {
     /**
      * Upload ảnh lên Cloudinary và trả về payload media sẵn sàng để lưu MongoDB.
      */
-    async uploadImageToCloudinary(
+    async uploadFileToCloudinary(
         uploadedBy: Types.ObjectId,
         ownerType: OwnerTypeEnum,
         ownerId: Types.ObjectId,
         file: Express.Multer.File,
         folder: string,
+        isPrivate = false,
     ) {
-        return await this.mediaStorageService.uploadImageToCloudinary(
+        return await this.mediaStorageService.uploadFileToCloudinary(
             uploadedBy,
             ownerType,
             ownerId,
             file,
             folder,
+            isPrivate,
         );
     }
 
     /**
-     * Xóa một ảnh trên Cloudinary theo `publicId`.
+     * Tạo signed URL cho file Cloudinary `authenticated`.
      */
-    async deleteImageFromCloudinary(publicId: string) {
-        return await this.mediaStorageService.deleteImageFromCloudinary(
+    getSignedFileUrl(publicId: string, ttlSeconds?: number) {
+        return this.mediaStorageService.getSignedFileUrl(publicId, ttlSeconds);
+    }
+
+    /**
+     * Xóa một ảnh trên Cloudinary theo `publicId` và `deliveryType`.
+     */
+    async deleteFileFromCloudinary(
+        publicId: string,
+        deliveryType?: CloudinaryDeliveryTypeEnum,
+    ) {
+        return await this.mediaStorageService.deleteFileFromCloudinary(
             publicId,
+            deliveryType,
         );
     }
 
     /**
      * Xóa một ảnh trên Cloudinary theo `publicId` và tạo cleanup job nếu có lỗi.
      */
-    async deleteImageFromCloudinaryWithCleanup(
+    async deleteFileFromCloudinaryWithCleanup(
         publicId: string,
         cleanup: MediaCleanupContext,
+        deliveryType?: CloudinaryDeliveryTypeEnum,
     ) {
-        return await this.mediaCleanupService.deleteImageFromCloudinaryWithCleanup(
+        return await this.mediaCleanupService.deleteFileFromCloudinaryWithCleanup(
             publicId,
             cleanup,
+            deliveryType,
         );
     }
 
     /**
-     * Xóa nhiều ảnh trên Cloudinary theo dạng batch.
+     * Xóa nhiều ảnh trên Cloudinary theo dạng batch (cùng `deliveryType`).
      */
-    async deleteImagesFromCloudinary(publicIds: string[]) {
-        return await this.mediaStorageService.deleteImagesFromCloudinary(
+    async deleteFilesFromCloudinary(
+        publicIds: string[],
+        deliveryType?: CloudinaryDeliveryTypeEnum,
+    ) {
+        return await this.mediaStorageService.deleteFilesFromCloudinary(
             publicIds,
+            deliveryType,
         );
     }
 
     /**
      * Xóa nhiều ảnh trên Cloudinary theo dạng batch và tạo cleanup job nếu có lỗi.
      */
-    async deleteImagesFromCloudinaryWithCleanup(
+    async deleteFilesFromCloudinaryWithCleanup(
         publicIds: string[],
         cleanup: MediaCleanupContext,
+        deliveryType?: CloudinaryDeliveryTypeEnum,
     ) {
-        return await this.mediaCleanupService.deleteImagesFromCloudinaryWithCleanup(
+        return await this.mediaCleanupService.deleteFilesFromCloudinaryWithCleanup(
             publicIds,
             cleanup,
+            deliveryType,
         );
     }
 

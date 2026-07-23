@@ -14,7 +14,26 @@ import { TransformInterceptor } from './common/transform.interceptor';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { VALIDATION_MESSAGES } from './common/constants/validation.constant';
+import { INestApplication } from '@nestjs/common';
+import { IoAdapter } from '@nestjs/platform-socket.io';
+import { ServerOptions } from 'socket.io';
 import { join, extname } from 'path';
+
+class ConfiguredIoAdapter extends IoAdapter {
+    constructor(
+        app: INestApplication,
+        private readonly corsOrigins: string[],
+    ) {
+        super(app);
+    }
+
+    createIOServer(port: number, options?: ServerOptions): any {
+        return super.createIOServer(port, {
+            ...options,
+            cors: { origin: this.corsOrigins },
+        });
+    }
+}
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
@@ -25,11 +44,24 @@ async function bootstrap() {
         .map((origin) => origin.trim())
         .filter(Boolean);
     const isProduction = configService.get<string>('NODE_ENV') === 'production';
-    const r2PublicBaseUrl = configService
-        .get<string>('R2_PUBLIC_BASE_URL')
-        ?.replace(/\/$/, '');
+
+    // Media R2 phục vụ qua presigned URL trên chính R2_ENDPOINT (private bucket),
+    // nên CSP phải cho phép origin của endpoint này
+    const r2EndpointOrigin = (() => {
+        const raw = configService.get<string>('R2_ENDPOINT');
+        if (!raw) {
+            return undefined;
+        }
+        try {
+            return new URL(raw).origin;
+        } catch {
+            return undefined;
+        }
+    })();
+    const r2CspSources = r2EndpointOrigin ? [r2EndpointOrigin] : [];
 
     app.setGlobalPrefix('api/v1');
+    app.useWebSocketAdapter(new ConfiguredIoAdapter(app, corsOrigins));
     app.enableCors({
         origin: (origin, callback) => {
             if (!origin) {
@@ -88,8 +120,12 @@ async function bootstrap() {
                         'blob:',
                         'https://res.cloudinary.com',
                         'https://*.cloudinary.com',
-                        ...(r2PublicBaseUrl ? [r2PublicBaseUrl] : []),
+                        ...r2CspSources,
                     ],
+                    // Video/voice R2 phát qua thẻ <video>/<audio>.
+                    mediaSrc: ["'self'", 'blob:', ...r2CspSources],
+                    // Tải file R2 (presigned) bằng fetch/XHR từ client.
+                    connectSrc: ["'self'", ...r2CspSources],
                 },
             },
         }),

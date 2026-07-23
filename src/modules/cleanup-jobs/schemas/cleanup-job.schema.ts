@@ -19,6 +19,10 @@ export class CleanupJobPayload {
     @Prop({ type: [String] })
     publicIds?: string[];
 
+    // Kiểu phân phối Cloudinary của (các) publicId cần xóa ('upload' | 'authenticated').
+    @Prop({ type: String })
+    deliveryType?: string;
+
     @Prop({ type: String })
     objectKey?: string;
 
@@ -131,8 +135,11 @@ const actionPayloadRules: Record<
     CleanupJobActionEnum,
     (keyof CleanupJobPayload)[]
 > = {
-    [CleanupJobActionEnum.CLOUDINARY_DELETE_ONE]: ['publicId'],
-    [CleanupJobActionEnum.CLOUDINARY_DELETE_MANY]: ['publicIds'],
+    [CleanupJobActionEnum.CLOUDINARY_DELETE_ONE]: ['publicId', 'deliveryType'],
+    [CleanupJobActionEnum.CLOUDINARY_DELETE_MANY]: [
+        'publicIds',
+        'deliveryType',
+    ],
     [CleanupJobActionEnum.R2_DELETE_ONE]: ['objectKey'],
     [CleanupJobActionEnum.R2_DELETE_MANY]: ['objectKeys'],
     [CleanupJobActionEnum.REDIS_REMOVE_UNSEEN_ONE]: [

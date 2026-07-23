@@ -146,6 +146,18 @@ export class MessageCommandService {
                     MESSAGE_MESSAGES.CALL_MESSAGE_ACTION_NOT_ALLOWED,
                 );
             }
+            if (replyMessage.senderId.toString() !== senderId) {
+                const isBlocked =
+                    await this.relationshipsService.checkIsBlocked(
+                        senderId,
+                        replyMessage.senderId.toString(),
+                    );
+                if (isBlocked) {
+                    throw new BadRequestException(
+                        MESSAGE_MESSAGES.CANNOT_REPLY_BLOCKED_USER,
+                    );
+                }
+            }
             objectReplyTo = replyMessage._id;
         }
         let uploadedFile: Media | null = null;

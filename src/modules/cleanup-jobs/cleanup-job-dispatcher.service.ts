@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
@@ -8,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { RedisService } from '@/redis/redis.service';
 import { MediaService } from '../media/media.service';
+import { CloudinaryDeliveryTypeEnum } from '../media/types/media';
 import { SessionService } from '../session/session.service';
 import { CLEANUP_JOB_MESSAGES } from './constants/cleanup-job.constant';
 import { CleanupJobDocument } from './schemas/cleanup-job.schema';
@@ -62,24 +64,30 @@ export class CleanupJobDispatcherService {
 
     /** Xử lý job xóa 1 ảnh trên cloudinary */
     private async handleCloudinaryDeleteOne(cleanupJob: CleanupJobDocument) {
-        const { publicId } = cleanupJob.payload;
+        const { publicId, deliveryType } = cleanupJob.payload;
         if (!publicId) {
             throw new BadRequestException(
                 CLEANUP_JOB_MESSAGES.JOB_INVALID_PAYLOAD_PUBLIC_ID,
             );
         }
-        return await this.mediaService.deleteImageFromCloudinary(publicId);
+        return await this.mediaService.deleteFileFromCloudinary(
+            publicId,
+            deliveryType as CloudinaryDeliveryTypeEnum | undefined,
+        );
     }
 
     /** Xử lý job xóa nhiều ảnh trên cloudinary */
     private async handleCloudinaryDeleteMany(cleanupJob: CleanupJobDocument) {
-        const { publicIds } = cleanupJob.payload;
+        const { publicIds, deliveryType } = cleanupJob.payload;
         if (!publicIds || !Array.isArray(publicIds) || publicIds.length === 0) {
             throw new BadRequestException(
                 CLEANUP_JOB_MESSAGES.JOB_INVALID_PAYLOAD_PUBLIC_IDS,
             );
         }
-        return await this.mediaService.deleteImagesFromCloudinary(publicIds);
+        return await this.mediaService.deleteFilesFromCloudinary(
+            publicIds,
+            deliveryType as CloudinaryDeliveryTypeEnum | undefined,
+        );
     }
 
     /** Xử lý job xóa 1 file trên r2 */

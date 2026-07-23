@@ -1,8 +1,9 @@
-import { toObjectId } from '@/utils/utils';
+import { logCatch, toObjectId } from '@/utils/utils';
 import {
     BadRequestException,
     Inject,
     Injectable,
+    Logger,
     forwardRef,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -21,6 +22,8 @@ import { RelationshipStatusEnum } from './types/relationship';
 
 @Injectable()
 export class RelationshipRequestService {
+    private readonly logger = new Logger(RelationshipRequestService.name);
+
     constructor(
         @InjectModel(Relationship.name)
         private relationshipModel: Model<RelationshipDocument>,
@@ -101,8 +104,9 @@ export class RelationshipRequestService {
                 `${currentUser.name} đã chấp nhận lời mời kết bạn`,
             );
         } catch (error) {
-            console.error(
-                'Error creating system message on friend accept:',
+            logCatch(
+                this.logger,
+                'Error creating system message on friend accept',
                 error,
             );
         }

@@ -8,6 +8,7 @@ import {
     Inject,
     Injectable,
     InternalServerErrorException,
+    Logger,
     forwardRef,
 } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
@@ -18,6 +19,7 @@ import {
     CleanupJobResourceEnum,
 } from '../cleanup-jobs/types/cleanup-job';
 import { MediaService } from '../media/media.service';
+import { CloudinaryDeliveryTypeEnum } from '../media/types/media';
 import { MessagesService } from '../messages/messages.service';
 import {
     MessageCreatedEvents,
@@ -33,10 +35,12 @@ import {
     Conversation,
     ConversationDocument,
 } from './schemas/conversation.schema';
-import { toObjectId } from '@/utils/utils';
+import { logCatch, toObjectId } from '@/utils/utils';
 
 @Injectable()
 export class ConversationGroupAdminService {
+    private readonly logger = new Logger(ConversationGroupAdminService.name);
+
     constructor(
         @InjectModel(Conversation.name)
         private readonly conversationModel: Model<ConversationDocument>,
@@ -79,7 +83,8 @@ export class ConversationGroupAdminService {
 
         const session = await this.connection.startSession();
         const mediaList = {
-            publicIds: [] as string[],
+            publicIdsUpload: [] as string[],
+            publicIdsAuthenticated: [] as string[],
             objectKeys: [] as string[],
         };
 
@@ -90,7 +95,9 @@ export class ConversationGroupAdminService {
                         conversation._id.toString(),
                         session,
                     );
-                mediaList.publicIds = getMedia.listPublicId;
+                mediaList.publicIdsUpload = getMedia.listPublicIdUpload;
+                mediaList.publicIdsAuthenticated =
+                    getMedia.listPublicIdAuthenticated;
                 mediaList.objectKeys = getMedia.listObjectKey;
 
                 await this.messageService.deleteMessagesByConversationId(
@@ -118,7 +125,11 @@ export class ConversationGroupAdminService {
         await this.redisService
             .removeAllUnseenConversationWithCleanup(conversation.users, id)
             .catch((error) => {
-                console.error('Remove all unseen conversation failed', error);
+                logCatch(
+                    this.logger,
+                    'Remove all unseen conversation failed',
+                    error,
+                );
             });
 
         if (mediaList.objectKeys && mediaList.objectKeys.length > 0) {
@@ -132,14 +143,27 @@ export class ConversationGroupAdminService {
             );
         }
 
-        if (mediaList.publicIds && mediaList.publicIds.length > 0) {
-            await this.mediaService.deleteImagesFromCloudinaryWithCleanup(
-                mediaList.publicIds,
+        if (mediaList.publicIdsUpload.length > 0) {
+            await this.mediaService.deleteFilesFromCloudinaryWithCleanup(
+                mediaList.publicIdsUpload,
                 {
                     entityType: CleanupJobEntityEnum.CONVERSATION,
                     entityId: conversation._id.toString(),
                     resourceType: CleanupJobResourceEnum.CONVERSATION_MEDIA,
                 },
+                CloudinaryDeliveryTypeEnum.UPLOAD,
+            );
+        }
+
+        if (mediaList.publicIdsAuthenticated.length > 0) {
+            await this.mediaService.deleteFilesFromCloudinaryWithCleanup(
+                mediaList.publicIdsAuthenticated,
+                {
+                    entityType: CleanupJobEntityEnum.CONVERSATION,
+                    entityId: conversation._id.toString(),
+                    resourceType: CleanupJobResourceEnum.CONVERSATION_MEDIA,
+                },
+                CloudinaryDeliveryTypeEnum.AUTHENTICATED,
             );
         }
 

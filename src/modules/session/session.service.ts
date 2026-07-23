@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Session } from './schemas/session.schema';
 import { ClientSession, Model, Types } from 'mongoose';
 import { CreateSessionDto } from './dto/create-session.dto';
-import { toObjectId, validateObjectId } from '@/utils/utils';
+import { logCatch, toObjectId, validateObjectId } from '@/utils/utils';
 import { CleanupJobsService } from '../cleanup-jobs/cleanup-jobs.service';
 import { CreateCleanupJobDto } from '../cleanup-jobs/dto/create-cleanup-job.dto';
 import {
@@ -19,6 +19,8 @@ import { SessionDeviceService } from './session-device.service';
 
 @Injectable()
 export class SessionService {
+    private readonly logger = new Logger(SessionService.name);
+
     constructor(
         @InjectModel(Session.name) public sessionModel: Model<Session>,
         @Inject(forwardRef(() => CleanupJobsService))
@@ -270,7 +272,7 @@ export class SessionService {
             };
             await this.cleanupJobsService.createCleanupJob(createDto);
         } catch (error) {
-            console.error('Failed to create cleanup job: ', error);
+            logCatch(this.logger, 'Failed to create cleanup job', error);
         }
     }
 
@@ -294,7 +296,7 @@ export class SessionService {
             };
             await this.cleanupJobsService.createCleanupJob(createDto);
         } catch (error) {
-            console.error('Failed to create cleanup job: ', error);
+            logCatch(this.logger, 'Failed to create cleanup job', error);
         }
     }
 }

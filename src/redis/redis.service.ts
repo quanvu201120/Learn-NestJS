@@ -4,6 +4,7 @@ import {
     forwardRef,
     Inject,
     Injectable,
+    Logger,
     OnModuleDestroy,
     OnModuleInit,
 } from '@nestjs/common';
@@ -18,9 +19,12 @@ import {
     CleanupJobEntityEnum,
     CleanupJobResourceEnum,
 } from '@/modules/cleanup-jobs/types/cleanup-job';
+import { logCatch } from '@/utils/utils';
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
+    private readonly logger = new Logger(RedisService.name);
+
     constructor(
         private configService: ConfigService,
         @Inject(forwardRef(() => CleanupJobsService))
@@ -453,7 +457,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         try {
             await this.cleanupJobsService.createCleanupJob(createDto);
         } catch (error) {
-            console.error('Failed to create cleanup job: ', error);
+            logCatch(this.logger, 'Failed to create cleanup job', error);
         }
     }
 

@@ -1,11 +1,14 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
     BadRequestException,
     Inject,
     Injectable,
+    Logger,
     forwardRef,
 } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Connection, Model } from 'mongoose';
+import { logCatch } from '@/utils/utils';
 import {
     CleanupJobEntityEnum,
     CleanupJobResourceEnum,
@@ -15,7 +18,7 @@ import {
     MEDIA_MESSAGES,
 } from '../media/constants/media.constant';
 import { Media } from '../media/schemas/media.schema';
-import { MediaProviderEnum, OwnerTypeEnum } from '../media/types/media';
+import { OwnerTypeEnum } from '../media/types/media';
 import { MediaService } from '../media/media.service';
 import { CONVERSATION_MESSAGES } from './constants/conversation.constant';
 import { ConversationAccessService } from './conversation-access.service';
@@ -27,6 +30,8 @@ import {
 
 @Injectable()
 export class ConversationMediaService {
+    private readonly logger = new Logger(ConversationMediaService.name);
+
     constructor(
         @InjectModel(Conversation.name)
         private readonly conversationModel: Model<ConversationDocument>,
@@ -63,7 +68,7 @@ export class ConversationMediaService {
         let isUpdatedUser = false;
         const session = await this.connection.startSession();
         try {
-            uploadedAvatar = await this.mediaService.uploadImageToCloudinary(
+            uploadedAvatar = await this.mediaService.uploadFileToCloudinary(
                 objectUserId,
                 OwnerTypeEnum.CONVERSATION,
                 objectConversationId,
@@ -122,15 +127,16 @@ export class ConversationMediaService {
             );
             if (avatarOld && avatarOld.publicId) {
                 await this.mediaService
-                    .deleteImageFromCloudinaryWithCleanup(avatarOld.publicId, {
+                    .deleteFileFromCloudinaryWithCleanup(avatarOld.publicId, {
                         entityType: CleanupJobEntityEnum.CONVERSATION,
                         entityId: conversation._id.toString(),
                         resourceType:
                             CleanupJobResourceEnum.CONVERSATION_AVATAR,
                     })
                     .catch((cleanupError) => {
-                        console.error(
-                            'Failed to cleanup uploaded avatar:',
+                        logCatch(
+                            this.logger,
+                            'Failed to cleanup uploaded avatar',
                             cleanupError,
                         );
                     });
@@ -140,12 +146,12 @@ export class ConversationMediaService {
             return await this.conversationSerializerService.serializeConversation(
                 conversationUpdated,
                 userId,
-                [],
+                undefined,
                 true,
             );
         } catch (error) {
             if (uploadedAvatar && uploadedAvatar.publicId && !isUpdatedUser) {
-                await this.mediaService.deleteImageFromCloudinaryWithCleanup(
+                await this.mediaService.deleteFileFromCloudinaryWithCleanup(
                     uploadedAvatar.publicId,
                     {
                         entityType: CleanupJobEntityEnum.CONVERSATION,
@@ -217,7 +223,7 @@ export class ConversationMediaService {
                 },
             );
             if (avatarOld?.publicId) {
-                await this.mediaService.deleteImageFromCloudinaryWithCleanup(
+                await this.mediaService.deleteFileFromCloudinaryWithCleanup(
                     avatarOld.publicId,
                     {
                         entityType: CleanupJobEntityEnum.CONVERSATION,
@@ -230,7 +236,7 @@ export class ConversationMediaService {
             return await this.conversationSerializerService.serializeConversation(
                 conversationUpdated,
                 userId,
-                [],
+                undefined,
                 true,
             );
         } finally {

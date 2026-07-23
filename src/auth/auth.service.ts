@@ -12,6 +12,7 @@ import {
     formatDateTime,
     generateJWT,
     hashRefreshToken,
+    logCatch,
     safeCompare,
     validateObjectId,
 } from '@/utils/utils';
@@ -21,6 +22,7 @@ import {
     HttpException,
     Injectable,
     InternalServerErrorException,
+    Logger,
     UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -59,6 +61,8 @@ type LoginUser = UserResponse & {
 
 @Injectable()
 export class AuthService {
+    private readonly logger = new Logger(AuthService.name);
+
     constructor(
         private readonly usersService: UsersService,
         private jwtService: JwtService,
@@ -250,7 +254,9 @@ export class AuthService {
                     user._id.toString(),
                 );
             }
-            console.log(error);
+            this.logger.error(
+                `Login failed: ${(error as Error)?.message || error}`,
+            );
 
             throw new InternalServerErrorException(AUTH_MESSAGES.LOGIN_FAILED);
         }
@@ -541,14 +547,16 @@ export class AuthService {
                         );
                     }
                 } catch (cleanupError) {
-                    console.error('Lỗi dọn dẹp token hết hạn:', cleanupError);
+                    this.logger.error(
+                        `Lỗi dọn dẹp token hết hạn: ${(cleanupError as Error)?.message || cleanupError}`,
+                    );
                 }
             }
 
             if (error instanceof HttpException) {
                 throw error;
             }
-            console.error('Error during token refresh:', error);
+            logCatch(this.logger, 'Error during token refresh', error);
             throw new UnauthorizedException(
                 AUTH_MESSAGES.EXPIRED_REFRESH_TOKEN,
             );
@@ -581,9 +589,13 @@ export class AuthService {
                 payload.sessionId,
                 userId,
             );
+            this.eventEmitter.emit('session.revoked', {
+                userId,
+                sessionId: payload.sessionId,
+            });
             return null;
         } catch (error) {
-            console.log(error);
+            logCatch(this.logger, 'Logout failed', error);
             return null;
         }
     }
@@ -603,6 +615,7 @@ export class AuthService {
             user.tokenVersion += 1;
             await user.save();
             await this.sessionService.revokeAllByUserIdWithCleanup(userId);
+            this.eventEmitter.emit('session.revoked-all', { userId });
             return {
                 message: AUTH_MESSAGES.LOGOUT_ALL_SUCCESS,
             };
@@ -659,6 +672,7 @@ export class AuthService {
             user.tokenVersion += 1;
             await user.save();
             await this.sessionService.revokeAllByUserIdWithCleanup(userId);
+            this.eventEmitter.emit('session.revoked-all', { userId });
 
             this.eventEmitter.emit('audit.log.create', {
                 req,

@@ -15,6 +15,8 @@ export const MESSAGE_MESSAGES = {
     PIN_MESSAGE_NOT_PINNED: 'Tin nhắn này chưa được ghim',
     CANNOT_SEND_MESSAGE_TO_BLOCKED_USER:
         'Không thể gửi tin nhắn cho người đã chặn bạn',
+    CANNOT_REPLY_BLOCKED_USER: 'Không thể trả lời tin nhắn này',
+    CANNOT_REACT_BLOCKED_USER: 'Không thể bày tỏ cảm xúc với tin nhắn này',
     USER_MUTED: (time: string) => `Bạn đã bị cấm chat đến ${time}`,
     CALL_MESSAGE_ACTION_NOT_ALLOWED:
         'Tin nhắn cuộc gọi không hỗ trợ thao tác này',

@@ -1,4 +1,3 @@
-import { Media, MediaSchema } from '@/modules/media/schemas/media.schema';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 

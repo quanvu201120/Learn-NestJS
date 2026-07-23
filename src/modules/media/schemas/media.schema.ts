@@ -1,6 +1,7 @@
 import { HydratedDocument, Types } from 'mongoose';
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import {
+    CloudinaryDeliveryTypeEnum,
     MediaProviderEnum,
     MediaResourceTypeEnum,
     OwnerTypeEnum,
@@ -42,6 +43,12 @@ export class Media {
 
     @Prop({ type: String })
     publicId?: string;
+
+    @Prop({
+        type: String,
+        enum: CloudinaryDeliveryTypeEnum,
+    })
+    deliveryType?: CloudinaryDeliveryTypeEnum;
 
     @Prop({ type: String })
     objectKey?: string;

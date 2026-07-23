@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -9,6 +10,7 @@ import { REPORT_MESSAGES } from './constants/report.constant';
 import { GetReportsDto } from './dto/get-reports.dto';
 import { Report, ReportDocument } from './schemas/report.schema';
 import { PenaltyTypeEnum, ReportStatusEnum } from './types/report.type';
+import { serializeMedia } from '../media/utils/media.serializer';
 
 @Injectable()
 export class ReportQueryService {
@@ -54,6 +56,38 @@ export class ReportQueryService {
             appealReviewDeadline: report.appealReviewDeadline,
             penaltyApplied: report.penaltyApplied,
             penaltyType: report.penaltyType,
+        };
+    }
+
+    /**
+     * Chuẩn hóa các media của report (ảnh bằng chứng + avatar snapshot) trước
+     * khi trả về client. Ảnh evidence là Cloudinary `authenticated` nên phải qua
+     * `serializeMedia` để có URL ký, nếu không client sẽ không xem được.
+     */
+    private serializeReportMedia(report: any) {
+        if (!report || typeof report !== 'object') {
+            return report;
+        }
+
+        const serializeList = (list: any) =>
+            Array.isArray(list)
+                ? list.map((media) => serializeMedia(media))
+                : list;
+
+        return {
+            ...report,
+            evidenceMediaIds: serializeList(report.evidenceMediaIds),
+            appealEvidenceMediaIds: serializeList(
+                report.appealEvidenceMediaIds,
+            ),
+            snapshot: report.snapshot
+                ? {
+                      ...report.snapshot,
+                      avatarMediaId: report.snapshot.avatarMediaId
+                          ? serializeMedia(report.snapshot.avatarMediaId)
+                          : report.snapshot.avatarMediaId,
+                  }
+                : report.snapshot,
         };
     }
 
@@ -129,7 +163,11 @@ export class ReportQueryService {
             .populate('snapshot.avatarMediaId', '-__v')
             .lean();
 
-        return { totalPages, totalItems, reports };
+        return {
+            totalPages,
+            totalItems,
+            reports: reports.map((report) => this.serializeReportMedia(report)),
+        };
     }
 
     /**
@@ -166,6 +204,6 @@ export class ReportQueryService {
         if (!report) {
             throw new BadRequestException(REPORT_MESSAGES.REPORT_NOT_FOUND);
         }
-        return report;
+        return this.serializeReportMedia(report);
     }
 }

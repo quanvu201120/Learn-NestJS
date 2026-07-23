@@ -10,14 +10,17 @@ import {
     forwardRef,
     Inject,
     Injectable,
+    Logger,
 } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
+import { GetUsersDto } from './dto/get-users.dto';
 import { User } from './schemas/user.schema';
 import { Connection, Model, Types } from 'mongoose';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import {
     formatExpireTime,
     hashCodeVerifyEmail,
+    logCatch,
     validateObjectId,
     toObjectId,
     safeCompare,
@@ -47,7 +50,6 @@ import {
     CleanupJobEntityEnum,
     CleanupJobResourceEnum,
 } from '../cleanup-jobs/types/cleanup-job';
-import { RelationshipsService } from '../relationships/relationships.service';
 import { ReportsService } from '../reports/reports.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -62,6 +64,8 @@ import { UserAuthProfileService } from './user-auth-profile.service';
 
 @Injectable()
 export class UsersService {
+    private readonly logger = new Logger(UsersService.name);
+
     public readonly userDisabled$ = new Subject<{ userId: string }>();
 
     constructor(
@@ -71,7 +75,6 @@ export class UsersService {
         private readonly redisService: RedisService,
         private readonly mediaService: MediaService,
         private readonly sessionService: SessionService,
-        @Inject(forwardRef(() => RelationshipsService))
         @Inject(forwardRef(() => ReportsService))
         private readonly reportsService: ReportsService,
         private readonly eventEmitter: EventEmitter2,
@@ -140,7 +143,7 @@ export class UsersService {
      * Lấy danh sách user có hỗ trợ phân trang và filter.
      */
     async findAll(
-        query: any,
+        query: GetUsersDto,
         current: number,
         pageSize: number,
         forAdmin = false,
@@ -494,7 +497,7 @@ export class UsersService {
         let isUpdatedUser = false;
         const session = await this.connection.startSession();
         try {
-            uploadedAvatar = await this.mediaService.uploadImageToCloudinary(
+            uploadedAvatar = await this.mediaService.uploadFileToCloudinary(
                 objectUserId,
                 OwnerTypeEnum.USER,
                 objectUserId,
@@ -564,20 +567,24 @@ export class UsersService {
 
             if (avatarOld?.publicId && !isMediaInReport) {
                 await this.mediaService
-                    .deleteImageFromCloudinaryWithCleanup(avatarOld.publicId, {
+                    .deleteFileFromCloudinaryWithCleanup(avatarOld.publicId, {
                         entityId: user._id.toString(),
                         entityType: CleanupJobEntityEnum.USER,
                         resourceType: CleanupJobResourceEnum.USER_AVATAR,
                     })
                     .catch((error) => {
-                        console.error('Failed to delete old avatar:', error);
+                        logCatch(
+                            this.logger,
+                            'Failed to delete old avatar',
+                            error,
+                        );
                     });
             }
             return this.serializeUserResponse(user);
         } catch (error) {
             if (uploadedAvatar && uploadedAvatar.publicId && !isUpdatedUser) {
                 await this.mediaService
-                    .deleteImageFromCloudinaryWithCleanup(
+                    .deleteFileFromCloudinaryWithCleanup(
                         uploadedAvatar.publicId,
                         {
                             entityId: objectUserId.toString(),
@@ -586,8 +593,9 @@ export class UsersService {
                         },
                     )
                     .catch((cleanupError) => {
-                        console.error(
-                            'Failed to cleanup uploaded avatar:',
+                        logCatch(
+                            this.logger,
+                            'Failed to cleanup uploaded avatar',
                             cleanupError,
                         );
                     });
@@ -660,13 +668,17 @@ export class UsersService {
 
             if (avatarOld?.publicId && !isMediaInReport) {
                 await this.mediaService
-                    .deleteImageFromCloudinaryWithCleanup(avatarOld.publicId, {
+                    .deleteFileFromCloudinaryWithCleanup(avatarOld.publicId, {
                         entityId: objectUserId.toString(),
                         entityType: CleanupJobEntityEnum.USER,
                         resourceType: CleanupJobResourceEnum.USER_AVATAR,
                     })
                     .catch((error) => {
-                        console.error('Failed to delete old avatar:', error);
+                        logCatch(
+                            this.logger,
+                            'Failed to delete old avatar',
+                            error,
+                        );
                     });
             }
             return this.serializeUserResponse(user);
@@ -810,8 +822,9 @@ export class UsersService {
                 );
             }
             await this.redisService.del(redisKey).catch((error) => {
-                console.error(
-                    'Failed to delete redis update email key:',
+                logCatch(
+                    this.logger,
+                    'Failed to delete redis update email key',
                     error,
                 );
             });
@@ -887,7 +900,11 @@ export class UsersService {
                 },
             )
             .catch((error) => {
-                console.error(error);
+                logCatch(
+                    this.logger,
+                    'Failed to send update-email verification',
+                    error,
+                );
             });
         return 'OK';
     }

@@ -9,6 +9,11 @@ import type { Response } from 'express';
 export class MediaController {
     constructor(private readonly mediaService: MediaService) {}
 
+    @Get(':id/url')
+    async getMediaUrl(@Param('id') id: string, @Request() req) {
+        return await this.mediaService.getMediaUrl(id, req.user._id.toString());
+    }
+
     @Get(':id/download')
     async downloadMedia(
         @Param('id') id: string,
@@ -22,6 +27,7 @@ export class MediaController {
 
         const encodedFileName = encodeURIComponent(file.fileName);
         res.setHeader('Content-Type', file.mimeType);
+        res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader(
             'Content-Disposition',
             `attachment; filename="${encodedFileName}"; filename*=UTF-8''${encodedFileName}`,

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import bcrypt from 'bcrypt';
@@ -9,7 +9,7 @@ import {
     ChangePasswordAuthDto,
     CreatePasswordAuthDto,
 } from '@/auth/dto/password-auth.dto';
-import { formatExpireTime, hashPassword } from '@/utils/utils';
+import { formatExpireTime, hashPassword, logCatch } from '@/utils/utils';
 import { USER_MESSAGES } from './constants/user.constant';
 import { User } from './schemas/user.schema';
 import { UserCodeService } from './user-code.service';
@@ -19,6 +19,8 @@ import { SessionService } from '@/modules/session/session.service';
 
 @Injectable()
 export class UserPasswordService {
+    private readonly logger = new Logger(UserPasswordService.name);
+
     constructor(
         @InjectModel(User.name) private userModel: Model<User>,
         private readonly configService: ConfigService,
@@ -121,7 +123,11 @@ export class UserPasswordService {
                 },
             )
             .catch((error) => {
-                console.error(error);
+                logCatch(
+                    this.logger,
+                    'Failed to send forgot-password email',
+                    error,
+                );
             });
         return 'OK';
     }

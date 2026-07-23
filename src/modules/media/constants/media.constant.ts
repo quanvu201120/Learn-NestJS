@@ -7,9 +7,11 @@ export const MEDIA_CONSTANTS = {
     CONVERSATION_AUDIO_FOLDER: 'conversations/audio',
     CONVERSATION_FILE_FOLDER: 'conversations/files',
     REPORT_EVIDENCE_FOLDER: 'reports/evidence',
+    SIGNED_URL_TTL_SECONDS: 60,
 } as const;
 
 export const MEDIA_MESSAGES = {
+    OWNER_TYPE_NOT_SUPPORT: 'Không hỗ trợ loại tệp này',
     FILE_UPLOAD_OVER_LIMIT: 'Đã vượt quá số lượng tệp cho phép',
     FILE_UPLOAD_EMPTY: 'Vui lòng tải lên ít nhất một tệp',
     FILE_UPLOAD_FAILED: 'Tải tệp lên thất bại',
@@ -28,4 +30,5 @@ export const MEDIA_MESSAGES = {
     R2_CONFIGURATION_MISSING: 'Thiếu cấu hình R2',
     R2_BUCKET_NAME_MISSING: 'Thiếu tên bucket R2',
     CLOUDINARY_UPLOAD_FAILED: 'Tải tệp lên Cloudinary thất bại',
+    MEDIA_URL_UNAVAILABLE: 'Không thể tạo liên kết cho media này',
 } as const;

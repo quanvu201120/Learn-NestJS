@@ -212,7 +212,7 @@ export class ConversationMemberService {
             return await this.conversationSerializerService.serializeConversation(
                 result,
                 currentUserId,
-                [],
+                undefined,
                 true,
             );
         }

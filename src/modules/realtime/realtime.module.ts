@@ -15,6 +15,7 @@ import { RealtimeCallService } from './realtime-call.service';
 import { PushSubscriptionsModule } from '../push-subscriptions/push-subscriptions.module';
 import { WebrtcConfigController } from './webrtc-config.controller';
 import { WebrtcConfigService } from './webrtc-config.service';
+import { WebrtcIceRotationService } from './webrtc-ice-rotation.service';
 @Module({
     imports: [
         AuthModule,
@@ -36,6 +37,7 @@ import { WebrtcConfigService } from './webrtc-config.service';
         RealtimeEventBridgeService,
         RealtimeCallService,
         WebrtcConfigService,
+        WebrtcIceRotationService,
     ],
 })
 export class RealtimeModule {}

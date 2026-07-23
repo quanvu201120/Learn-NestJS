@@ -4,6 +4,7 @@ export type SocketResponse<T = any> = {
     ok: boolean;
     message?: string;
     data?: T;
+    retryAfterSeconds?: number;
 };
 
 // --- ACK RESPONSE DATA ---
@@ -114,6 +115,7 @@ export type RelationshipDeletedPayload = {
 
 export type RelationshipBlockedPayload = {
     targetUserId: string;
+    actorId: string;
 };
 
 export type PinMessageEventPayload = {

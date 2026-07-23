@@ -30,7 +30,7 @@ import {
     SignalAckResult,
     SocketResponse,
 } from './types/responseSocket';
-import { REALTIME_CONSTANT } from './constants/realtime.constant';
+import { REALTIME_CONSTANT, SOCKET_EVENTS } from './constants/realtime.constant';
 import {
     CALL_HEARTBEAT_CONSTANT,
     CALL_MESSAGES,
@@ -153,10 +153,10 @@ export class RealtimeCallService {
 
                 server
                     .to(getRoomNameUser(call.callerId.toString()))
-                    .emit('call:ended', payload);
+                    .emit(SOCKET_EVENTS.CALL_ENDED, payload);
                 server
                     .to(getRoomNameUser(call.calleeId.toString()))
-                    .emit('call:ended', payload);
+                    .emit(SOCKET_EVENTS.CALL_ENDED, payload);
             } catch {
                 // Nếu timeout job lỗi, call vẫn đã được đóng ở tầng service khi có thể.
             }
@@ -289,7 +289,6 @@ export class RealtimeCallService {
             };
         }
 
-        this.setSocketActiveCall(client, call._id.toString());
         const callToken = await this.createCallToken(call);
 
         return {
@@ -415,7 +414,7 @@ export class RealtimeCallService {
             const callToken = await this.createCallToken(call);
 
             const calleeRoom = getRoomNameUser(body.calleeId);
-            server.to(calleeRoom).emit('call:incoming', {
+            server.to(calleeRoom).emit(SOCKET_EVENTS.CALL_INCOMING, {
                 callId: call._id.toString(),
                 callerId: payload._id,
                 calleeId: body.calleeId,
@@ -474,14 +473,14 @@ export class RealtimeCallService {
 
         const callerRoom = getRoomNameUser(call.callerId.toString());
         const calleeRoom = getRoomNameUser(call.calleeId.toString());
-        server.to(callerRoom).emit('call:accepted', {
+        server.to(callerRoom).emit(SOCKET_EVENTS.CALL_ACCEPTED, {
             callId: call._id.toString(),
             conversationId: call.conversationId.toString(),
             acceptedBy: payload._id,
             acceptedBySocketId: client.id,
             callToken,
         });
-        server.to(calleeRoom).emit('call:close', {
+        server.to(calleeRoom).emit(SOCKET_EVENTS.CALL_CLOSE, {
             callId: call._id.toString(),
             conversationId: call.conversationId.toString(),
             acceptedBy: payload._id,
@@ -518,12 +517,12 @@ export class RealtimeCallService {
 
         const callerRoom = getRoomNameUser(call.callerId.toString());
         const calleeRoom = getRoomNameUser(call.calleeId.toString());
-        server.to(callerRoom).emit('call:rejected', {
+        server.to(callerRoom).emit(SOCKET_EVENTS.CALL_REJECTED, {
             callId: call._id.toString(),
             conversationId: call.conversationId.toString(),
             rejectedBy: payload._id,
         });
-        server.to(calleeRoom).emit('call:close', {
+        server.to(calleeRoom).emit(SOCKET_EVENTS.CALL_CLOSE, {
             callId: call._id.toString(),
             conversationId: call.conversationId.toString(),
             rejectedBy: payload._id,
@@ -562,19 +561,19 @@ export class RealtimeCallService {
 
         const callerRoom = getRoomNameUser(call.callerId.toString());
         const calleeRoom = getRoomNameUser(call.calleeId.toString());
-        server.to(callerRoom).emit('call:ended', {
+        server.to(callerRoom).emit(SOCKET_EVENTS.CALL_ENDED, {
             callId: call._id.toString(),
             conversationId: call.conversationId.toString(),
             endedBy: payload._id,
             endReason: body.endReason,
         });
-        server.to(calleeRoom).emit('call:ended', {
+        server.to(calleeRoom).emit(SOCKET_EVENTS.CALL_ENDED, {
             callId: call._id.toString(),
             conversationId: call.conversationId.toString(),
             endedBy: payload._id,
             endReason: body.endReason,
         });
-        server.to(calleeRoom).emit('call:close', {
+        server.to(calleeRoom).emit(SOCKET_EVENTS.CALL_CLOSE, {
             callId: call._id.toString(),
             conversationId: call.conversationId.toString(),
             endedBy: payload._id,
@@ -618,7 +617,7 @@ export class RealtimeCallService {
             payload._id === call.callerId.toString()
                 ? getRoomNameUser(call.calleeId.toString())
                 : getRoomNameUser(call.callerId.toString());
-        client.to(targetRoom).emit('call:offer', {
+        client.to(targetRoom).emit(SOCKET_EVENTS.CALL_OFFER, {
             callId: body.callId,
             conversationId: body.conversationId,
             fromUserId: payload._id,
@@ -658,7 +657,7 @@ export class RealtimeCallService {
             payload._id === call.callerId.toString()
                 ? getRoomNameUser(call.calleeId.toString())
                 : getRoomNameUser(call.callerId.toString());
-        client.to(targetRoom).emit('call:answer', {
+        client.to(targetRoom).emit(SOCKET_EVENTS.CALL_ANSWER, {
             callId: body.callId,
             conversationId: body.conversationId,
             fromUserId: payload._id,
@@ -698,7 +697,7 @@ export class RealtimeCallService {
             payload._id === call.callerId.toString()
                 ? getRoomNameUser(call.calleeId.toString())
                 : getRoomNameUser(call.callerId.toString());
-        client.to(targetRoom).emit('call:ice-candidate', {
+        client.to(targetRoom).emit(SOCKET_EVENTS.CALL_ICE_CANDIDATE, {
             callId: body.callId,
             conversationId: body.conversationId,
             fromUserId: payload._id,
@@ -836,19 +835,19 @@ export class RealtimeCallService {
 
         const callerRoom = getRoomNameUser(call.callerId.toString());
         const calleeRoom = getRoomNameUser(call.calleeId.toString());
-        server.to(callerRoom).emit('call:ended', {
+        server.to(callerRoom).emit(SOCKET_EVENTS.CALL_ENDED, {
             callId: call._id.toString(),
             conversationId: call.conversationId.toString(),
             endedBy: currentUserId,
             endReason: CallEndReasonEnum.NETWORK_LOST,
         });
-        server.to(calleeRoom).emit('call:ended', {
+        server.to(calleeRoom).emit(SOCKET_EVENTS.CALL_ENDED, {
             callId: call._id.toString(),
             conversationId: call.conversationId.toString(),
             endedBy: currentUserId,
             endReason: CallEndReasonEnum.NETWORK_LOST,
         });
-        server.to(calleeRoom).emit('call:close', {
+        server.to(calleeRoom).emit(SOCKET_EVENTS.CALL_CLOSE, {
             callId: call._id.toString(),
             conversationId: call.conversationId.toString(),
             endedBy: currentUserId,

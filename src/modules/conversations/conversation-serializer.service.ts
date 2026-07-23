@@ -31,16 +31,15 @@ export class ConversationSerializerService {
 
         const processedUsers = users;
 
-        const hiddenUserIds = checkHiddenUserBlock
-            ? preloadedHiddenUserIds && preloadedHiddenUserIds.length > 0
+        const hiddenUserIds =
+            preloadedHiddenUserIds !== undefined
                 ? preloadedHiddenUserIds
                 : currentUserId && Array.isArray(processedUsers)
                   ? await this.relationshipsService.getBlockedUserIdsAmongUsers(
                         currentUserId,
                         processedUsers.map((user: any) => user._id.toString()),
                     )
-                  : []
-            : [];
+                  : [];
         const hiddenUserIdSet = new Set(hiddenUserIds);
 
         return {
@@ -49,7 +48,8 @@ export class ConversationSerializerService {
                 serializeUser(
                     user,
                     true,
-                    hiddenUserIdSet.has(user._id.toString()),
+                    checkHiddenUserBlock &&
+                        hiddenUserIdSet.has(user._id.toString()),
                 ),
             ),
             avatar: avatar ? serializeMedia(avatar) : avatar,

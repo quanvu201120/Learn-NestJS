@@ -36,6 +36,7 @@ import { ConfigService } from '@nestjs/config';
 import { UserDisableStateResponse } from './types/user';
 import { VALIDATION_MESSAGES } from '@/common/constants/validation.constant';
 import { MEDIA_CONSTANTS } from '../media/constants/media.constant';
+import { GetUsersDto } from './dto/get-users.dto';
 
 @ApiTags('Users - Quản lý người dùng')
 @ApiBearerAuth('JWT-auth')
@@ -69,7 +70,7 @@ export class UsersController {
     @Get()
     @ApiOperation({ summary: 'Lấy danh sách người dùng phân trang' })
     async findAll(
-        @Query() query: string,
+        @Query() query: GetUsersDto,
         @Query('current') current: string,
         @Query('pageSize') pageSize: string,
     ) {
@@ -98,7 +99,7 @@ export class UsersController {
     @UseGuards(RolesGuard)
     @ApiOperation({ summary: 'ADMIN lấy danh sách người dùng' })
     async findAllForAdmin(
-        @Query() query: string,
+        @Query() query: GetUsersDto,
         @Query('current') current: string,
         @Query('pageSize') pageSize: string,
     ) {

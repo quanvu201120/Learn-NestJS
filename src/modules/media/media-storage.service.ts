@@ -4,6 +4,7 @@ import { CloudinaryService } from './providers/cloudinary.service';
 import { R2Service } from './providers/r2.service';
 import { Media } from './schemas/media.schema';
 import {
+    CloudinaryDeliveryTypeEnum,
     MediaProviderEnum,
     MediaResourceTypeEnum,
     OwnerTypeEnum,
@@ -20,34 +21,55 @@ export class MediaStorageService {
     /**
      * Upload ảnh lên Cloudinary và trả về payload media sẵn sàng để lưu MongoDB.
      */
-    async uploadImageToCloudinary(
+    async uploadFileToCloudinary(
         uploadedBy: Types.ObjectId,
         ownerType: OwnerTypeEnum,
         ownerId: Types.ObjectId,
         file: Express.Multer.File,
         folder: string,
+        isPrivate = false,
     ) {
-        return await this.cloudinaryService.uploadImage(
+        return await this.cloudinaryService.uploadFile(
             uploadedBy,
             ownerType,
             ownerId,
             file,
             folder,
+            isPrivate,
         );
     }
 
     /**
-     * Xóa một ảnh trên Cloudinary theo `publicId`.
+     * Tạo signed URL cho ảnh Cloudinary `authenticated`.
      */
-    async deleteImageFromCloudinary(publicId: string) {
-        return await this.cloudinaryService.deleteResource(publicId);
+    getSignedFileUrl(publicId: string, ttlSeconds?: number) {
+        return this.cloudinaryService.getSignedFileUrl(publicId, ttlSeconds);
     }
 
     /**
-     * Xóa nhiều ảnh trên Cloudinary theo dạng batch.
+     * Xóa một ảnh trên Cloudinary theo `publicId` và `deliveryType`.
      */
-    async deleteImagesFromCloudinary(publicIds: string[]) {
-        return await this.cloudinaryService.deleteResources(publicIds);
+    async deleteFileFromCloudinary(
+        publicId: string,
+        deliveryType?: CloudinaryDeliveryTypeEnum,
+    ) {
+        return await this.cloudinaryService.deleteResource(
+            publicId,
+            deliveryType,
+        );
+    }
+
+    /**
+     * Xóa nhiều ảnh trên Cloudinary theo dạng batch (cùng `deliveryType`).
+     */
+    async deleteFilesFromCloudinary(
+        publicIds: string[],
+        deliveryType?: CloudinaryDeliveryTypeEnum,
+    ) {
+        return await this.cloudinaryService.deleteResources(
+            publicIds,
+            deliveryType,
+        );
     }
 
     /**

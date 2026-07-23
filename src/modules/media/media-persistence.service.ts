@@ -4,7 +4,11 @@ import { ClientSession, Model } from 'mongoose';
 import { toObjectId } from '@/utils/utils';
 import { MEDIA_MESSAGES } from './constants/media.constant';
 import { Media, MediaDocument } from './schemas/media.schema';
-import { MediaProviderEnum, OwnerTypeEnum } from './types/media';
+import {
+    CloudinaryDeliveryTypeEnum,
+    MediaProviderEnum,
+    OwnerTypeEnum,
+} from './types/media';
 
 @Injectable()
 export class MediaPersistenceService {
@@ -56,7 +60,7 @@ export class MediaPersistenceService {
                     session,
                 },
             )
-            .select('_id publicId objectKey provider')
+            .select('_id publicId objectKey provider deliveryType')
             .lean();
     }
 
@@ -94,8 +98,9 @@ export class MediaPersistenceService {
     }
 
     /**
-     * Tách media của conversation thành danh sách `publicId` của Cloudinary
-     * và `objectKey` của R2 để cleanup sau khi transaction commit thành công.
+     * Tách media của conversation thành các danh sách cleanup sau khi transaction
+     * commit thành công. Cloudinary publicId phải tách theo `deliveryType` vì một
+     * conversation trộn lẫn avatar (`upload`) và ảnh chat (`authenticated`)
      */
     async getMediaCleanupKeysByConversation(
         conversationId: string,
@@ -107,32 +112,49 @@ export class MediaPersistenceService {
             session,
         );
         if (!mediaList.length) {
-            return { listPublicId: [], listObjectKey: [] };
+            return {
+                listPublicIdUpload: [],
+                listPublicIdAuthenticated: [],
+                listObjectKey: [],
+            };
         }
-        const { listPublicId, listObjectKey } = mediaList.reduce(
-            (acc, media) => {
-                if (
-                    media.provider === MediaProviderEnum.CLOUDINARY &&
-                    media.publicId
-                ) {
-                    acc.listPublicId.push(media.publicId);
-                }
+        const { listPublicIdUpload, listPublicIdAuthenticated, listObjectKey } =
+            mediaList.reduce(
+                (acc, media) => {
+                    if (
+                        media.provider === MediaProviderEnum.CLOUDINARY &&
+                        media.publicId
+                    ) {
+                        if (
+                            media.deliveryType ===
+                            CloudinaryDeliveryTypeEnum.AUTHENTICATED
+                        ) {
+                            acc.listPublicIdAuthenticated.push(media.publicId);
+                        } else {
+                            acc.listPublicIdUpload.push(media.publicId);
+                        }
+                    }
 
-                if (
-                    media.provider === MediaProviderEnum.R2 &&
-                    media.objectKey
-                ) {
-                    acc.listObjectKey.push(media.objectKey);
-                }
+                    if (
+                        media.provider === MediaProviderEnum.R2 &&
+                        media.objectKey
+                    ) {
+                        acc.listObjectKey.push(media.objectKey);
+                    }
 
-                return acc;
-            },
-            {
-                listPublicId: [] as string[],
-                listObjectKey: [] as string[],
-            },
-        );
-        return { listPublicId, listObjectKey };
+                    return acc;
+                },
+                {
+                    listPublicIdUpload: [] as string[],
+                    listPublicIdAuthenticated: [] as string[],
+                    listObjectKey: [] as string[],
+                },
+            );
+        return {
+            listPublicIdUpload,
+            listPublicIdAuthenticated,
+            listObjectKey,
+        };
     }
 
     /**

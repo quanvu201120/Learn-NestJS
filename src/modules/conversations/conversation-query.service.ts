@@ -188,7 +188,7 @@ export class ConversationQueryService {
             ? await this.conversationSerializerService.serializeConversation(
                   res,
                   userId,
-                  [],
+                  undefined,
                   res.isGroup,
               )
             : null;

@@ -1,5 +1,6 @@
-import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { ClientSession } from 'mongoose';
+import { logCatch } from '@/utils/utils';
 import { CleanupJobsService } from '../cleanup-jobs/cleanup-jobs.service';
 import { CreateCleanupJobDto } from '../cleanup-jobs/dto/create-cleanup-job.dto';
 import {
@@ -9,6 +10,7 @@ import {
 } from '../cleanup-jobs/types/cleanup-job';
 import { MediaPersistenceService } from './media-persistence.service';
 import { MediaStorageService } from './media-storage.service';
+import { CloudinaryDeliveryTypeEnum } from './types/media';
 
 export type MediaCleanupContext = {
     resourceType: CleanupJobResourceEnum;
@@ -18,6 +20,8 @@ export type MediaCleanupContext = {
 
 @Injectable()
 export class MediaCleanupService {
+    private readonly logger = new Logger(MediaCleanupService.name);
+
     constructor(
         private readonly mediaPersistenceService: MediaPersistenceService,
         private readonly mediaStorageService: MediaStorageService,
@@ -28,13 +32,15 @@ export class MediaCleanupService {
     /**
      * Xóa một ảnh trên Cloudinary theo `publicId` và tạo cleanup job nếu có lỗi.
      */
-    async deleteImageFromCloudinaryWithCleanup(
+    async deleteFileFromCloudinaryWithCleanup(
         publicId: string,
         cleanup: MediaCleanupContext,
+        deliveryType?: CloudinaryDeliveryTypeEnum,
     ) {
         try {
-            return await this.mediaStorageService.deleteImageFromCloudinary(
+            return await this.mediaStorageService.deleteFileFromCloudinary(
                 publicId,
+                deliveryType,
             );
         } catch (error) {
             await this.createCleanupJob({
@@ -44,6 +50,7 @@ export class MediaCleanupService {
                 entityId: cleanup.entityId,
                 payload: {
                     publicId,
+                    deliveryType,
                 },
                 error: (error as Error)?.message,
             });
@@ -54,13 +61,15 @@ export class MediaCleanupService {
     /**
      * Xóa nhiều ảnh trên Cloudinary theo dạng batch và tạo cleanup job nếu có lỗi.
      */
-    async deleteImagesFromCloudinaryWithCleanup(
+    async deleteFilesFromCloudinaryWithCleanup(
         publicIds: string[],
         cleanup: MediaCleanupContext,
+        deliveryType?: CloudinaryDeliveryTypeEnum,
     ) {
         try {
-            return await this.mediaStorageService.deleteImagesFromCloudinary(
+            return await this.mediaStorageService.deleteFilesFromCloudinary(
                 publicIds,
+                deliveryType,
             );
         } catch (error) {
             await this.createCleanupJob({
@@ -70,6 +79,7 @@ export class MediaCleanupService {
                 entityId: cleanup.entityId,
                 payload: {
                     publicIds,
+                    deliveryType,
                 },
                 error: (error as Error)?.message,
             });
@@ -143,7 +153,7 @@ export class MediaCleanupService {
         try {
             await this.cleanupJobsService.createCleanupJob(createDto);
         } catch (error) {
-            console.error('Failed to create cleanup job: ', error);
+            logCatch(this.logger, 'Failed to create cleanup job', error);
         }
     }
 }

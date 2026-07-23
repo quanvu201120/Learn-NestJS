@@ -6,6 +6,22 @@ import {
     MinLength,
 } from 'class-validator';
 
+export class JoinConversationSocketDto {
+    @IsNotEmpty()
+    @IsMongoId()
+    conversationId: string;
+}
+
+export class DeleteMessageSocketDto {
+    @IsNotEmpty()
+    @IsMongoId()
+    conversationId: string;
+
+    @IsNotEmpty()
+    @IsMongoId()
+    messageId: string;
+}
+
 export class MarkReadSocketDto {
     @IsNotEmpty()
     @IsMongoId()

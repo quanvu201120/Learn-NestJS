@@ -4,20 +4,34 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
 import {
+    CloudinaryDeliveryTypeEnum,
     MediaProviderEnum,
     MediaResourceTypeEnum,
     OwnerTypeEnum,
 } from '../types/media';
 import { Media } from '../schemas/media.schema';
 import { Types } from 'mongoose';
+import { MEDIA_CONSTANTS } from '../constants/media.constant';
 
 @Injectable()
 export class CloudinaryService {
+    // Có bật auth_token (TTL thật) hay không. Chỉ khả dụng ở gói Cloudinary trả phí.
+    private readonly authTokenEnabled: boolean;
+    private readonly authTokenKey?: string;
+
     constructor(private readonly configService: ConfigService) {
+        this.authTokenKey = this.configService.get<string>(
+            'CLOUDINARY_AUTH_TOKEN_KEY',
+        );
+        this.authTokenEnabled =
+            this.configService.get<string>('CLOUDINARY_AUTH_TOKEN_ENABLED') ===
+                'true' && !!this.authTokenKey;
+
         cloudinary.config({
             cloud_name: this.configService.get<string>('CLOUDINARY_CLOUD_NAME'),
             api_key: this.configService.get<string>('CLOUDINARY_API_KEY'),
             api_secret: this.configService.get<string>('CLOUDINARY_API_SECRET'),
+            secure: true,
         });
     }
 
@@ -38,10 +52,14 @@ export class CloudinaryService {
     /**
      * Kiểm tra resource có tồn tại trên Cloudinary hay không.
      */
-    async resourceExists(publicId: string) {
+    async resourceExists(
+        publicId: string,
+        deliveryType: CloudinaryDeliveryTypeEnum = CloudinaryDeliveryTypeEnum.UPLOAD,
+    ) {
         try {
             await cloudinary.api.resource(publicId, {
                 resource_type: 'image',
+                type: deliveryType,
             });
             return true;
         } catch (error) {
@@ -55,19 +73,28 @@ export class CloudinaryService {
     /**
      * Stream buffer ảnh lên Cloudinary và map kết quả trả về
      * thành shape media mà ứng dụng đang dùng.
+     *
+     * `isPrivate = true` → upload dạng `authenticated`: ảnh không thể truy cập nếu
+     * không có chữ ký hợp lệ, và không lưu `url` sẵn (phải ký mỗi lần trả về).
      */
-    async uploadImage(
+    async uploadFile(
         uploadedBy: Types.ObjectId,
         ownerType: OwnerTypeEnum,
         ownerId: Types.ObjectId,
         file: Express.Multer.File,
         folder: string,
+        isPrivate = false,
     ): Promise<Media> {
+        const deliveryType = isPrivate
+            ? CloudinaryDeliveryTypeEnum.AUTHENTICATED
+            : CloudinaryDeliveryTypeEnum.UPLOAD;
+
         return await new Promise((resolve, reject) => {
             const stream = cloudinary.uploader.upload_stream(
                 {
                     folder,
                     resource_type: 'image',
+                    type: deliveryType,
                 },
                 (error, result) => {
                     if (error || !result) {
@@ -81,6 +108,7 @@ export class CloudinaryService {
                             ownerId,
                             file,
                             result,
+                            deliveryType,
                         ),
                     );
                 },
@@ -91,18 +119,57 @@ export class CloudinaryService {
     }
 
     /**
-     * Xóa một resource ảnh trên Cloudinary.
+     * Tạo signed URL cho ảnh `authenticated`. Đồng bộ (không gọi mạng),
+     * tính cục bộ bằng `CLOUDINARY_API_SECRET`.
+     *
+     * Khi `auth_token` được bật (gói trả phí) → URL có TTL thật (hết hạn sau `ttlSeconds`).
+     * Free tier → chỉ ký chặn đoán link, KHÔNG có TTL.
      */
-    async deleteResource(publicId: string): Promise<void> {
+    getSignedFileUrl(
+        publicId: string,
+        ttlSeconds: number = MEDIA_CONSTANTS.SIGNED_URL_TTL_SECONDS,
+    ): string {
+        const options: Record<string, any> = {
+            resource_type: 'image',
+            type: CloudinaryDeliveryTypeEnum.AUTHENTICATED,
+            sign_url: true,
+            secure: true,
+        };
+
+        if (this.authTokenEnabled) {
+            options.auth_token = {
+                key: this.authTokenKey,
+                duration: ttlSeconds,
+            };
+        }
+
+        return cloudinary.url(publicId, options);
+    }
+
+    /**
+     * Xóa một resource ảnh trên Cloudinary. Cần đúng `deliveryType` vì Cloudinary
+     * mặc định xóa theo type `upload`; xóa ảnh `authenticated` mà không khai báo
+     * type sẽ báo thành công nhưng không xóa gì.
+     */
+    async deleteResource(
+        publicId: string,
+        deliveryType: CloudinaryDeliveryTypeEnum = CloudinaryDeliveryTypeEnum.UPLOAD,
+    ): Promise<void> {
         await cloudinary.uploader.destroy(publicId, {
             resource_type: 'image',
+            type: deliveryType,
         });
     }
 
     /**
-     * Xóa nhiều resource ảnh trên Cloudinary trong một request.
+     * Xóa nhiều resource ảnh trên Cloudinary trong một request. Vì Cloudinary
+     * `delete_resources` chỉ nhận một `type` cho cả batch, các publicId phải cùng
+     * `deliveryType`; caller chịu trách nhiệm tách batch theo type trước khi gọi.
      */
-    async deleteResources(publicIds: string[]): Promise<void> {
+    async deleteResources(
+        publicIds: string[],
+        deliveryType: CloudinaryDeliveryTypeEnum = CloudinaryDeliveryTypeEnum.UPLOAD,
+    ): Promise<void> {
         const uniquePublicIds = [...new Set(publicIds.filter(Boolean))];
 
         if (uniquePublicIds.length === 0) {
@@ -111,11 +178,14 @@ export class CloudinaryService {
 
         await cloudinary.api.delete_resources(uniquePublicIds, {
             resource_type: 'image',
+            type: deliveryType,
         });
     }
 
     /**
      * Chuyển response upload của Cloudinary thành payload media để lưu trong hệ thống.
+     * Với ảnh `authenticated`, KHÔNG lưu `url` (secure_url không dùng trực tiếp được);
+     * serializer sẽ ký URL khi trả về client.
      */
     private mapUploadResult(
         uploadedBy: Types.ObjectId,
@@ -123,15 +193,20 @@ export class CloudinaryService {
         ownerId: Types.ObjectId,
         file: Express.Multer.File,
         result: UploadApiResponse,
+        deliveryType: CloudinaryDeliveryTypeEnum,
     ): Media {
+        const isPrivate =
+            deliveryType === CloudinaryDeliveryTypeEnum.AUTHENTICATED;
+
         return {
             uploadedBy,
             ownerType,
             ownerId,
             provider: MediaProviderEnum.CLOUDINARY,
             resourceType: MediaResourceTypeEnum.IMAGE,
-            url: result.secure_url,
+            url: isPrivate ? undefined : result.secure_url,
             publicId: result.public_id,
+            deliveryType,
             fileName: file.originalname,
             mimeType: file.mimetype,
             size: result.bytes,

@@ -7,6 +7,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { ConversationsService } from '../conversations/conversations.service';
+import { RelationshipsService } from '../relationships/relationships.service';
 import { MESSAGE_MESSAGES } from './constants/message.constant';
 import { MessageLookupService } from './message-lookup.service';
 import { Message, MessageDocument } from './schemas/message.schema';
@@ -20,6 +21,8 @@ export class MessageReactionService {
         private readonly messageModel: Model<MessageDocument>,
         @Inject(forwardRef(() => ConversationsService))
         private readonly conversationService: ConversationsService,
+        @Inject(forwardRef(() => RelationshipsService))
+        private readonly relationshipsService: RelationshipsService,
         private readonly messageLookupService: MessageLookupService,
     ) {}
 
@@ -53,6 +56,17 @@ export class MessageReactionService {
             throw new BadRequestException(
                 MESSAGE_MESSAGES.CALL_MESSAGE_ACTION_NOT_ALLOWED,
             );
+        }
+        if (message.senderId.toString() !== userId) {
+            const isBlocked = await this.relationshipsService.checkIsBlocked(
+                userId,
+                message.senderId.toString(),
+            );
+            if (isBlocked) {
+                throw new BadRequestException(
+                    MESSAGE_MESSAGES.CANNOT_REACT_BLOCKED_USER,
+                );
+            }
         }
 
         const hasReacted = message.reactions?.some((reaction) =>

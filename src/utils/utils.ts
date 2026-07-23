@@ -4,13 +4,31 @@ import {
     GLOBAL_CONSTANTS,
 } from '@/common/constants/global.constant';
 import { PayloadJWT } from '@/modules/users/schemas/user.schema';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, HttpException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { createHash, timingSafeEqual } from 'crypto';
 import { Types } from 'mongoose';
 import ms, { StringValue } from 'ms';
+
+/**
+ * Log lỗi trong khối catch, tự phân loại mức độ: `warn` cho lỗi nghiệp vụ mong đợi
+ * (HttpException, JWT hết hạn/không hợp lệ), `error` cho lỗi bất thường còn lại.
+ */
+export const logCatch = (logger: Logger, context: string, error: unknown) => {
+    const message = (error as Error)?.message || error;
+    const isExpectedError =
+        error instanceof HttpException ||
+        (error as Error)?.name === 'TokenExpiredError' ||
+        (error as Error)?.name === 'JsonWebTokenError' ||
+        (error as Error)?.name === 'NotBeforeError';
+    if (isExpectedError) {
+        logger.warn(`${context}: ${message}`);
+        return;
+    }
+    logger.error(`${context}: ${message}`);
+};
 
 /**
  * Mã hóa (hash) mật khẩu người dùng bằng bcrypt.

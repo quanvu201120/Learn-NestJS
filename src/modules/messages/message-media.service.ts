@@ -56,12 +56,13 @@ export class MessageMediaService {
         let uploadedFile: Media | null = null;
 
         if (provider === MediaProviderEnum.CLOUDINARY) {
-            uploadedFile = await this.mediaService.uploadImageToCloudinary(
+            uploadedFile = await this.mediaService.uploadFileToCloudinary(
                 objectSenderId,
                 OwnerTypeEnum.CONVERSATION,
                 objectConversationId,
                 file,
                 MEDIA_CONSTANTS.CONVERSATION_IMAGE_FOLDER,
+                true,
             );
         } else {
             uploadedFile = await this.mediaService.uploadFileToR2(
@@ -90,12 +91,13 @@ export class MessageMediaService {
             uploadedFile.publicId &&
             uploadedFile.provider === MediaProviderEnum.CLOUDINARY
         ) {
-            await this.mediaService.deleteImageFromCloudinaryWithCleanup(
+            await this.mediaService.deleteFileFromCloudinaryWithCleanup(
                 uploadedFile.publicId,
                 {
                     entityType: CleanupJobEntityEnum.MESSAGE,
                     resourceType: CleanupJobResourceEnum.MESSAGE_MEDIA,
                 },
+                uploadedFile.deliveryType,
             );
         }
         if (

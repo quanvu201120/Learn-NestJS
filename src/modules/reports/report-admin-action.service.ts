@@ -42,7 +42,7 @@ export class ReportAdminActionService {
         private readonly eventEmitter: EventEmitter2,
     ) {}
 
-    private async verifyAdminPassword(
+    async verifyAdminPassword(
         adminId: string,
         adminRole: UserRole,
         passwordRaw: string,

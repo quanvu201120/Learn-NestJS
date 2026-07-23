@@ -8,7 +8,10 @@ import {
 import { MEDIA_CONSTANTS } from '../media/constants/media.constant';
 import { MediaDocument } from '../media/schemas/media.schema';
 import { MediaService } from '../media/media.service';
-import { OwnerTypeEnum } from '../media/types/media';
+import {
+    CloudinaryDeliveryTypeEnum,
+    OwnerTypeEnum,
+} from '../media/types/media';
 
 @Injectable()
 export class ReportMediaService {
@@ -35,12 +38,13 @@ export class ReportMediaService {
 
                 try {
                     const uploadedMedia =
-                        await this.mediaService.uploadImageToCloudinary(
+                        await this.mediaService.uploadFileToCloudinary(
                             objectReporterId,
                             OwnerTypeEnum.USER,
                             objectReporterId,
                             file,
                             MEDIA_CONSTANTS.REPORT_EVIDENCE_FOLDER,
+                            true,
                         );
                     publicId = uploadedMedia.publicId!;
                     const createdMedia =
@@ -72,10 +76,14 @@ export class ReportMediaService {
 
         if (orphanPublicIds.length > 0) {
             await this.mediaService
-                .deleteImagesFromCloudinaryWithCleanup(orphanPublicIds, {
-                    entityType: CleanupJobEntityEnum.REPORT,
-                    resourceType: CleanupJobResourceEnum.REPORT_MEDIA,
-                })
+                .deleteFilesFromCloudinaryWithCleanup(
+                    orphanPublicIds,
+                    {
+                        entityType: CleanupJobEntityEnum.REPORT,
+                        resourceType: CleanupJobResourceEnum.REPORT_MEDIA,
+                    },
+                    CloudinaryDeliveryTypeEnum.AUTHENTICATED,
+                )
                 .catch(() => false);
         }
 
@@ -104,10 +112,14 @@ export class ReportMediaService {
 
         if (publicIds.length > 0) {
             await this.mediaService
-                .deleteImagesFromCloudinaryWithCleanup(publicIds, {
-                    entityType: CleanupJobEntityEnum.REPORT,
-                    resourceType: CleanupJobResourceEnum.REPORT_MEDIA,
-                })
+                .deleteFilesFromCloudinaryWithCleanup(
+                    publicIds,
+                    {
+                        entityType: CleanupJobEntityEnum.REPORT,
+                        resourceType: CleanupJobResourceEnum.REPORT_MEDIA,
+                    },
+                    CloudinaryDeliveryTypeEnum.AUTHENTICATED,
+                )
                 .catch(() => false);
         }
     }

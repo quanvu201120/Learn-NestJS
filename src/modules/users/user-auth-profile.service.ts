@@ -3,13 +3,14 @@ import {
     BadRequestException,
     ForbiddenException,
     Injectable,
+    Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
-import { hashPassword } from '@/utils/utils';
+import { hashPassword, logCatch } from '@/utils/utils';
 import { StatsService } from '../stats/stats.service';
 import { USER_MESSAGES } from './constants/user.constant';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -20,6 +21,8 @@ import { UserMailService } from './user-mail.service';
 
 @Injectable()
 export class UserAuthProfileService {
+    private readonly logger = new Logger(UserAuthProfileService.name);
+
     constructor(
         @InjectModel(User.name) private userModel: Model<User>,
         private readonly configService: ConfigService,
@@ -123,7 +126,7 @@ export class UserAuthProfileService {
         this.userMailService
             .sendEmailActive(newUser.email, codeActiveId)
             .catch((error) => {
-                console.error(error);
+                logCatch(this.logger, 'Failed to send activation email', error);
             });
 
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -239,7 +242,7 @@ export class UserAuthProfileService {
         this.userMailService
             .sendEmailActive(user.email, codeActive)
             .catch((error) => {
-                console.error(error);
+                logCatch(this.logger, 'Failed to send activation email', error);
             });
         return 'OK';
     }

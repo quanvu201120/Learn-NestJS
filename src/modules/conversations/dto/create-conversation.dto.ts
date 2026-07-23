@@ -4,11 +4,13 @@ import {
     IsMongoId,
     IsOptional,
     IsString,
+    MaxLength,
 } from 'class-validator';
 
 export class CreateConversationDto {
     @IsString()
     @IsOptional()
+    @MaxLength(50)
     name?: string;
 
     @IsBoolean()

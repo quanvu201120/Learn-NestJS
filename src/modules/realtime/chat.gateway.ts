@@ -8,8 +8,14 @@ import {
     formatDateTime,
     getRoomNameConversation,
     getRoomNameUser,
+    logCatch,
 } from '@/utils/utils';
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+    HttpException,
+    Injectable,
+    Logger,
+    UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
@@ -19,6 +25,7 @@ import {
     MessageBody,
     OnGatewayConnection,
     OnGatewayDisconnect,
+    OnGatewayInit,
     SubscribeMessage,
     WebSocketGateway,
     WebSocketServer,
@@ -30,8 +37,14 @@ import { SessionService } from '../session/session.service';
 import { USER_MESSAGES } from '../users/constants/user.constant';
 import { PayloadJWT } from '../users/schemas/user.schema';
 import { UsersService } from '../users/users.service';
-import { REALTIME_MESSAGES } from './constants/realtime.constant';
 import {
+    REALTIME_EVENTS,
+    REALTIME_MESSAGES,
+    SOCKET_EVENTS,
+} from './constants/realtime.constant';
+import {
+    DeleteMessageSocketDto,
+    JoinConversationSocketDto,
     MarkReadSocketDto,
     TypingSocketDto,
     UpdateMessageSocketDto,
@@ -40,6 +53,7 @@ import { RealtimeChatCommandService } from './realtime-chat-command.service';
 import { RealtimeEventBridgeService } from './realtime-event-bridge.service';
 import { SocketResponse, UserOnlinePayload } from './types/responseSocket';
 import { RealtimeCallService } from './realtime-call.service';
+import { WebrtcIceRotationService } from './webrtc-ice-rotation.service';
 import {
     CallAnswerSocketDto,
     CallIdSocketDto,
@@ -50,19 +64,17 @@ import {
     StartCallSocketDto,
 } from './dto/call-socket.dto';
 
-const socketCorsOrigins = (process.env.CORS_ORIGINS || '')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-
 @WebSocketGateway({
-    cors: { origin: socketCorsOrigins },
     transports: ['websocket'],
 })
 @Injectable()
-export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class ChatGateway
+    implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit
+{
     @WebSocketServer()
     server: Server;
+
+    private readonly logger = new Logger(ChatGateway.name);
 
     constructor(
         private readonly jwtService: JwtService,
@@ -74,6 +86,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         private readonly realtimeChatCommandService: RealtimeChatCommandService,
         private readonly realtimeEventBridgeService: RealtimeEventBridgeService,
         private readonly realtimeCallService: RealtimeCallService,
+        private readonly webrtcIceRotationService: WebrtcIceRotationService,
     ) {}
 
     /**
@@ -146,11 +159,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                     };
                     this.server
                         .to(getRoomNameConversation(conversationId))
-                        .emit('user:online', userOnline);
+                        .emit(SOCKET_EVENTS.USER_ONLINE, userOnline);
                 });
             }
         } catch (error) {
-            console.log('Socket auth failed: ', error);
+            logCatch(this.logger, 'Socket auth failed', error);
             client.disconnect();
         }
     }
@@ -176,18 +189,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 activeCallId,
             );
         } catch (error) {
-            console.log('Error handling call disconnect:', error);
+            logCatch(this.logger, 'Error handling call disconnect', error);
         }
     }
 
     /**
      * Đăng ký toàn bộ realtime bridge giữa domain service/Redis và Socket.IO.
+     * Dùng `afterInit()` (không dùng `onModuleInit()`) vì đây là hook Nest gọi
+     * đúng lúc socket.io đã gắn instance `Server` thật vào gateway; `onModuleInit()`
+     * chạy trước đó nên `this.server` khi ấy vẫn còn `undefined`.
      */
-    onModuleInit() {
-        this.realtimeEventBridgeService.register(this.server);
+    afterInit(server: Server) {
+        this.realtimeEventBridgeService.register(server);
+        this.webrtcIceRotationService.register(server);
     }
 
-    @OnEvent('notification.created')
+    @OnEvent(REALTIME_EVENTS.NOTIFICATION_CREATED)
     handleNotificationCreated({
         notificationId,
         userId,
@@ -197,30 +214,52 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }) {
         this.server
             .to(getRoomNameUser(userId))
-            .emit('notification:created', notificationId);
+            .emit(SOCKET_EVENTS.NOTIFICATION_CREATED, notificationId);
     }
 
-    @OnEvent('user.banned')
+    @OnEvent(REALTIME_EVENTS.USER_BANNED)
     handleUserBanned(payload: { userId: string; banUntil: Date }) {
         const roomName = getRoomNameUser(payload.userId);
         this.server
             .to(roomName)
-            .emit('user:banned', { banUntil: payload.banUntil });
+            .emit(SOCKET_EVENTS.USER_BANNED, { banUntil: payload.banUntil });
         this.server.in(roomName).disconnectSockets(true);
     }
 
-    @OnEvent('user.muted')
+    @OnEvent(REALTIME_EVENTS.SESSION_REVOKED)
+    async handleSessionRevoked(payload: { userId: string; sessionId: string }) {
+        const roomName = getRoomNameUser(payload.userId);
+        const sockets = await this.server.in(roomName).fetchSockets();
+        sockets
+            .filter(
+                (socket) =>
+                    (socket.data.user as PayloadJWT | undefined)?.sessionId ===
+                    payload.sessionId,
+            )
+            .forEach((socket) => socket.disconnect(true));
+    }
+
+    @OnEvent(REALTIME_EVENTS.SESSION_REVOKED_ALL)
+    handleSessionRevokedAll(payload: { userId: string }) {
+        const roomName = getRoomNameUser(payload.userId);
+        this.server.to(roomName).emit(SOCKET_EVENTS.USER_SESSION_REVOKED, {
+            userId: payload.userId,
+        });
+        this.server.in(roomName).disconnectSockets(true);
+    }
+
+    @OnEvent(REALTIME_EVENTS.USER_MUTED)
     handleUserMuted(payload: { userId: string; muteUntil: Date }) {
         const roomName = getRoomNameUser(payload.userId);
         this.server
             .to(roomName)
-            .emit('user:muted', { muteUntil: payload.muteUntil });
+            .emit(SOCKET_EVENTS.USER_MUTED, { muteUntil: payload.muteUntil });
     }
 
-    @OnEvent('user.unmuted')
+    @OnEvent(REALTIME_EVENTS.USER_UNMUTED)
     handleUserUnmuted(payload: { userId: string }) {
         const roomName = getRoomNameUser(payload.userId);
-        this.server.to(roomName).emit('user:unmuted', {
+        this.server.to(roomName).emit(SOCKET_EVENTS.USER_UNMUTED, {
             userId: payload.userId,
         });
     }
@@ -230,10 +269,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
      * Khi user click mở một khung chat, hệ thống cho user join vào room Socket.IO của phòng đó.
      * Trả về danh sách user đang online trong phòng chat.
      */
-    @SubscribeMessage('chat:join-conversation')
+    @SubscribeMessage(SOCKET_EVENTS.CHAT_JOIN_CONVERSATION)
     async handleJoinConversation(
         @ConnectedSocket() client: Socket,
-        @MessageBody() body: { conversationId: string },
+        @MessageBody() body: JoinConversationSocketDto,
         @Ack() ack: (response: any) => void,
     ) {
         try {
@@ -243,7 +282,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             );
             ack?.(res);
         } catch (error) {
-            console.log('Error joining conversation:', error);
+            logCatch(this.logger, 'Error joining conversation', error);
             ack?.(this.toErrorResponse(error));
         }
     }
@@ -253,7 +292,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
      * Lưu tin vào DB, sau đó broadcast sự kiện `chat:new-message` cho mọi người trong room.
      * Kích hoạt cờ "Unseen message" qua Redis cho những user đang online ở các tab khác.
      */
-    @SubscribeMessage('chat:create-message')
+    @SubscribeMessage(SOCKET_EVENTS.CHAT_CREATE_MESSAGE)
     async handleCreateMessage(
         @ConnectedSocket() client: Socket,
         @MessageBody() body: CreateMessageSocketDto,
@@ -266,7 +305,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             );
             ack?.(res);
         } catch (error) {
-            console.log('Error creating message:', error);
+            logCatch(this.logger, 'Error creating message', error);
             ack?.(this.toErrorResponse(error));
         }
     }
@@ -275,7 +314,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
      * Lắng nghe sự kiện Heartbeat (ping) từ client.
      * Gia hạn thời gian sống (TTL) của trạng thái Online trên Redis.
      */
-    @SubscribeMessage('user:heartbeat')
+    @SubscribeMessage(SOCKET_EVENTS.USER_HEARTBEAT)
     async handleUserHeartbeat(
         @ConnectedSocket() client: Socket,
         @Ack() ack: (response: any) => void,
@@ -284,7 +323,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             const res = await this.realtimeChatCommandService.heartbeat(client);
             ack?.(res);
         } catch (error) {
-            console.log('Error user heartbeat:', error);
+            logCatch(this.logger, 'Error user heartbeat', error);
             ack?.(this.toErrorResponse(error));
         }
     }
@@ -293,7 +332,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
      * Bắt đầu gõ phím.
      * Update trạng thái Typing lên Redis và phát broadcast `user:typing-update` cho phòng.
      */
-    @SubscribeMessage('chat:typing-start')
+    @SubscribeMessage(SOCKET_EVENTS.CHAT_TYPING_START)
     async handleTypingStart(
         @ConnectedSocket() client: Socket,
         @Ack() ack: (response: any) => void,
@@ -306,7 +345,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             );
             ack?.(res);
         } catch (error) {
-            console.log('Error typing start:', error);
+            logCatch(this.logger, 'Error typing start', error);
             ack?.(this.toErrorResponse(error));
         }
     }
@@ -315,7 +354,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
      * Ngừng gõ phím.
      * Xóa trạng thái Typing trên Redis và phát broadcast hủy Typing cho phòng.
      */
-    @SubscribeMessage('chat:typing-stop')
+    @SubscribeMessage(SOCKET_EVENTS.CHAT_TYPING_STOP)
     async handleTypingStop(
         @ConnectedSocket() client: Socket,
         @Ack() ack: (response: any) => void,
@@ -328,7 +367,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             );
             ack?.(res);
         } catch (error) {
-            console.log('Error typing stop:', error);
+            logCatch(this.logger, 'Error typing stop', error);
             ack?.(this.toErrorResponse(error));
         }
     }
@@ -337,7 +376,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
      * Sự kiện "Đã xem" tin nhắn.
      * Cập nhật `readReceipts` trong Database và broadcast cho các thành viên khác biết.
      */
-    @SubscribeMessage('chat:mark-read')
+    @SubscribeMessage(SOCKET_EVENTS.CHAT_MARK_READ)
     async handleMarkRead(
         @ConnectedSocket() client: Socket,
         @Ack() ack: (response: any) => void,
@@ -351,7 +390,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             );
             ack?.(res);
         } catch (error) {
-            console.log('Error marking as read:', error);
+            logCatch(this.logger, 'Error marking as read', error);
             ack?.(this.toErrorResponse(error));
         }
     }
@@ -359,10 +398,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     /**
      * Thu hồi tin nhắn
      */
-    @SubscribeMessage('chat:delete-message')
+    @SubscribeMessage(SOCKET_EVENTS.CHAT_DELETE_MESSAGE)
     async handleDeleteMessage(
         @ConnectedSocket() client: Socket,
-        @MessageBody() body: { conversationId: string; messageId: string },
+        @MessageBody() body: DeleteMessageSocketDto,
         @Ack() ack: (response: any) => void,
     ) {
         try {
@@ -373,7 +412,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             );
             ack?.(res);
         } catch (error) {
-            console.log('Error deleting message:', error);
+            logCatch(this.logger, 'Error deleting message', error);
             ack?.(this.toErrorResponse(error));
         }
     }
@@ -381,7 +420,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     /**
      * Chỉnh sửa nội dung tin nhắn
      */
-    @SubscribeMessage('chat:update-message')
+    @SubscribeMessage(SOCKET_EVENTS.CHAT_UPDATE_MESSAGE)
     async handleUpdateMessage(
         @ConnectedSocket() client: Socket,
         @MessageBody()
@@ -395,7 +434,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             );
             ack?.(res);
         } catch (error) {
-            console.log('Error updating message:', error);
+            logCatch(this.logger, 'Error updating message', error);
             ack?.(this.toErrorResponse(error));
         }
     }
@@ -403,7 +442,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     /**
      * Nhận yêu cầu bắt đầu cuộc gọi từ client và chuyển xuống realtime call service.
      */
-    @SubscribeMessage('call:start')
+    @SubscribeMessage(SOCKET_EVENTS.CALL_START)
     async handleCallStart(
         @ConnectedSocket() client: Socket,
         @MessageBody() body: StartCallSocketDto,
@@ -417,7 +456,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             );
             ack?.(res);
         } catch (error) {
-            console.log('Error starting call:', error);
+            logCatch(this.logger, 'Error starting call', error);
             ack?.(this.toErrorResponse(error));
         }
     }
@@ -425,7 +464,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     /**
      * Nhận tín hiệu chấp nhận cuộc gọi từ client.
      */
-    @SubscribeMessage('call:accept')
+    @SubscribeMessage(SOCKET_EVENTS.CALL_ACCEPT)
     async handleCallAccept(
         @ConnectedSocket() client: Socket,
         @MessageBody() body: CallIdSocketDto,
@@ -439,7 +478,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             );
             ack?.(res);
         } catch (error) {
-            console.log('Error accepting call:', error);
+            logCatch(this.logger, 'Error accepting call', error);
             ack?.(this.toErrorResponse(error));
         }
     }
@@ -447,7 +486,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     /**
      * Nhận tín hiệu từ chối cuộc gọi từ client.
      */
-    @SubscribeMessage('call:reject')
+    @SubscribeMessage(SOCKET_EVENTS.CALL_REJECT)
     async handleCallReject(
         @ConnectedSocket() client: Socket,
         @MessageBody() body: CallIdSocketDto,
@@ -461,7 +500,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             );
             ack?.(res);
         } catch (error) {
-            console.log('Error rejecting call:', error);
+            logCatch(this.logger, 'Error rejecting call', error);
             ack?.(this.toErrorResponse(error));
         }
     }
@@ -469,7 +508,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     /**
      * Nhận tín hiệu kết thúc cuộc gọi từ client.
      */
-    @SubscribeMessage('call:end')
+    @SubscribeMessage(SOCKET_EVENTS.CALL_END)
     async handleCallEnd(
         @ConnectedSocket() client: Socket,
         @MessageBody() body: EndCallSocketDto,
@@ -483,7 +522,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             );
             ack?.(res);
         } catch (error) {
-            console.log('Error ending call:', error);
+            logCatch(this.logger, 'Error ending call', error);
             ack?.(this.toErrorResponse(error));
         }
     }
@@ -491,7 +530,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     /**
      * Gia hạn heartbeat cho cuộc gọi đang accepted.
      */
-    @SubscribeMessage('call:heartbeat')
+    @SubscribeMessage(SOCKET_EVENTS.CALL_HEARTBEAT)
     async handleCallHeartbeat(
         @ConnectedSocket() client: Socket,
         @MessageBody() body: CallHeartbeatSocketDto,
@@ -504,14 +543,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             );
             ack?.(res);
         } catch (error) {
-            console.log('Error refreshing call heartbeat:', error);
+            logCatch(this.logger, 'Error refreshing call heartbeat', error);
             ack?.(this.toErrorResponse(error));
         }
     }
     /**
      * Sync cuộc gọi `calling` còn hiệu lực sau khi reconnect socket.
      */
-    @SubscribeMessage('call:sync')
+    @SubscribeMessage(SOCKET_EVENTS.CALL_SYNC)
     async handleCallSync(
         @ConnectedSocket() client: Socket,
         @Ack() ack: (response: any) => void,
@@ -520,7 +559,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             const res = await this.realtimeCallService.syncActiveCall(client);
             ack?.(res);
         } catch (error) {
-            console.log('Error syncing call:', error);
+            logCatch(this.logger, 'Error syncing call', error);
             ack?.(this.toErrorResponse(error));
         }
     }
@@ -528,7 +567,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     /**
      * Chuyển SDP offer giữa hai đầu cuộc gọi.
      */
-    @SubscribeMessage('call:offer')
+    @SubscribeMessage(SOCKET_EVENTS.CALL_OFFER)
     async handleCallOffer(
         @ConnectedSocket() client: Socket,
         @MessageBody() body: CallOfferSocketDto,
@@ -542,7 +581,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             );
             ack?.(res);
         } catch (error) {
-            console.log('Error forwarding call offer:', error);
+            logCatch(this.logger, 'Error forwarding call offer', error);
             ack?.(this.toErrorResponse(error));
         }
     }
@@ -550,7 +589,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     /**
      * Chuyển SDP answer giữa hai đầu cuộc gọi.
      */
-    @SubscribeMessage('call:answer')
+    @SubscribeMessage(SOCKET_EVENTS.CALL_ANSWER)
     async handleCallAnswer(
         @ConnectedSocket() client: Socket,
         @MessageBody() body: CallAnswerSocketDto,
@@ -564,7 +603,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             );
             ack?.(res);
         } catch (error) {
-            console.log('Error forwarding call answer:', error);
+            logCatch(this.logger, 'Error forwarding call answer', error);
             ack?.(this.toErrorResponse(error));
         }
     }
@@ -572,7 +611,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     /**
      * Chuyển ICE candidate giữa hai đầu cuộc gọi.
      */
-    @SubscribeMessage('call:ice-candidate')
+    @SubscribeMessage(SOCKET_EVENTS.CALL_ICE_CANDIDATE)
     async handleCallIceCandidate(
         @ConnectedSocket() client: Socket,
         @MessageBody() body: CallIceCandidateSocketDto,
@@ -586,12 +625,23 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             );
             ack?.(res);
         } catch (error) {
-            console.log('Error forwarding ICE candidate:', error);
+            logCatch(this.logger, 'Error forwarding ICE candidate', error);
             ack?.(this.toErrorResponse(error));
         }
     }
 
     private toErrorResponse(error: unknown): SocketResponse {
+        if (error instanceof HttpException) {
+            const response = error.getResponse();
+            const retryAfterSeconds =
+                typeof response === 'object' &&
+                response !== null &&
+                'retryAfterSeconds' in response
+                    ? (response as { retryAfterSeconds?: number })
+                          .retryAfterSeconds
+                    : undefined;
+            return { ok: false, message: error.message, retryAfterSeconds };
+        }
         return {
             ok: false,
             message: error instanceof Error ? error.message : 'Unknown error',

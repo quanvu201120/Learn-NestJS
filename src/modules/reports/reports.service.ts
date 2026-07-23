@@ -259,10 +259,41 @@ export class ReportsService {
     }
 
     /**
+     * Entrypoint cho endpoint PATCH /reports/:id/resolve.
+     * Luôn xác nhận lại mật khẩu admin trước khi resolve, đồng nhất với các
+     * endpoint xử phạt trực tiếp khác (manual-ban, quick-penalty, unban...).
+     */
+    async resolve(
+        id: string,
+        resolveDto: ResolveReportDto,
+        adminId: string,
+        adminRole: UserRole,
+        req: any,
+    ) {
+        if (!resolveDto.password) {
+            throw new BadRequestException(REPORT_MESSAGES.INVALID_PASSWORD);
+        }
+
+        await this.reportAdminActionService.verifyAdminPassword(
+            adminId,
+            adminRole,
+            resolveDto.password,
+        );
+
+        return await this.resolveInternal(
+            id,
+            resolveDto,
+            adminId,
+            adminRole,
+            req,
+        );
+    }
+
+    /**
      * Wrapper resolveReport core
      * Xử lý trả kết quả report truyền thống (không phải luồng auto ban spam system)
      */
-    async resolve(
+    private async resolveInternal(
         id: string,
         resolveDto: ResolveReportDto,
         adminId: string,
@@ -606,7 +637,7 @@ export class ReportsService {
             adminRole,
             dto,
             req,
-            this.resolve.bind(this),
+            this.resolveInternal.bind(this),
         );
     }
 
@@ -623,7 +654,7 @@ export class ReportsService {
             adminRole,
             dto,
             req,
-            this.resolve.bind(this),
+            this.resolveInternal.bind(this),
         );
     }
 

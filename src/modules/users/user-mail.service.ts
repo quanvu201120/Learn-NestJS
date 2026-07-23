@@ -1,14 +1,16 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { formatExpireTime } from '@/utils/utils';
+import { formatExpireTime, logCatch } from '@/utils/utils';
 import * as fs from 'fs';
 import * as path from 'path';
 import handlebars from 'handlebars';
 
 @Injectable()
 export class UserMailService {
+    private readonly logger = new Logger(UserMailService.name);
+
     constructor(private readonly configService: ConfigService) {}
 
     /**
@@ -77,7 +79,9 @@ export class UserMailService {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                console.error(' Resend API Error Details:', errorData);
+                this.logger.error(
+                    `Resend API error details: ${JSON.stringify(errorData)}`,
+                );
                 throw new Error(
                     `Resend API failed with status ${response.status}`,
                 );
@@ -85,7 +89,7 @@ export class UserMailService {
 
             return await response.json();
         } catch (error) {
-            console.error(' Failed to send email via Resend:', error);
+            logCatch(this.logger, 'Failed to send email via Resend', error);
             throw error;
         }
     }

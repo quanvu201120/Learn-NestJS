@@ -23,10 +23,12 @@ export class RelationshipsService {
 
     public readonly relationshipBlocked$ = new Subject<{
         targetUserId: string;
+        actorId: string;
     }>();
 
     public readonly relationshipUnblocked$ = new Subject<{
         targetUserId: string;
+        actorId: string;
     }>();
 
     constructor(
@@ -138,7 +140,10 @@ export class RelationshipsService {
             blockId,
             session,
         );
-        this.relationshipBlocked$.next({ targetUserId: blockId });
+        this.relationshipBlocked$.next({
+            targetUserId: blockId,
+            actorId: userId,
+        });
 
         return blocked;
     }
@@ -152,7 +157,10 @@ export class RelationshipsService {
             blockId,
         );
 
-        this.relationshipUnblocked$.next({ targetUserId: blockId });
+        this.relationshipUnblocked$.next({
+            targetUserId: blockId,
+            actorId: userId,
+        });
 
         return result;
     }

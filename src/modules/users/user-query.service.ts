@@ -15,6 +15,7 @@ import { GLOBAL_CONSTANTS } from '@/common/constants/global.constant';
 import { toObjectId, validateObjectId } from '@/utils/utils';
 import { RelationshipsService } from '../relationships/relationships.service';
 import { USER_MESSAGES } from './constants/user.constant';
+import { GetUsersDto } from './dto/get-users.dto';
 import { User } from './schemas/user.schema';
 import { UserResponse, UserResponseWithPagination } from './types/user';
 import { UserSerializerService } from './user-serializer.service';
@@ -36,7 +37,7 @@ export class UserQueryService {
      * Lấy danh sách user có hỗ trợ phân trang và filter.
      */
     async findAll(
-        query: any,
+        query: GetUsersDto,
         current: number,
         pageSize: number,
         forAdmin = false,
